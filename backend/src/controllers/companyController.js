@@ -1,0 +1,493 @@
+/**
+ * 企業コントローラー
+ * 企業CRUD・検索・架電リスト取得・ロック管理
+ */
+const pool = require('../../config/database');
+const ApiResponse = require('../utils/apiResponse');
+const logger = require('../utils/logger');
+
+// ロックタイムアウト（分）
+const LOCK_TIMEOUT_MINUTES = 5;
+
+/**
+ * ロックフィルタ条件（他ユーザーのロック中企業を除外、期限切れロックは許可）
+ */
+const lockFilterSQL = `
+  AND (c.locked_by_user_id IS NULL
+       OR c.locked_by_user_id = ?
+       OR c.locked_at < DATE_SUB(NOW(), INTERVAL ${LOCK_TIMEOUT_MINUTES} MINUTE))
+`;
+
+/**
+ * GET /api/companies
+ * 企業一覧取得 (ページネーション対応)
+ */
+const getCompanies = async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+    const { search, industry, region, show_excluded } = req.query;
+
+    let whereClauses = [];
+    let params = [];
+
+    // show_excluded=1 なら除外企業も表示、デフォルトは除外
+    if (show_excluded !== '1') {
+      whereClauses.push('c.exclusion_flag = 0');
+    }
+
+    if (search) {
+      whereClauses.push('(c.company_name LIKE ? OR c.phone_number LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    if (industry) {
+      whereClauses.push('c.industry = ?');
+      params.push(industry);
+    }
+    if (region) {
+      whereClauses.push('c.region = ?');
+      params.push(region);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const [countRows] = await pool.execute(
+      `SELECT COUNT(*) as total FROM companies c ${whereStr}`,
+      params
+    );
+    const total = countRows[0].total;
+
+    const [rows] = await pool.execute(
+      `SELECT c.*,
+              u_lock.name as locked_by_user_name,
+              (SELECT MAX(cl.call_started_at) FROM calls cl WHERE cl.company_id = c.id) as last_call_date,
+              (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
+       FROM companies c
+       LEFT JOIN users u_lock ON c.locked_by_user_id = u_lock.id
+       ${whereStr}
+       ORDER BY c.priority_score DESC, c.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    return ApiResponse.success(res, {
+      companies: rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/companies/:id
+ * 企業詳細取得 (過去の通話履歴含む)
+ */
+const getCompanyById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const [companies] = await pool.execute(
+      'SELECT * FROM companies WHERE id = ?',
+      [id]
+    );
+
+    if (companies.length === 0) {
+      return ApiResponse.notFound(res, '企業が見つかりません');
+    }
+
+    const [calls] = await pool.execute(
+      `SELECT c.*, u.name as operator_name
+       FROM calls c
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.company_id = ?
+       ORDER BY c.call_started_at DESC
+       LIMIT 20`,
+      [id]
+    );
+
+    return ApiResponse.success(res, {
+      company: companies[0],
+      callHistory: calls,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/companies
+ * 企業新規作成
+ */
+const createCompany = async (req, res, next) => {
+  try {
+    const { company_name, phone_number, industry, job_type, comment, region, address } = req.body;
+
+    if (!company_name || !phone_number) {
+      return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [company_name, phone_number, industry || null, job_type || null, comment || null, region || null, address || null]
+    );
+
+    logger.info(`企業作成: ${company_name} (ID: ${result.insertId})`);
+    return ApiResponse.created(res, { id: result.insertId }, '企業を作成しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/companies/:id
+ * 企業情報更新
+ */
+const updateCompany = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { company_name, phone_number, industry, job_type, comment, region, address, priority_score, exclusion_flag } = req.body;
+
+    const [result] = await pool.execute(
+      `UPDATE companies SET
+        company_name = COALESCE(?, company_name),
+        phone_number = COALESCE(?, phone_number),
+        industry = COALESCE(?, industry),
+        job_type = COALESCE(?, job_type),
+        comment = COALESCE(?, comment),
+        region = COALESCE(?, region),
+        address = COALESCE(?, address),
+        priority_score = COALESCE(?, priority_score),
+        exclusion_flag = COALESCE(?, exclusion_flag)
+       WHERE id = ?`,
+      [company_name, phone_number, industry, job_type, comment, region, address, priority_score, exclusion_flag, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, '企業が見つかりません');
+    }
+
+    return ApiResponse.success(res, null, '企業情報を更新しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 割り当てフィルタSQL（自分に割り当て or 未割り当てのみ表示、他OPに割り当て済みは除外）
+ */
+const assignmentFilterSQL = `
+  AND (c.id NOT IN (SELECT ca.company_id FROM company_assignments ca)
+       OR c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ?))
+`;
+
+/**
+ * GET /api/companies/call-list/next
+ * 次の架電先を1件取得 (自動架電リスト)
+ * 割り当て優先: 自分に割り当てられた企業 → 未割り当て企業
+ */
+const getNextCallTarget = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 8);
+
+    // 1. リコール期限
+    const [recallRows] = await pool.execute(
+      `SELECT rt.id as recall_task_id, c.*,
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as last_memo,
+              (SELECT cl.result_code FROM calls cl WHERE cl.id = rt.call_id) as last_result
+       FROM recall_tasks rt
+       JOIN companies c ON rt.company_id = c.id
+       WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
+         AND c.exclusion_flag = 0
+       ORDER BY rt.recall_at ASC
+       LIMIT 1`,
+      [userId, now]
+    );
+    if (recallRows.length > 0) {
+      return ApiResponse.success(res, { target: recallRows[0], reason: 'recall_due' });
+    }
+
+    // 2. ゴールデンタイム（割り当て優先）
+    const [goldenRows] = await pool.query(
+      `SELECT c.*, itr.priority_weight,
+              (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+              (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       JOIN industry_time_rules itr ON c.industry = itr.industry_name
+       WHERE c.exclusion_flag = 0
+         AND ? BETWEEN itr.start_time AND itr.end_time
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         ${assignmentFilterSQL}
+       ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
+       LIMIT 1`,
+      [userId, currentTime, userId]
+    );
+    if (goldenRows.length > 0) {
+      return ApiResponse.success(res, { target: goldenRows[0], reason: 'golden_time' });
+    }
+
+    // 3. 未接触（割り当て優先）
+    const [untouchedRows] = await pool.query(
+      `SELECT c.*,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${assignmentFilterSQL}
+       ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
+       LIMIT 1`,
+      [userId, userId]
+    );
+    if (untouchedRows.length > 0) {
+      return ApiResponse.success(res, { target: untouchedRows[0], reason: 'untouched' });
+    }
+
+    // 4. 前回不通（割り当て優先）
+    const [noAnswerRows] = await pool.query(
+      `SELECT c.*,
+              (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND c.id IN (SELECT cl.company_id FROM calls cl WHERE cl.result_code = 'NO_ANSWER')
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+         ${assignmentFilterSQL}
+       ORDER BY is_assigned DESC, c.last_called_at ASC
+       LIMIT 1`,
+      [userId, userId]
+    );
+    if (noAnswerRows.length > 0) {
+      return ApiResponse.success(res, { target: noAnswerRows[0], reason: 'retry_no_answer' });
+    }
+
+    return ApiResponse.success(res, { target: null, reason: 'no_target' }, '架電対象がありません');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/companies/call-list
+ * 架電候補リスト取得 (最大10件、4段優先度)
+ * ロック中の企業は除外（自分のロック + 期限切れは許可）
+ */
+const getCallList = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 8);
+    const LIST_SIZE = 10;
+
+    let targets = [];
+    // excludeクエリパラメータ: 直前に完了した企業IDを除外
+    const excludeParam = req.query.exclude;
+    let excludeIds = excludeParam ? [parseInt(excludeParam, 10)].filter(id => !isNaN(id)) : [];
+
+    // NOT IN句を安全に構築するヘルパー
+    const notInClause = (ids) => {
+      if (ids.length === 0) return '';
+      return `AND c.id NOT IN (${ids.map(() => '?').join(',')})`;
+    };
+
+    // 1. リコール期限（自分のリコールのみ）
+    const [recallRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+              'recall_due' as reason, rt.recall_at
+       FROM recall_tasks rt
+       JOIN companies c ON rt.company_id = c.id
+       WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
+         AND c.exclusion_flag = 0
+         ${lockFilterSQL}
+       ORDER BY rt.recall_at ASC
+       LIMIT ?`,
+      [userId, now, userId, LIST_SIZE]
+    );
+    targets.push(...recallRows);
+    excludeIds = targets.map(t => t.id);
+
+    if (targets.length >= LIST_SIZE) {
+      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
+    }
+
+    // 2. ゴールデンタイム（割り当て優先）
+    const remaining2 = LIST_SIZE - targets.length;
+    const [goldenRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+              'golden_time' as reason,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       JOIN industry_time_rules itr ON c.industry = itr.industry_name
+       WHERE c.exclusion_flag = 0
+         AND ? BETWEEN itr.start_time AND itr.end_time
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         ${lockFilterSQL}
+         ${assignmentFilterSQL}
+         ${notInClause(excludeIds)}
+       ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
+       LIMIT ?`,
+      [userId, currentTime, userId, userId, ...excludeIds, remaining2]
+    );
+    targets.push(...goldenRows);
+    excludeIds = targets.map(t => t.id);
+
+    if (targets.length >= LIST_SIZE) {
+      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
+    }
+
+    // 3. 未接触（割り当て優先）
+    const remaining3 = LIST_SIZE - targets.length;
+    const [untouchedRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+              'untouched' as reason,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${lockFilterSQL}
+         ${assignmentFilterSQL}
+         ${notInClause(excludeIds)}
+       ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
+       LIMIT ?`,
+      [userId, userId, userId, ...excludeIds, remaining3]
+    );
+    targets.push(...untouchedRows);
+    excludeIds = targets.map(t => t.id);
+
+    if (targets.length >= LIST_SIZE) {
+      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
+    }
+
+    // 4. 前回不通（2時間以上前、割り当て優先）
+    const remaining4 = LIST_SIZE - targets.length;
+    const [retryRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+              'retry_no_answer' as reason,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND c.id IN (SELECT cl.company_id FROM calls cl WHERE cl.result_code = 'NO_ANSWER')
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+         ${lockFilterSQL}
+         ${assignmentFilterSQL}
+         ${notInClause(excludeIds)}
+       ORDER BY is_assigned DESC, c.last_called_at ASC
+       LIMIT ?`,
+      [userId, userId, userId, ...excludeIds, remaining4]
+    );
+    targets.push(...retryRows);
+
+    return ApiResponse.success(res, { targets });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/companies/:id/lock
+ * 架電対象のロックを取得 (SELECT FOR UPDATEによる排他制御)
+ */
+const lockCallTarget = async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    await conn.beginTransaction();
+
+    // 行ロック取得
+    const [rows] = await conn.execute(
+      'SELECT id, locked_by_user_id, locked_at FROM companies WHERE id = ? FOR UPDATE',
+      [id]
+    );
+
+    if (rows.length === 0) {
+      await conn.rollback();
+      return ApiResponse.notFound(res, '企業が見つかりません');
+    }
+
+    const company = rows[0];
+    const now = new Date();
+
+    // 他ユーザーが有効なロックを保持しているか確認
+    if (company.locked_by_user_id && company.locked_by_user_id !== userId) {
+      const lockedAt = new Date(company.locked_at);
+      const elapsedMs = now - lockedAt;
+      if (elapsedMs < LOCK_TIMEOUT_MINUTES * 60 * 1000) {
+        await conn.rollback();
+        return res.status(409).json({
+          success: false,
+          message: 'この企業は他のオペレーターが対応中です',
+        });
+      }
+    }
+
+    // ロック取得
+    await conn.execute(
+      'UPDATE companies SET locked_by_user_id = ?, locked_at = NOW() WHERE id = ?',
+      [userId, id]
+    );
+
+    await conn.commit();
+
+    // 企業情報 + 通話履歴を返す
+    const [companyData] = await pool.execute('SELECT * FROM companies WHERE id = ?', [id]);
+    const [callHistory] = await pool.execute(
+      `SELECT c.*, u.name as operator_name
+       FROM calls c LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.company_id = ? ORDER BY c.call_started_at DESC LIMIT 20`,
+      [id]
+    );
+
+    logger.info(`ロック取得: user=${userId}, company=${id}`);
+
+    return ApiResponse.success(res, {
+      company: companyData[0],
+      callHistory,
+    }, 'ロックを取得しました');
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * POST /api/companies/:id/unlock
+ * ロック解除（自分のロックのみ）
+ */
+const unlockCallTarget = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    await pool.execute(
+      'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ? AND locked_by_user_id = ?',
+      [id, userId]
+    );
+
+    return ApiResponse.success(res, null, 'ロックを解除しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  getCompanies,
+  getCompanyById,
+  createCompany,
+  updateCompany,
+  getNextCallTarget,
+  getCallList,
+  lockCallTarget,
+  unlockCallTarget,
+};

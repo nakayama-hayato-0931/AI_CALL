@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Build
+frontend/.next/
+frontend/out/
+
+# Logs
+backend/logs/
+*.log
+
+# Uploads
+backend/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test files
+backend/test_all.js
+
+# Claude
+.claude/
+
+# Preview
+preview.html
