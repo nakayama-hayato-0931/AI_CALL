@@ -237,21 +237,20 @@ const importExclusionList = async (req, res, next) => {
         const row = records[i];
         const lineNum = i + 2;
 
-        const companyName = (row.company_name || '').trim();
+        const companyName = (row.company_name || '').trim() || null;
         const phoneNumber = (row.phone_number || '').trim() || null;
 
-        if (!companyName) {
-          errors.push({ line: lineNum, message: '企業名が空です' });
+        if (!companyName && !phoneNumber) {
+          errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
           continue;
         }
 
         // 同一リスト種別内の重複チェック（NGはNG内、既存は既存内）
-        const dupQuery = phoneNumber
-          ? 'SELECT id FROM exclusion_lists WHERE list_type = ? AND (phone_number = ? OR company_name = ?)'
-          : 'SELECT id FROM exclusion_lists WHERE list_type = ? AND company_name = ?';
-        const dupParams = phoneNumber
-          ? [listType, phoneNumber, companyName]
-          : [listType, companyName];
+        const dupConditions = [];
+        const dupParams = [listType];
+        if (phoneNumber) { dupConditions.push('phone_number = ?'); dupParams.push(phoneNumber); }
+        if (companyName) { dupConditions.push('company_name = ?'); dupParams.push(companyName); }
+        const dupQuery = `SELECT id FROM exclusion_lists WHERE list_type = ? AND (${dupConditions.join(' OR ')})`;
         const [existing] = await conn.execute(dupQuery, dupParams);
 
         if (existing.length > 0) {
@@ -268,12 +267,11 @@ const importExclusionList = async (req, res, next) => {
         // 架電リスト（companies）から一致企業を削除
         // 外部キー制約があるため、関連する calls, projects 等がある企業は削除できないので
         // まず関連データがない企業を削除、ある企業は除外フラグを立てる
-        const findQuery = phoneNumber
-          ? 'SELECT id FROM companies WHERE phone_number = ? OR company_name = ?'
-          : 'SELECT id FROM companies WHERE company_name = ?';
-        const findParams = phoneNumber
-          ? [phoneNumber, companyName]
-          : [companyName];
+        const findConditions = [];
+        const findParams = [];
+        if (phoneNumber) { findConditions.push('phone_number = ?'); findParams.push(phoneNumber); }
+        if (companyName) { findConditions.push('company_name = ?'); findParams.push(companyName); }
+        const findQuery = `SELECT id FROM companies WHERE ${findConditions.join(' OR ')}`;
         const [matchedCompanies] = await conn.execute(findQuery, findParams);
 
         for (const mc of matchedCompanies) {
