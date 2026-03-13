@@ -47,6 +47,7 @@ export default function AdminCompanies() {
   const [rules, setRules] = useState([]);
   const [dbIndustries, setDbIndustries] = useState([]);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
+  const [industryInput, setIndustryInput] = useState('');
   const [selectedPrefs, setSelectedPrefs] = useState([]);
   const [addingRules, setAddingRules] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
@@ -132,10 +133,20 @@ export default function AdminCompanies() {
     } catch (err) { toast.error('エリアルール取得に失敗しました'); }
   };
 
-  // --- 業種トグル ---
-  const toggleIndustry = (ind) => {
-    setSelectedIndustries(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
+  // --- 業種キーワード追加 ---
+  const addIndustryKeyword = (keyword) => {
+    const trimmed = keyword.trim();
+    if (!trimmed || selectedIndustries.includes(trimmed)) return;
+    setSelectedIndustries(prev => [...prev, trimmed]);
+    setIndustryInput('');
   };
+  const removeIndustryKeyword = (keyword) => {
+    setSelectedIndustries(prev => prev.filter(k => k !== keyword));
+  };
+  // DB値から候補をフィルタ（入力中の文字に部分一致、既に追加済みは除外）
+  const industrySuggestions = industryInput.trim()
+    ? dbIndustries.filter(ind => ind.includes(industryInput.trim()) && !selectedIndustries.includes(ind))
+    : [];
 
   // --- 都道府県トグル ---
   const togglePref = (pref) => {
@@ -380,8 +391,8 @@ export default function AdminCompanies() {
         <>
           <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
             <p className="text-sm text-blue-800">
-              業種ごとに架電可能な都道府県を設定します。ルールが1件以上ある場合、ルールに合致する企業のみオペレーターの架電リストに表示されます。
-              ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
+              業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の業種・職種（業務内容）に部分一致で判定されます。
+              ルールが1件以上ある場合のみフィルターが適用されます。管理者画面では常に全企業が閲覧できます。
             </p>
           </div>
 
@@ -390,33 +401,51 @@ export default function AdminCompanies() {
             <h3 className="text-sm font-bold text-gray-700 mb-4">ルール追加</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-4">
 
-              {/* 業種選択 */}
+              {/* 業種キーワード入力 */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="input-label">業種（複数選択可）</label>
+                  <label className="input-label">業種キーワード（部分一致）</label>
                   {selectedIndustries.length > 0 && (
                     <button onClick={() => setSelectedIndustries([])} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>
                   )}
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3 max-h-64 overflow-y-auto space-y-0.5">
-                  {dbIndustries.length === 0 ? (
-                    <p className="text-xs text-gray-400 py-2 text-center">企業データに業種が登録されていません</p>
-                  ) : (
-                    dbIndustries.map(ind => (
-                      <label key={ind} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-                        selectedIndustries.includes(ind) ? 'bg-blue-50' : 'hover:bg-gray-50'
-                      }`}>
-                        <input type="checkbox" checked={selectedIndustries.includes(ind)}
-                          onChange={() => toggleIndustry(ind)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        <span className="text-sm text-gray-700">{ind}</span>
-                      </label>
-                    ))
+                {/* 追加済みタグ */}
+                {selectedIndustries.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {selectedIndustries.map(kw => (
+                      <span key={kw} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {kw}
+                        <button onClick={() => removeIndustryKeyword(kw)} className="text-blue-400 hover:text-red-500">&times;</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* 入力フィールド */}
+                <div className="relative">
+                  <input type="text" className="input text-sm" placeholder="例: 飲食、工事、事務 など..."
+                    value={industryInput} onChange={e => setIndustryInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); addIndustryKeyword(industryInput); }
+                    }} />
+                  {industryInput.trim() && (
+                    <button onClick={() => addIndustryKeyword(industryInput)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 font-medium">追加</button>
                   )}
                 </div>
-                {selectedIndustries.length > 0 && (
-                  <p className="text-xs text-blue-600 mt-1">{selectedIndustries.length}件選択中</p>
+                {/* DB値サジェスト */}
+                {industrySuggestions.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg mt-1 max-h-32 overflow-y-auto bg-white shadow-sm">
+                    {industrySuggestions.slice(0, 8).map(ind => (
+                      <button key={ind} onClick={() => addIndustryKeyword(ind)}
+                        className="block w-full text-left px-3 py-1.5 text-xs text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+                        {ind}
+                      </button>
+                    ))}
+                  </div>
                 )}
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Enterで追加。企業の「業種」「職種」に含まれるキーワードで判定されます。
+                </p>
               </div>
 
               {/* 地域選択（階層ツリー） */}
@@ -497,8 +526,8 @@ export default function AdminCompanies() {
             <div className="flex items-center justify-between border-t border-gray-100 pt-4">
               <div className="text-xs text-gray-500">
                 {selectedIndustries.length > 0 && selectedPrefs.length > 0
-                  ? `${selectedIndustries.length}業種 × ${selectedPrefs.length}都道府県 = ${selectedIndustries.length * selectedPrefs.length}件のルールを追加`
-                  : '業種と地域をそれぞれ選択してください'}
+                  ? `${selectedIndustries.length}キーワード × ${selectedPrefs.length}都道府県 = ${selectedIndustries.length * selectedPrefs.length}件のルールを追加`
+                  : '業種キーワードと地域をそれぞれ選択してください'}
               </div>
               <button onClick={handleAddRules}
                 disabled={selectedIndustries.length === 0 || selectedPrefs.length === 0 || addingRules}

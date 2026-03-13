@@ -178,14 +178,17 @@ const updateCompany = async (req, res, next) => {
 /**
  * 業種×地域ルールフィルタ（ルールに合致する企業のみ表示）
  * ルールが0件の場合はフィルターをスキップ（全企業表示）
- * region は都道府県名（例: 富山県）、住所の先頭と前方一致で判定
+ * industry_name はキーワード（例: 飲食）→ industry/job_type に部分一致で判定
+ * region は都道府県名（例: 富山県）→ 住所の先頭と前方一致で判定
  */
 const industryRegionFilterSQL = `
   AND (
     (SELECT COUNT(*) FROM industry_region_rules) = 0
     OR EXISTS (
       SELECT 1 FROM industry_region_rules irr
-      WHERE irr.industry_name = c.industry AND c.address LIKE CONCAT(irr.region, '%')
+      WHERE (c.industry LIKE CONCAT('%', irr.industry_name, '%')
+             OR c.job_type LIKE CONCAT('%', irr.industry_name, '%'))
+        AND c.address LIKE CONCAT(irr.region, '%')
     )
   )
 `;
