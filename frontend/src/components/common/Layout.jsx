@@ -90,9 +90,7 @@ const getNavItems = (role) => {
       { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
       { href: '/admin/projects', label: '案件管理', icon: 'project' },
       { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
-      { href: '/csv-import?tab=calllist', label: '架電リストインポート', icon: 'csv' },
-      { href: '/csv-import?tab=ng', label: 'NGリストインポート', icon: 'csv' },
-      { href: '/csv-import?tab=existing', label: '既存案件インポート', icon: 'csv' },
+      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
       { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
     ];
   }
@@ -103,9 +101,7 @@ const getNavItems = (role) => {
       { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
       { href: '/admin/projects', label: '案件管理', icon: 'project' },
       { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
-      { href: '/csv-import?tab=calllist', label: '架電リストインポート', icon: 'csv' },
-      { href: '/csv-import?tab=ng', label: 'NGリストインポート', icon: 'csv' },
-      { href: '/csv-import?tab=existing', label: '既存案件インポート', icon: 'csv' },
+      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
       { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
     ];
   }
@@ -167,13 +163,9 @@ export default function Layout({ children }) {
         {/* ナビゲーション */}
         <nav className="flex-1 py-3 px-2.5 space-y-0.5">
           {getNavItems(user.role).map((item) => {
-            const itemPath = item.href.split('?')[0];
-            const itemQuery = new URLSearchParams(item.href.split('?')[1] || '');
             const isActive = item.href === '/'
               ? router.pathname === '/'
-              : item.href.includes('?')
-                ? router.pathname === itemPath && router.query.tab === itemQuery.get('tab')
-                : router.pathname.startsWith(item.href);
+              : router.pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
