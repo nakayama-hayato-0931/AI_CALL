@@ -51,6 +51,10 @@ export default function AdminCompanies() {
   const [selectedPrefs, setSelectedPrefs] = useState([]);
   const [addingRules, setAddingRules] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  // NGワード
+  const [excludeWords, setExcludeWords] = useState([]);
+  const [ngIndustry, setNgIndustry] = useState('');
+  const [ngKeywordInput, setNgKeywordInput] = useState('');
 
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
@@ -131,6 +135,10 @@ export default function AdminCompanies() {
         setDbIndustries(data.data.industries);
       }
     } catch (err) { toast.error('エリアルール取得に失敗しました'); }
+    try {
+      const { data } = await api.get('/api/admin/exclude-words');
+      if (data.success) setExcludeWords(data.data);
+    } catch (err) { /* ignore */ }
   };
 
   // --- 業種キーワード追加 ---
@@ -233,6 +241,40 @@ export default function AdminCompanies() {
     toast.success(`${industry} のルールを削除しました`);
     fetchRules();
   };
+
+  // --- NGワード管理 ---
+  const handleAddNgWord = async () => {
+    if (!ngIndustry || !ngKeywordInput.trim()) { toast.error('業種キーワードとNGワードを入力してください'); return; }
+    try {
+      const { data } = await api.post('/api/admin/exclude-words', {
+        industry_name: ngIndustry, keyword: ngKeywordInput.trim(),
+      });
+      if (data.success) {
+        toast.success('NGワードを追加しました');
+        setNgKeywordInput('');
+        fetchRules();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'NGワード追加に失敗しました');
+    }
+  };
+
+  const handleDeleteNgWord = async (id) => {
+    try {
+      const { data } = await api.delete(`/api/admin/exclude-words/${id}`);
+      if (data.success) { toast.success('NGワードを削除しました'); fetchRules(); }
+    } catch (err) { toast.error('NGワード削除に失敗しました'); }
+  };
+
+  // NGワードを業種でグループ化
+  const groupedExcludeWords = excludeWords.reduce((acc, ew) => {
+    if (!acc[ew.industry_name]) acc[ew.industry_name] = [];
+    acc[ew.industry_name].push(ew);
+    return acc;
+  }, {});
+
+  // ルール内の業種キーワード一覧（NGワード設定用セレクト）
+  const ruleIndustryNames = [...new Set(rules.map(r => r.industry_name))];
 
   // ルールを業種でグループ化
   const groupedRules = rules.reduce((acc, rule) => {
@@ -391,8 +433,9 @@ export default function AdminCompanies() {
         <>
           <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
             <p className="text-sm text-blue-800">
-              業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の業種・職種（業務内容）に部分一致で判定されます。
-              ルールが1件以上ある場合のみフィルターが適用されます。管理者画面では常に全企業が閲覧できます。
+              業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の「業種」に部分一致で判定されます。
+              職種にNGワードが含まれる場合は除外されます（例: 飲食店でも職種が事務なら除外）。
+              ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
             </p>
           </div>
 
@@ -444,7 +487,7 @@ export default function AdminCompanies() {
                   </div>
                 )}
                 <p className="text-xs text-gray-400 mt-1.5">
-                  Enterで追加。企業の「業種」「職種」に含まれるキーワードで判定されます。
+                  Enterで追加。企業の「業種」に含まれるキーワードで判定されます。
                 </p>
               </div>
 
@@ -594,6 +637,60 @@ export default function AdminCompanies() {
               {Object.keys(groupedRules).length} 業種 / {rules.length} ルール設定済み
             </div>
           )}
+
+          {/* ==================== NGワード設定 ==================== */}
+          <div className="mt-8 border-t border-gray-200 pt-6">
+            <h3 className="text-sm font-bold text-gray-700 mb-2">NGワード設定（職種除外）</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              業種キーワードごとにNGワードを設定できます。職種（job_type）にNGワードが含まれる企業は架電リストから除外されます。
+            </p>
+
+            {/* NGワード追加フォーム */}
+            <div className="card p-4 mb-4">
+              <div className="flex items-end gap-3">
+                <div>
+                  <label className="input-label">対象業種キーワード</label>
+                  <select className="input text-sm" value={ngIndustry} onChange={e => setNgIndustry(e.target.value)}>
+                    <option value="">選択...</option>
+                    {ruleIndustryNames.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="input-label">NGワード</label>
+                  <input type="text" className="input text-sm" placeholder="例: 事務、経理、ドライバー..."
+                    value={ngKeywordInput} onChange={e => setNgKeywordInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddNgWord(); } }} />
+                </div>
+                <button onClick={handleAddNgWord} disabled={!ngIndustry || !ngKeywordInput.trim()}
+                  className="btn-primary !py-2.5 px-5 disabled:opacity-50">追加</button>
+              </div>
+            </div>
+
+            {/* NGワード一覧 */}
+            {Object.keys(groupedExcludeWords).length === 0 ? (
+              <div className="text-xs text-gray-400 text-center py-4">NGワードは設定されていません</div>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(groupedExcludeWords).map(([industry, words]) => (
+                  <div key={industry} className="card p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-700 flex-shrink-0">{industry}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {words.map(ew => (
+                          <span key={ew.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                            {ew.keyword}
+                            <button onClick={() => handleDeleteNgWord(ew.id)}
+                              className="text-red-400 hover:text-red-600 transition-colors">&times;</button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </Layout>

@@ -184,6 +184,16 @@ CREATE TABLE IF NOT EXISTS industry_region_rules (
   INDEX idx_industry (industry_name)
 ) ENGINE=InnoDB COMMENT='業種×地域の架電エリアルール';
 
+-- 業種別NGワード（職種除外キーワード）
+CREATE TABLE IF NOT EXISTS industry_exclude_words (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  industry_name VARCHAR(100) NOT NULL,
+  keyword VARCHAR(100) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_industry_keyword (industry_name, keyword),
+  INDEX idx_industry (industry_name)
+) ENGINE=InnoDB COMMENT='業種別NGワード（職種除外キーワード）';
+
 -- 初期データ: 管理者ユーザー (パスワード: admin123)
 INSERT INTO users (name, email, password_hash, role) VALUES
   ('管理者', 'admin@example.com', '$2b$10$8K1p/a0dL1LXMIgoEDFrwOfMQkT.RZfL1IdBCemO3vGKCVjnZPGlG', 'admin');

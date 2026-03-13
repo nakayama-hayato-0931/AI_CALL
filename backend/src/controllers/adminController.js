@@ -423,6 +423,69 @@ const deleteIndustryRegionRule = async (req, res, next) => {
   }
 };
 
+// ==================== 業種別NGワード ====================
+
+/**
+ * GET /api/admin/exclude-words
+ * NGワード一覧
+ */
+const getExcludeWords = async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, industry_name, keyword, created_at FROM industry_exclude_words ORDER BY industry_name, keyword'
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/admin/exclude-words
+ * NGワード追加
+ */
+const addExcludeWord = async (req, res, next) => {
+  try {
+    const { industry_name, keyword } = req.body;
+    if (!industry_name || !keyword) {
+      return ApiResponse.badRequest(res, '業種キーワードとNGワードは必須です');
+    }
+    try {
+      const [result] = await pool.execute(
+        'INSERT INTO industry_exclude_words (industry_name, keyword) VALUES (?, ?)',
+        [industry_name, keyword]
+      );
+      logger.info(`NGワード追加: ${industry_name} → ${keyword}`);
+      return ApiResponse.created(res, { id: result.insertId, industry_name, keyword }, 'NGワードを追加しました');
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') {
+        return ApiResponse.badRequest(res, 'このNGワードは既に登録されています');
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/admin/exclude-words/:id
+ * NGワード削除
+ */
+const deleteExcludeWord = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute('DELETE FROM industry_exclude_words WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, 'NGワードが見つかりません');
+    }
+    logger.info(`NGワード削除: ID ${id}`);
+    return ApiResponse.success(res, null, 'NGワードを削除しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
@@ -435,4 +498,7 @@ module.exports = {
   getIndustryRegionRules,
   addIndustryRegionRule,
   deleteIndustryRegionRule,
+  getExcludeWords,
+  addExcludeWord,
+  deleteExcludeWord,
 };

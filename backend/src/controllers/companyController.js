@@ -178,17 +178,25 @@ const updateCompany = async (req, res, next) => {
 /**
  * 業種×地域ルールフィルタ（ルールに合致する企業のみ表示）
  * ルールが0件の場合はフィルターをスキップ（全企業表示）
- * industry_name はキーワード（例: 飲食）→ job_type（職種/業務内容）に部分一致で判定
- *   → industryが「飲食店」でもjob_typeが「事務作業」なら「飲食」にマッチしない
- * region は都道府県名（例: 富山県）→ 住所の先頭と前方一致で判定
+ *
+ * 判定ロジック:
+ * 1. industry_name キーワードで c.industry を部分一致 (例: 飲食 → 飲食店, 飲食料品小売業)
+ * 2. region（都道府県名）で c.address を前方一致 (例: 富山県 → 富山県黒部市...)
+ * 3. industry_exclude_words に登録されたNGワードが c.job_type に含まれていたら除外
+ *    (例: industry=飲食店 でも job_type=事務作業 なら除外)
  */
 const industryRegionFilterSQL = `
   AND (
     (SELECT COUNT(*) FROM industry_region_rules) = 0
     OR EXISTS (
       SELECT 1 FROM industry_region_rules irr
-      WHERE c.job_type LIKE CONCAT('%', irr.industry_name, '%')
+      WHERE c.industry LIKE CONCAT('%', irr.industry_name, '%')
         AND c.address LIKE CONCAT(irr.region, '%')
+        AND NOT EXISTS (
+          SELECT 1 FROM industry_exclude_words iew
+          WHERE iew.industry_name = irr.industry_name
+            AND c.job_type LIKE CONCAT('%', iew.keyword, '%')
+        )
     )
   )
 `;

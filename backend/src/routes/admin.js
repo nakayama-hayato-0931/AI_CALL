@@ -9,6 +9,7 @@ const {
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
+  getExcludeWords, addExcludeWord, deleteExcludeWord,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const { authenticate, requireAdmin, requireManager } = require('../middlewares/auth');
@@ -33,6 +34,11 @@ router.delete('/companies/:companyId/assign/:userId', requireManager, unassignCo
 router.get('/industry-region-rules', requireManager, getIndustryRegionRules);
 router.post('/industry-region-rules', requireManager, addIndustryRegionRule);
 router.delete('/industry-region-rules/:id', requireManager, deleteIndustryRegionRule);
+
+// 業種別NGワード (admin + manager)
+router.get('/exclude-words', requireManager, getExcludeWords);
+router.post('/exclude-words', requireManager, addExcludeWord);
+router.delete('/exclude-words/:id', requireManager, deleteExcludeWord);
 
 // 申請管理 (admin + manager)
 router.get('/requests', requireManager, getAllRequests);
