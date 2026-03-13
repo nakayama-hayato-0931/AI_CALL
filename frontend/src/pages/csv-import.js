@@ -266,15 +266,17 @@ export default function CallListPage() {
                   <>
                     <p className="text-sm font-medium text-gray-800 mb-1">NGリストインポート</p>
                     <p className="text-xs text-gray-600 mb-1.5">架電NGの企業リストを登録します</p>
-                    <p className="text-xs text-gray-400">必須項目: 会社名（company_name）、電話番号（phone_number）</p>
+                    <p className="text-xs text-gray-400">必須項目: 会社名（company_name）または 電話番号（phone_number）のどちらか</p>
                     <p className="text-xs text-gray-400 mt-0.5">既存の架電リストに一致する企業は自動的に除外されます</p>
+                    <p className="text-xs text-gray-400 mt-0.5">電話番号は全角・ハイフン等を自動で正規化します</p>
                   </>
                 ) : (
                   <>
                     <p className="text-sm font-medium text-gray-800 mb-1">既存案件リストインポート</p>
                     <p className="text-xs text-gray-600 mb-1.5">既に取引のある企業リストを登録します</p>
-                    <p className="text-xs text-gray-400">必須項目: 会社名（company_name）、電話番号（phone_number）</p>
+                    <p className="text-xs text-gray-400">必須項目: 会社名（company_name）または 電話番号（phone_number）のどちらか</p>
                     <p className="text-xs text-gray-400 mt-0.5">既存の架電リストに一致する企業は自動的に除外されます</p>
+                    <p className="text-xs text-gray-400 mt-0.5">電話番号は全角・ハイフン等を自動で正規化します</p>
                   </>
                 )}
               </div>

@@ -12,7 +12,7 @@ ALTER TABLE companies
 -- 2. 除外リストテーブル (NG / 既存案件)
 CREATE TABLE IF NOT EXISTS exclusion_lists (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  company_name VARCHAR(255) NOT NULL COMMENT '企業名',
+  company_name VARCHAR(255) DEFAULT NULL COMMENT '企業名',
   phone_number VARCHAR(20) DEFAULT NULL COMMENT '電話番号',
   list_type ENUM('ng', 'existing_project') NOT NULL COMMENT 'リスト種別',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
