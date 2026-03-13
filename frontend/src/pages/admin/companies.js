@@ -16,7 +16,7 @@ const PRESET_INDUSTRIES = [
   '金融', '運輸', '農業', 'サービス', '卸売', '美容', '介護', 'その他',
 ];
 const PRESET_REGIONS = [
-  '北海道', '東北', '関東', '中部', '関西', '中国', '四国', '九州', '沖縄', '全国',
+  '全国', '北海道', '東北', '関東', '中部', '関西', '中国', '四国', '九州', '沖縄',
 ];
 
 export default function AdminCompanies() {
@@ -118,9 +118,11 @@ export default function AdminCompanies() {
       const { data } = await api.get('/api/admin/industry-region-rules');
       if (data.success) {
         setRules(data.data.rules);
-        // プリセット + DB値をマージして重複排除
-        const mergedIndustries = [...new Set([...PRESET_INDUSTRIES, ...data.data.industries])].sort();
-        const mergedRegions = [...new Set([...PRESET_REGIONS, ...data.data.regions])].sort();
+        // プリセット + DB値をマージして重複排除（プリセット順を維持、DB独自値は末尾に追加）
+        const extraIndustries = data.data.industries.filter(i => !PRESET_INDUSTRIES.includes(i)).sort();
+        const mergedIndustries = [...PRESET_INDUSTRIES, ...extraIndustries];
+        const extraRegions = data.data.regions.filter(r => !PRESET_REGIONS.includes(r)).sort();
+        const mergedRegions = [...PRESET_REGIONS, ...extraRegions];
         setIndustries(mergedIndustries);
         setRegions(mergedRegions);
       }
