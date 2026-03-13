@@ -154,11 +154,9 @@ const updateProject = async (req, res, next) => {
 
     // ステータスバリデーション
     const validStatuses = [
-      'NEW', 'MAIL_SENT', 'INTERVIEW_SET', 'INTERVIEW_DONE',
-      'WAITING_RESULT', 'HIRED', 'LOST',
-      'NAITEI', 'KETTEI', 'BARASHI', 'FUGOKAKU',
-      'JUKEN', 'BOSHUCHU', 'MENSETSU_KAKUTEI', 'KEKKA_MACHI',
-      'MODOSHI', 'MODORI', 'KISON_NASHI', 'SHORUI_OCHI', 'SHORUI_CHU',
+      'NAITEI', 'FUGOKAKU', 'KEKKA_MACHI', 'MENSETSU_KAKUTEI',
+      'BOSHUCHU', 'SHORUI_CHU', 'LOST', 'BARASHI', 'HORYU',
+      'SHORUI_OCHI', 'KISON_NASHI', 'MODOSHI', 'MODORI',
     ];
     if (status && !validStatuses.includes(status)) {
       return ApiResponse.badRequest(res, '無効なステータスです');
