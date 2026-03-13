@@ -9,13 +9,14 @@ const logger = require('../utils/logger');
 /**
  * GET /api/projects
  * 案件一覧 (最新順・ページネーション)
+ * クエリパラメータ: status, owner_user_id, date_from, date_to, sort_by, sort_order
  */
 const getProjects = async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { status, owner_user_id } = req.query;
+    const { status, owner_user_id, date_from, date_to, sort_by, sort_order } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -34,10 +35,29 @@ const getProjects = async (req, res, next) => {
       params.push(status);
     }
 
+    // 期間フィルタ（獲得日=created_at ベース）
+    if (date_from) {
+      whereClauses.push('p.created_at >= ?');
+      params.push(date_from);
+    }
+    if (date_to) {
+      whereClauses.push('p.created_at <= ?');
+      params.push(date_to + ' 23:59:59');
+    }
+
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
+    // ソート
+    const allowedSortColumns = ['created_at', 'interview_date', 'status', 'company_name'];
+    const sortCol = allowedSortColumns.includes(sort_by) ? sort_by : 'created_at';
+    const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
+    const orderPrefix = sortCol === 'company_name' ? 'c.' : 'p.';
+    const orderBy = `${orderPrefix}${sortCol} ${sortDir}`;
+
     const [countRows] = await pool.execute(
-      `SELECT COUNT(*) as total FROM projects p ${whereStr}`,
+      `SELECT COUNT(*) as total FROM projects p
+       JOIN companies c ON p.company_id = c.id
+       ${whereStr}`,
       params
     );
 
@@ -48,7 +68,7 @@ const getProjects = async (req, res, next) => {
        JOIN companies c ON p.company_id = c.id
        LEFT JOIN users u ON p.owner_user_id = u.id
        ${whereStr}
-       ORDER BY p.created_at DESC
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, String(limit), String(offset)]
     );
@@ -125,6 +145,9 @@ const updateProject = async (req, res, next) => {
       interview_type,
       document_screening,
       mail_sent,
+      mail_replied,
+      phone_confirmed,
+      job_number,
       status,
       memo,
     } = req.body;
@@ -133,6 +156,9 @@ const updateProject = async (req, res, next) => {
     const validStatuses = [
       'NEW', 'MAIL_SENT', 'INTERVIEW_SET', 'INTERVIEW_DONE',
       'WAITING_RESULT', 'HIRED', 'LOST',
+      'NAITEI', 'KETTEI', 'BARASHI', 'FUGOKAKU',
+      'JUKEN', 'BOSHUCHU', 'MENSETSU_KAKUTEI', 'KEKKA_MACHI',
+      'MODOSHI', 'MODORI', 'KISON_NASHI', 'SHORUI_OCHI', 'SHORUI_CHU',
     ];
     if (status && !validStatuses.includes(status)) {
       return ApiResponse.badRequest(res, '無効なステータスです');
@@ -144,6 +170,9 @@ const updateProject = async (req, res, next) => {
         interview_type = COALESCE(?, interview_type),
         document_screening = COALESCE(?, document_screening),
         mail_sent = COALESCE(?, mail_sent),
+        mail_replied = COALESCE(?, mail_replied),
+        phone_confirmed = COALESCE(?, phone_confirmed),
+        job_number = COALESCE(?, job_number),
         status = COALESCE(?, status),
         memo = COALESCE(?, memo)
        WHERE id = ?`,
@@ -152,6 +181,9 @@ const updateProject = async (req, res, next) => {
         interview_type || null,
         document_screening || null,
         mail_sent !== undefined ? (mail_sent ? 1 : 0) : null,
+        mail_replied !== undefined ? (mail_replied ? 1 : 0) : null,
+        phone_confirmed !== undefined ? (phone_confirmed ? 1 : 0) : null,
+        job_number || null,
         status || null,
         memo || null,
         id,
