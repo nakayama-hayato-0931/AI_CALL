@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const TABS = [
   { value: 'list', label: '架電リスト' },
-  { value: 'area', label: 'エリア設定' },
+  { value: 'area', label: 'ルール設定' },
 ];
 
 // 都道府県の地方グループ（北から順）
@@ -43,7 +43,7 @@ export default function AdminCompanies() {
   const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
 
-  // === エリア設定 タブ ===
+  // === ルール設定 タブ ===
   const [rules, setRules] = useState([]);
   const [dbIndustries, setDbIndustries] = useState([]);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
@@ -125,7 +125,7 @@ export default function AdminCompanies() {
     }
   };
 
-  // === エリア設定 関数 ===
+  // === ルール設定 関数 ===
   const fetchRules = async () => {
     try {
       const { data } = await api.get('/api/admin/industry-region-rules');
@@ -298,7 +298,7 @@ export default function AdminCompanies() {
     <Layout>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900 tracking-tight">架電リスト管理</h1>
-        <p className="text-sm text-gray-400 mt-0.5">架電リストの管理とエリア設定</p>
+        <p className="text-sm text-gray-400 mt-0.5">架電リストの管理とルール設定</p>
       </div>
 
       {/* タブ */}
@@ -417,7 +417,7 @@ export default function AdminCompanies() {
         </>
       )}
 
-      {/* ============ エリア設定タブ ============ */}
+      {/* ============ ルール設定タブ ============ */}
       {activeTab === 'area' && (
         <>
           <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
