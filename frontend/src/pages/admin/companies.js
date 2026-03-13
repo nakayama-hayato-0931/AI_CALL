@@ -10,6 +10,15 @@ const TABS = [
   { value: 'area', label: 'エリア設定' },
 ];
 
+// プリセット選択肢
+const PRESET_INDUSTRIES = [
+  '飲食', '小売', '製造', '建設', 'IT', '不動産', '医療', '教育',
+  '金融', '運輸', '農業', 'サービス', '卸売', '美容', '介護', 'その他',
+];
+const PRESET_REGIONS = [
+  '北海道', '東北', '関東', '中部', '関西', '中国', '四国', '九州', '沖縄', '全国',
+];
+
 export default function AdminCompanies() {
   const { user } = useAuth();
   const router = useRouter();
@@ -108,8 +117,11 @@ export default function AdminCompanies() {
       const { data } = await api.get('/api/admin/industry-region-rules');
       if (data.success) {
         setRules(data.data.rules);
-        setIndustries(data.data.industries);
-        setRegions(data.data.regions);
+        // プリセット + DB値をマージして重複排除
+        const mergedIndustries = [...new Set([...PRESET_INDUSTRIES, ...data.data.industries])].sort();
+        const mergedRegions = [...new Set([...PRESET_REGIONS, ...data.data.regions])].sort();
+        setIndustries(mergedIndustries);
+        setRegions(mergedRegions);
       }
     } catch (err) { toast.error('エリアルール取得に失敗しました'); }
   };
