@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
@@ -88,7 +89,11 @@ export default function AdminPerformance() {
               <tbody>
                 {data.operators.map(op => (
                   <tr key={op.user_id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                    <td className="table-cell font-medium">{op.name}</td>
+                    <td className="table-cell font-medium">
+                      <Link href={`/admin/performance/${op.user_id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
+                        {op.name}
+                      </Link>
+                    </td>
                     <td className="table-cell text-right">{op.total_calls}</td>
                     <td className="table-cell text-right">{op.effective_connections}</td>
                     <td className="table-cell text-right">{op.person_connections}</td>

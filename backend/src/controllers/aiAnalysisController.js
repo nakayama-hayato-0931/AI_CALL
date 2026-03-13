@@ -1,0 +1,293 @@
+/**
+ * AI分析コントローラー
+ * チーム全体分析・個人オペレーター詳細・コーチング
+ */
+const pool = require('../../config/database');
+const ApiResponse = require('../utils/apiResponse');
+const logger = require('../utils/logger');
+const { getDateRange } = require('../utils/periodHelper');
+const { evaluateTeamAnalysis, evaluateOperatorCoaching } = require('../services/aiTeamAnalysisService');
+
+/**
+ * POST /api/ai/analysis/team
+ * チーム全体のAI分析レポート生成
+ */
+const getTeamAnalysis = async (req, res, next) => {
+  try {
+    const { period = 'daily', date } = req.body;
+    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+    if (!range) {
+      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    }
+    const { dateFrom, dateTo } = range;
+
+    // 全オペレーターの集計データ取得
+    const [rows] = await pool.query(
+      `SELECT
+        u.id as user_id, u.name,
+        COUNT(c.id) as total_calls,
+        SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_connections,
+        SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_connections,
+        SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) as projects,
+        COALESCE((SELECT ROUND(AVG(ae.overall_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_ai_score,
+        COALESCE((SELECT ROUND(AVG(ae.opening_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_opening,
+        COALESCE((SELECT ROUND(AVG(ae.clarity_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_clarity,
+        COALESCE((SELECT ROUND(AVG(ae.hearing_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_hearing,
+        COALESCE((SELECT ROUND(AVG(ae.rebuttal_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_rebuttal,
+        COALESCE((SELECT ROUND(AVG(ae.closing_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_closing
+      FROM users u
+      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+      WHERE u.role = 'operator' AND u.is_active = 1
+      GROUP BY u.id, u.name
+      ORDER BY total_calls DESC`,
+      [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
+    );
+
+    // 全体統計
+    const totalStats = rows.reduce((acc, op) => ({
+      totalCalls: acc.totalCalls + (op.total_calls || 0),
+      effectiveConnections: acc.effectiveConnections + (op.effective_connections || 0),
+      personConnections: acc.personConnections + (op.person_connections || 0),
+      projects: acc.projects + (op.projects || 0),
+    }), { totalCalls: 0, effectiveConnections: 0, personConnections: 0, projects: 0 });
+
+    if (totalStats.totalCalls === 0 && rows.length === 0) {
+      return ApiResponse.success(res, { analysis: null, message: 'この期間のデータがありません' });
+    }
+
+    // Claude API で分析
+    const analysis = await evaluateTeamAnalysis({
+      period,
+      dateFrom,
+      dateTo,
+      operators: rows,
+      totalStats,
+    });
+
+    return ApiResponse.success(res, {
+      period,
+      dateFrom,
+      dateTo,
+      totalStats,
+      analysis,
+    });
+  } catch (err) {
+    logger.error('チーム分析エラー:', err);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/ai/analysis/operator/:userId
+ * 個人オペレーターの詳細データ取得（スコア推移 + 統計）
+ */
+const getOperatorDetail = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { period = 'daily', date } = req.query;
+    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+    if (!range) {
+      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    }
+    const { dateFrom, dateTo } = range;
+
+    // ユーザー情報
+    const [userRows] = await pool.execute('SELECT id, name, email, role FROM users WHERE id = ?', [userId]);
+    if (userRows.length === 0) {
+      return ApiResponse.notFound(res, 'ユーザーが見つかりません');
+    }
+    const operator = userRows[0];
+
+    // コール統計
+    const [statsRows] = await pool.query(
+      `SELECT
+        COUNT(c.id) as total_calls,
+        SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_connections,
+        SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_connections,
+        SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) as projects,
+        SUM(CASE WHEN c.result_code = 'INTERESTED' THEN 1 ELSE 0 END) as interested,
+        SUM(CASE WHEN c.result_code = 'RECALL' THEN 1 ELSE 0 END) as recalls,
+        SUM(CASE WHEN c.result_code = 'NG' THEN 1 ELSE 0 END) as ng_count,
+        SUM(CASE WHEN c.result_code = 'NO_ANSWER' THEN 1 ELSE 0 END) as no_answer
+      FROM calls c
+      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'`,
+      [userId, dateFrom, dateTo]
+    );
+
+    // スコア平均
+    const [avgRows] = await pool.query(
+      `SELECT
+        ROUND(AVG(ae.overall_score), 1) as overall,
+        ROUND(AVG(ae.opening_score), 1) as opening,
+        ROUND(AVG(ae.clarity_score), 1) as clarity,
+        ROUND(AVG(ae.hearing_score), 1) as hearing,
+        ROUND(AVG(ae.rebuttal_score), 1) as rebuttal,
+        ROUND(AVG(ae.closing_score), 1) as closing,
+        COUNT(ae.id) as eval_count
+      FROM ai_evaluations ae
+      JOIN calls c ON ae.call_id = c.id
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
+      [userId, dateFrom, dateTo]
+    );
+
+    // スコア推移データ（日別にグループ化）
+    const [trendRows] = await pool.query(
+      `SELECT
+        DATE(c.call_started_at) as date,
+        ROUND(AVG(ae.overall_score), 1) as avg_score,
+        ROUND(AVG(ae.opening_score), 1) as avg_opening,
+        ROUND(AVG(ae.clarity_score), 1) as avg_clarity,
+        ROUND(AVG(ae.hearing_score), 1) as avg_hearing,
+        ROUND(AVG(ae.rebuttal_score), 1) as avg_rebuttal,
+        ROUND(AVG(ae.closing_score), 1) as avg_closing,
+        COUNT(ae.id) as eval_count
+      FROM ai_evaluations ae
+      JOIN calls c ON ae.call_id = c.id
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+      GROUP BY DATE(c.call_started_at)
+      ORDER BY date ASC`,
+      [userId, dateFrom, dateTo]
+    );
+
+    // 直近の評価一覧（最大20件）
+    const [evalRows] = await pool.query(
+      `SELECT
+        ae.id, ae.overall_score, ae.opening_score, ae.clarity_score,
+        ae.hearing_score, ae.rebuttal_score, ae.closing_score,
+        ae.summary, ae.good_points, ae.improvement_points, ae.next_improvement,
+        c.call_started_at, c.result_code, c.memo,
+        co.company_name, co.industry
+      FROM ai_evaluations ae
+      JOIN calls c ON ae.call_id = c.id
+      LEFT JOIN companies co ON c.company_id = co.id
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+      ORDER BY c.call_started_at DESC
+      LIMIT 20`,
+      [userId, dateFrom, dateTo]
+    );
+
+    return ApiResponse.success(res, {
+      operator,
+      period,
+      dateFrom,
+      dateTo,
+      stats: statsRows[0],
+      scoreAvgs: avgRows[0],
+      trend: trendRows,
+      evaluations: evalRows,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/ai/analysis/operator/:userId/coaching
+ * 個人オペレーターのAIコーチング生成
+ */
+const getOperatorCoaching = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { period = 'daily', date } = req.body;
+    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+    if (!range) {
+      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    }
+    const { dateFrom, dateTo } = range;
+
+    // ユーザー情報
+    const [userRows] = await pool.execute('SELECT id, name FROM users WHERE id = ?', [userId]);
+    if (userRows.length === 0) {
+      return ApiResponse.notFound(res, 'ユーザーが見つかりません');
+    }
+
+    // コール統計
+    const [statsRows] = await pool.query(
+      `SELECT
+        COUNT(c.id) as total_calls,
+        SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_connections,
+        SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_connections,
+        SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) as projects
+      FROM calls c
+      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'`,
+      [userId, dateFrom, dateTo]
+    );
+
+    // スコア平均
+    const [avgRows] = await pool.query(
+      `SELECT
+        ROUND(AVG(ae.overall_score), 1) as overall,
+        ROUND(AVG(ae.opening_score), 1) as opening,
+        ROUND(AVG(ae.clarity_score), 1) as clarity,
+        ROUND(AVG(ae.hearing_score), 1) as hearing,
+        ROUND(AVG(ae.rebuttal_score), 1) as rebuttal,
+        ROUND(AVG(ae.closing_score), 1) as closing
+      FROM ai_evaluations ae
+      JOIN calls c ON ae.call_id = c.id
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
+      [userId, dateFrom, dateTo]
+    );
+
+    // 直近の評価（サマリー付き）
+    const [evalRows] = await pool.query(
+      `SELECT
+        ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
+        c.result_code, co.company_name
+      FROM ai_evaluations ae
+      JOIN calls c ON ae.call_id = c.id
+      LEFT JOIN companies co ON c.company_id = co.id
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+      ORDER BY c.call_started_at DESC
+      LIMIT 10`,
+      [userId, dateFrom, dateTo]
+    );
+
+    const stats = statsRows[0];
+    const scoreAvgs = avgRows[0];
+
+    if (!stats.total_calls && evalRows.length === 0) {
+      return ApiResponse.success(res, { coaching: null, message: 'この期間のデータがありません' });
+    }
+
+    // Claude API でコーチング生成
+    const coaching = await evaluateOperatorCoaching({
+      name: userRows[0].name,
+      dateFrom,
+      dateTo,
+      stats: {
+        totalCalls: stats.total_calls || 0,
+        effectiveConnections: stats.effective_connections || 0,
+        personConnections: stats.person_connections || 0,
+        projects: stats.projects || 0,
+      },
+      evaluations: evalRows,
+      scoreAvgs: {
+        overall: scoreAvgs.overall || 0,
+        opening: scoreAvgs.opening || 0,
+        clarity: scoreAvgs.clarity || 0,
+        hearing: scoreAvgs.hearing || 0,
+        rebuttal: scoreAvgs.rebuttal || 0,
+        closing: scoreAvgs.closing || 0,
+      },
+    });
+
+    return ApiResponse.success(res, { coaching });
+  } catch (err) {
+    logger.error('個人コーチング生成エラー:', err);
+    next(err);
+  }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching };

@@ -1,0 +1,178 @@
+/**
+ * AI チーム分析・個人コーチングサービス
+ * Anthropic Claude を使用してチーム全体・個人のパフォーマンスを分析
+ */
+const Anthropic = require('@anthropic-ai/sdk');
+const logger = require('../utils/logger');
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+const MODEL = 'claude-sonnet-4-6';
+
+/**
+ * Claude API 呼び出しヘルパー（aiEvaluationService と同パターン）
+ */
+const callClaude = async (systemPrompt, userContent, maxTokens = 2000, temperature = 0.4) => {
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: maxTokens,
+    temperature,
+    system: systemPrompt,
+    messages: [
+      { role: 'user', content: userContent },
+    ],
+  });
+
+  const text = response.content[0].text;
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('AIの応答からJSONを抽出できませんでした');
+  }
+  return JSON.parse(jsonMatch[0]);
+};
+
+/**
+ * チーム全体のパフォーマンス分析
+ * @param {object} teamData - { period, dateFrom, dateTo, operators[], totalStats }
+ * @returns {object} AI分析結果
+ */
+const evaluateTeamAnalysis = async (teamData) => {
+  try {
+    const systemPrompt = `あなたは法人営業チームのマネジメントコンサルタントAIです。
+コールセンターチーム全体の架電パフォーマンスデータを分析し、マネージャー向けの総合レポートを作成してください。
+
+出力は必ず以下のJSON形式のみで返してください（余計なテキストは不要）:
+{
+  "team_score": 75,
+  "summary": "チーム全体の総評（3-4文）",
+  "strengths": ["強み1", "強み2", "強み3"],
+  "weaknesses": ["課題1", "課題2", "課題3"],
+  "trends": "トレンド分析（2-3文）",
+  "top_performers": ["活躍オペレーター名とその理由"],
+  "needs_support": ["サポートが必要なオペレーター名とその理由"],
+  "recommendations": ["具体的な改善アクション1", "具体的な改善アクション2", "具体的な改善アクション3"],
+  "skill_breakdown": {
+    "opening": { "avg": 75, "comment": "第一声の全体傾向" },
+    "clarity": { "avg": 70, "comment": "明瞭さの全体傾向" },
+    "hearing": { "avg": 72, "comment": "ヒアリングの全体傾向" },
+    "rebuttal": { "avg": 65, "comment": "切り返しの全体傾向" },
+    "closing": { "avg": 78, "comment": "クロージングの全体傾向" }
+  }
+}
+
+team_scoreは0〜100の整数で、チーム全体のパフォーマンスを評価してください。
+データが少ない場合でも、利用可能な情報から最善の分析を行ってください。`;
+
+    const { period, dateFrom, dateTo, operators, totalStats } = teamData;
+    const periodLabel = dateFrom === '2000-01-01' ? '全期間' : `${dateFrom} 〜 ${dateTo}`;
+
+    const operatorDetails = operators.map(op => {
+      const convRate = op.total_calls > 0 ? ((op.projects / op.total_calls) * 100).toFixed(1) : '0';
+      return `${op.name}:
+  架電数: ${op.total_calls} / 有効接続: ${op.effective_connections} / 担当者接続: ${op.person_connections} / 案件: ${op.projects} (案件化率: ${convRate}%)
+  AI平均スコア: ${op.avg_ai_score || '-'}
+  スコア内訳: 第一声${op.avg_opening || '-'} / 明瞭さ${op.avg_clarity || '-'} / ヒアリング${op.avg_hearing || '-'} / 切り返し${op.avg_rebuttal || '-'} / クロージング${op.avg_closing || '-'}`;
+    }).join('\n\n');
+
+    const userContent = `【チーム架電パフォーマンス (${periodLabel})】
+
+チーム全体統計:
+- 総架電数: ${totalStats.totalCalls}件
+- 有効接続: ${totalStats.effectiveConnections}件 (${totalStats.totalCalls > 0 ? ((totalStats.effectiveConnections / totalStats.totalCalls) * 100).toFixed(1) : 0}%)
+- 担当者接続: ${totalStats.personConnections}件
+- 案件獲得: ${totalStats.projects}件 (案件化率: ${totalStats.totalCalls > 0 ? ((totalStats.projects / totalStats.totalCalls) * 100).toFixed(1) : 0}%)
+- オペレーター数: ${operators.length}名
+
+【オペレーター別データ】
+${operatorDetails}`;
+
+    const result = await callClaude(systemPrompt, userContent);
+
+    // team_score の範囲チェック
+    if (typeof result.team_score !== 'number' || result.team_score < 0 || result.team_score > 100) {
+      result.team_score = 0;
+    }
+
+    logger.info(`チーム分析完了: team_score=${result.team_score}, period=${period}`);
+    return result;
+  } catch (err) {
+    logger.error('チーム分析エラー:', err);
+    throw new Error(`チーム分析処理に失敗しました: ${err.message}`);
+  }
+};
+
+/**
+ * 個人オペレーターのコーチング生成
+ * @param {object} operatorData - { name, period, dateFrom, dateTo, stats, evaluations[], scoreAvgs }
+ * @returns {object} AIコーチング結果
+ */
+const evaluateOperatorCoaching = async (operatorData) => {
+  try {
+    const systemPrompt = `あなたは法人営業のパーソナルコーチングAIです。
+個別オペレーターの架電データを分析し、成長のための具体的なアドバイスを提供してください。
+
+出力は必ず以下のJSON形式のみで返してください（余計なテキストは不要）:
+{
+  "coaching_score": 75,
+  "summary": "このオペレーターの総合評価（3-4文）",
+  "strengths": ["強み1（具体例付き）", "強み2（具体例付き）"],
+  "weaknesses": ["課題1（具体例付き）", "課題2（具体例付き）"],
+  "action_items": ["明日から実践できるアクション1", "今週中に取り組むアクション2", "中長期で意識するポイント"],
+  "skill_advice": {
+    "opening": "第一声の具体的アドバイス",
+    "clarity": "明瞭さの具体的アドバイス",
+    "hearing": "ヒアリングの具体的アドバイス",
+    "rebuttal": "切り返しの具体的アドバイス",
+    "closing": "クロージングの具体的アドバイス"
+  }
+}
+
+coaching_scoreは0〜100の整数で、現在の成長段階を評価してください。`;
+
+    const { name, dateFrom, dateTo, stats, evaluations, scoreAvgs } = operatorData;
+    const periodLabel = dateFrom === '2000-01-01' ? '全期間' : `${dateFrom} 〜 ${dateTo}`;
+    const convRate = stats.totalCalls > 0 ? ((stats.projects / stats.totalCalls) * 100).toFixed(1) : '0';
+
+    // 直近の評価サマリー（最大10件）
+    const evalSummaries = evaluations.slice(0, 10).map((e, i) =>
+      `${i + 1}. ${e.company_name || '企業'}: ${e.result_code} / スコア${e.overall_score}点 / ${e.summary || '(要約なし)'}`
+    ).join('\n');
+
+    const userContent = `【オペレーター個人分析 (${periodLabel})】
+
+名前: ${name}
+
+架電統計:
+- 総架電数: ${stats.totalCalls}件
+- 有効接続: ${stats.effectiveConnections}件
+- 担当者接続: ${stats.personConnections}件
+- 案件獲得: ${stats.projects}件 (案件化率: ${convRate}%)
+
+スコア平均:
+- 総合: ${scoreAvgs.overall}
+- 第一声: ${scoreAvgs.opening}
+- 明瞭さ: ${scoreAvgs.clarity}
+- ヒアリング: ${scoreAvgs.hearing}
+- 切り返し: ${scoreAvgs.rebuttal}
+- クロージング: ${scoreAvgs.closing}
+
+【直近の架電評価】
+${evalSummaries || '（評価データなし）'}`;
+
+    const result = await callClaude(systemPrompt, userContent, 1500, 0.4);
+
+    if (typeof result.coaching_score !== 'number' || result.coaching_score < 0 || result.coaching_score > 100) {
+      result.coaching_score = 0;
+    }
+
+    logger.info(`個人コーチング生成完了: name=${name}, coaching_score=${result.coaching_score}`);
+    return result;
+  } catch (err) {
+    logger.error('個人コーチング生成エラー:', err);
+    throw new Error(`個人コーチング生成に失敗しました: ${err.message}`);
+  }
+};
+
+module.exports = { evaluateTeamAnalysis, evaluateOperatorCoaching };

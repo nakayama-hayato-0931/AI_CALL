@@ -6,6 +6,7 @@ const bcrypt = require('bcrypt');
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { getDateRange } = require('../utils/periodHelper');
 
 // ==================== ユーザー管理 ====================
 
@@ -162,39 +163,11 @@ const deleteUser = async (req, res, next) => {
 const getAllOperatorPerformance = async (req, res, next) => {
   try {
     const { period = 'daily', date } = req.query;
-    const refDate = date || new Date().toISOString().slice(0, 10);
-
-    let dateFrom, dateTo;
-    switch (period) {
-      case 'daily':
-        dateFrom = refDate;
-        dateTo = refDate;
-        break;
-      case 'weekly': {
-        const d = new Date(refDate);
-        const day = d.getDay();
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        dateFrom = monday.toISOString().slice(0, 10);
-        dateTo = sunday.toISOString().slice(0, 10);
-        break;
-      }
-      case 'monthly': {
-        const d2 = new Date(refDate);
-        dateFrom = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}-01`;
-        const lastDay = new Date(d2.getFullYear(), d2.getMonth() + 1, 0).getDate();
-        dateTo = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        break;
-      }
-      case 'cumulative':
-        dateFrom = '2000-01-01';
-        dateTo = '2099-12-31';
-        break;
-      default:
-        return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+    if (!range) {
+      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
     }
+    const { dateFrom, dateTo } = range;
 
     const [rows] = await pool.query(
       `SELECT
@@ -206,13 +179,28 @@ const getAllOperatorPerformance = async (req, res, next) => {
         COALESCE((SELECT ROUND(AVG(ae.overall_score), 1)
          FROM ai_evaluations ae
          JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_ai_score
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_ai_score,
+        COALESCE((SELECT ROUND(AVG(ae.opening_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_opening,
+        COALESCE((SELECT ROUND(AVG(ae.clarity_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_clarity,
+        COALESCE((SELECT ROUND(AVG(ae.hearing_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_hearing,
+        COALESCE((SELECT ROUND(AVG(ae.rebuttal_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_rebuttal,
+        COALESCE((SELECT ROUND(AVG(ae.closing_score), 1)
+         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
+         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_closing
       FROM users u
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
       WHERE u.role = 'operator' AND u.is_active = 1
       GROUP BY u.id, u.name
       ORDER BY total_calls DESC`,
-      [dateFrom, dateTo, dateFrom, dateTo]
+      [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
     );
 
     return ApiResponse.success(res, {

@@ -1,9 +1,10 @@
 /**
  * ダッシュボードページ
- * KPI表示 + グラフ (時間帯別コール、業種別案件化率)
+ * KPI表示 + グラフ (時間帯別コール、業種別案件化率) + AI総合分析
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/common/Layout';
+import useAuth from '../hooks/useAuth';
 import api from '../utils/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,6 +12,13 @@ import {
 } from 'recharts';
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+const PERIODS = [
+  { value: 'daily', label: '日別' },
+  { value: 'weekly', label: '週別' },
+  { value: 'monthly', label: '月別' },
+  { value: 'cumulative', label: '累計' },
+];
 
 const KPI_CONFIG = [
   { key: 'workMinutes', label: '稼働時間', suffix: '分', gradient: 'from-blue-500 to-blue-600' },
@@ -64,12 +72,38 @@ const CustomBarTooltip = ({ active, payload, label }) => {
   );
 };
 
+const ScoreCircle = ({ score, size = 64 }) => {
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - ((score || 0) / 100) * circumference;
+  const color = score >= 70 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg className="transform -rotate-90" width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={radius} strokeWidth="4" fill="none" stroke="#f1f5f9" />
+        <circle cx={size/2} cy={size/2} r={radius} strokeWidth="4" fill="none" stroke={color}
+          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-500" />
+      </svg>
+      <span className="absolute text-sm font-bold" style={{ color }}>{score || '-'}</span>
+    </div>
+  );
+};
+
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [hourlyCalls, setHourlyCalls] = useState([]);
   const [industryData, setIndustryData] = useState([]);
   const [connectionTable, setConnectionTable] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // AI分析用state
+  const [analysisPeriod, setAnalysisPeriod] = useState('daily');
+  const [analysisDate, setAnalysisDate] = useState(new Date().toISOString().slice(0, 10));
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  const isManager = user?.role === 'admin' || user?.role === 'manager';
 
   useEffect(() => {
     fetchDashboardData();
@@ -91,6 +125,24 @@ export default function DashboardPage() {
       console.error('ダッシュボードデータ取得失敗:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTeamAnalysis = async () => {
+    try {
+      setAnalysisLoading(true);
+      setAnalysis(null);
+      const { data } = await api.post('/api/ai/analysis/team', {
+        period: analysisPeriod,
+        date: analysisDate,
+      });
+      if (data.success) {
+        setAnalysis(data.data);
+      }
+    } catch (err) {
+      console.error('AI分析エラー:', err);
+    } finally {
+      setAnalysisLoading(false);
     }
   };
 
@@ -123,6 +175,176 @@ export default function DashboardPage() {
           <KpiCard key={config.key} config={config} value={stats?.[config.key]} />
         ))}
       </div>
+
+      {/* AI総合分析セクション（管理者/マネージャーのみ） */}
+      {isManager && (
+        <div className="card p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-gray-800">AI総合分析</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">チーム全体のパフォーマンスをAIが分析</p>
+            </div>
+          </div>
+
+          {/* 期間セレクター + 実行ボタン */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+              {PERIODS.map(p => (
+                <button key={p.value} onClick={() => setAnalysisPeriod(p.value)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    analysisPeriod === p.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}>{p.label}</button>
+              ))}
+            </div>
+            {analysisPeriod !== 'cumulative' && (
+              <input type="date" className="input text-sm" value={analysisDate}
+                onChange={e => setAnalysisDate(e.target.value)} />
+            )}
+            <button onClick={handleTeamAnalysis} disabled={analysisLoading}
+              className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+              {analysisLoading ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  分析中...
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                  </svg>
+                  分析実行
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 分析結果 */}
+          {analysis?.analysis ? (
+            <div className="space-y-4">
+              {/* スコア + サマリー */}
+              <div className="flex items-start gap-4 bg-gray-50 rounded-lg p-4">
+                <ScoreCircle score={analysis.analysis.team_score} size={72} />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-700 mb-1">チームスコア</p>
+                  <p className="text-xs text-gray-600">{analysis.analysis.summary}</p>
+                </div>
+              </div>
+
+              {/* 統計サマリー */}
+              {analysis.totalStats && (
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-blue-700">{analysis.totalStats.totalCalls}</p>
+                    <p className="text-[10px] text-blue-500">総架電数</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-emerald-700">{analysis.totalStats.effectiveConnections}</p>
+                    <p className="text-[10px] text-emerald-500">有効接続</p>
+                  </div>
+                  <div className="bg-violet-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-violet-700">{analysis.totalStats.personConnections}</p>
+                    <p className="text-[10px] text-violet-500">担当者接続</p>
+                  </div>
+                  <div className="bg-rose-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-rose-700">{analysis.totalStats.projects}</p>
+                    <p className="text-[10px] text-rose-500">案件獲得</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 強み */}
+                <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                  <p className="text-xs font-bold text-emerald-700 mb-2">チームの強み</p>
+                  <ul className="text-xs text-emerald-800 space-y-1">
+                    {analysis.analysis.strengths?.map((s, i) => <li key={i}>・{s}</li>)}
+                  </ul>
+                </div>
+                {/* 課題 */}
+                <div className="bg-red-50 rounded-lg p-4 border border-red-100">
+                  <p className="text-xs font-bold text-red-700 mb-2">チームの課題</p>
+                  <ul className="text-xs text-red-800 space-y-1">
+                    {analysis.analysis.weaknesses?.map((w, i) => <li key={i}>・{w}</li>)}
+                  </ul>
+                </div>
+              </div>
+
+              {/* トレンド */}
+              {analysis.analysis.trends && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-xs font-bold text-gray-700 mb-1">トレンド</p>
+                  <p className="text-xs text-gray-600">{analysis.analysis.trends}</p>
+                </div>
+              )}
+
+              {/* 改善アクション */}
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                <p className="text-xs font-bold text-blue-700 mb-2">改善アクション</p>
+                <ul className="text-xs text-blue-800 space-y-1">
+                  {analysis.analysis.recommendations?.map((r, i) => <li key={i}>✓ {r}</li>)}
+                </ul>
+              </div>
+
+              {/* 活躍者 / サポート必要 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {analysis.analysis.top_performers?.length > 0 && (
+                  <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                    <p className="text-xs font-bold text-amber-700 mb-2">活躍オペレーター</p>
+                    <ul className="text-xs text-amber-800 space-y-1">
+                      {analysis.analysis.top_performers.map((t, i) => <li key={i}>★ {t}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {analysis.analysis.needs_support?.length > 0 && (
+                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <p className="text-xs font-bold text-purple-700 mb-2">サポート推奨</p>
+                    <ul className="text-xs text-purple-800 space-y-1">
+                      {analysis.analysis.needs_support.map((n, i) => <li key={i}>→ {n}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* スキル内訳 */}
+              {analysis.analysis.skill_breakdown && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-xs font-bold text-gray-700 mb-3">スキル別分析</p>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                    {[
+                      { key: 'opening', label: '第一声' },
+                      { key: 'clarity', label: '明瞭さ' },
+                      { key: 'hearing', label: 'ヒアリング' },
+                      { key: 'rebuttal', label: '切り返し' },
+                      { key: 'closing', label: 'クロージング' },
+                    ].map(({ key, label }) => {
+                      const skill = analysis.analysis.skill_breakdown[key];
+                      if (!skill) return null;
+                      return (
+                        <div key={key} className="bg-white rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium text-gray-500">{label}</span>
+                            <span className={`text-sm font-bold ${skill.avg >= 70 ? 'text-emerald-600' : skill.avg >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                              {skill.avg}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-400 leading-tight">{skill.comment}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : analysis && !analysis.analysis ? (
+            <p className="text-sm text-gray-400 text-center py-4">{analysis.message || 'データがありません'}</p>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">期間を選択して「分析実行」を押してください</p>
+          )}
+        </div>
+      )}
 
       {/* グラフエリア */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
