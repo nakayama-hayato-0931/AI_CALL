@@ -75,16 +75,21 @@ const parseFile = async (filePath, originalName) => {
 
 /**
  * 電話番号の正規化
+ * - メールアドレスが混在している場合は除去して電話番号部分だけ抽出
  * - 全角数字 → 半角数字
  * - 全角ハイフン・ダッシュ類（ー－—―‐‑⁃₋−）→ 除去
  * - 半角ハイフン・ダッシュ類（- – —）→ 除去
  * - スペース（全角・半角）→ 除去
  * - 括弧（全角・半角）→ 除去
  * - 結果: 数字のみの文字列（例: 09012345678）
+ * - 数字が10〜11桁でない場合は空文字を返す（電話番号ではない）
  */
 const normalizePhoneNumber = (phone) => {
   if (!phone) return phone;
-  let normalized = phone
+  // まずメールアドレスを除去（電話番号とメールが混在しているケース）
+  let cleaned = phone.replace(/[A-Za-zＡ-Ｚａ-ｚ0-9０-９._%+\-]+@[A-Za-zＡ-Ｚａ-ｚ0-9０-９.\-]+\.[A-Za-zＡ-Ｚａ-ｚ]{2,}/g, '');
+
+  let normalized = cleaned
     // 全角数字 → 半角数字
     .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
     // 全角・半角のハイフン、ダッシュ、長音記号をすべて除去
@@ -96,7 +101,14 @@ const normalizePhoneNumber = (phone) => {
     // プラス記号を除去（国際番号対応）
     .replace(/[+＋]/g, '')
     // ドット区切りを除去
-    .replace(/[.．]/g, '');
+    .replace(/[.．]/g, '')
+    // 数字以外をすべて除去（残留文字対策）
+    .replace(/[^0-9]/g, '');
+
+  // 日本の電話番号は10桁（固定）or 11桁（携帯）— それ以外は無効
+  if (normalized.length < 10 || normalized.length > 11) {
+    return '';
+  }
   return normalized;
 };
 
