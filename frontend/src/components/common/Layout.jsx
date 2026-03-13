@@ -82,28 +82,23 @@ const icons = {
 };
 
 const getNavItems = (role) => {
-  if (role === 'admin') {
-    return [
+  // admin と manager は同じメニュー（admin のみユーザー管理あり）
+  if (role === 'admin' || role === 'manager') {
+    const items = [
       { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
-      { href: '/admin/users', label: 'ユーザー管理', icon: 'users' },
+    ];
+    if (role === 'admin') {
+      items.push({ href: '/admin/users', label: 'ユーザー管理', icon: 'users' });
+    }
+    items.push(
       { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
       { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
       { href: '/admin/projects', label: '案件管理', icon: 'project' },
       { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
       { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
       { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
-    ];
-  }
-  if (role === 'manager') {
-    return [
-      { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
-      { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
-      { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
-      { href: '/admin/projects', label: '案件管理', icon: 'project' },
-      { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
-      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
-      { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
-    ];
+    );
+    return items;
   }
   if (role === 'sales') {
     return [

@@ -159,12 +159,12 @@ export default function DashboardPage() {
         </div>
       </div>
       {/* 時間帯×業種別 接続数テーブル */}
-      {connectionTable && connectionTable.industries.length > 0 && (
-        <div className="card mt-5 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数</h2>
-            <p className="text-[11px] text-gray-400 mt-0.5">不通を除く接続数のクロス集計</p>
-          </div>
+      <div className="card mt-5 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数</h2>
+          <p className="text-[11px] text-gray-400 mt-0.5">不通を除く接続数のクロス集計</p>
+        </div>
+        {connectionTable && connectionTable.industries.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -177,22 +177,19 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {connectionTable.rows.map((row) => {
-                  if (row.total === 0 && !connectionTable.rows.some(r => r.total > 0)) return null;
-                  return (
-                    <tr key={row.hour} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
-                      <td className="px-3 py-1.5 text-gray-500 font-medium">{row.hour}時</td>
-                      {connectionTable.industries.map((ind) => (
-                        <td key={ind} className={`px-3 py-1.5 text-center ${row[ind] > 0 ? 'text-gray-900 font-bold' : 'text-gray-300'}`}>
-                          {row[ind] || 0}
-                        </td>
-                      ))}
-                      <td className={`px-3 py-1.5 text-center font-bold ${row.total > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-                        {row.total}
+                {connectionTable.rows.map((row) => (
+                  <tr key={row.hour} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                    <td className="px-3 py-1.5 text-gray-500 font-medium">{row.hour}時</td>
+                    {connectionTable.industries.map((ind) => (
+                      <td key={ind} className={`px-3 py-1.5 text-center ${row[ind] > 0 ? 'text-gray-900 font-bold' : 'text-gray-300'}`}>
+                        {row[ind] || 0}
                       </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                    <td className={`px-3 py-1.5 text-center font-bold ${row.total > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+                      {row.total}
+                    </td>
+                  </tr>
+                ))}
                 {/* 合計行 */}
                 <tr className="bg-gray-50 border-t border-gray-200">
                   <td className="px-3 py-2 text-gray-700 font-bold">合計</td>
@@ -206,8 +203,10 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">データなし</div>
+        )}
+      </div>
     </Layout>
   );
 }
