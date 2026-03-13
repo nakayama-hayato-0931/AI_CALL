@@ -143,6 +143,46 @@ const normalizeCompanyName = (name) => {
 };
 
 /**
+ * 住所から都道府県を抽出
+ * @param {string} address - 住所文字列（例: "北海道函館市川汲町１５４６"）
+ * @returns {string|null} 都道府県名（例: "北海道"）、抽出できなければ null
+ */
+const PREFECTURES = [
+  '北海道',
+  '青森県','岩手県','宮城県','秋田県','山形県','福島県',
+  '茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県',
+  '新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県',
+  '三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県',
+  '鳥取県','島根県','岡山県','広島県','山口県',
+  '徳島県','香川県','愛媛県','高知県',
+  '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県',
+];
+
+const PREF_TO_REGION = {
+  '北海道': '北海道',
+  '青森県': '東北', '岩手県': '東北', '宮城県': '東北', '秋田県': '東北', '山形県': '東北', '福島県': '東北',
+  '茨城県': '関東', '栃木県': '関東', '群馬県': '関東', '埼玉県': '関東', '千葉県': '関東', '東京都': '関東', '神奈川県': '関東',
+  '新潟県': '中部', '富山県': '中部', '石川県': '中部', '福井県': '中部', '山梨県': '中部', '長野県': '中部', '岐阜県': '中部', '静岡県': '中部', '愛知県': '中部',
+  '三重県': '近畿', '滋賀県': '近畿', '京都府': '近畿', '大阪府': '近畿', '兵庫県': '近畿', '奈良県': '近畿', '和歌山県': '近畿',
+  '鳥取県': '中国', '島根県': '中国', '岡山県': '中国', '広島県': '中国', '山口県': '中国',
+  '徳島県': '四国', '香川県': '四国', '愛媛県': '四国', '高知県': '四国',
+  '福岡県': '九州', '佐賀県': '九州', '長崎県': '九州', '熊本県': '九州', '大分県': '九州', '宮崎県': '九州', '鹿児島県': '九州', '沖縄県': '九州',
+};
+
+const extractPrefecture = (address) => {
+  if (!address) return null;
+  for (const pref of PREFECTURES) {
+    if (address.startsWith(pref)) return pref;
+  }
+  return null;
+};
+
+const extractRegionFromAddress = (address) => {
+  const pref = extractPrefecture(address);
+  return pref ? (PREF_TO_REGION[pref] || null) : null;
+};
+
+/**
  * 一時ファイルを安全に削除
  */
 const cleanupFile = (filePath) => {
@@ -189,7 +229,8 @@ const importCompanies = async (req, res, next) => {
         const jobType = (row.job_type || '').trim() || null;
         const comment = (row.comment || '').trim() || null;
         const address = (row.address || '').trim() || null;
-        const region = (row.region || '').trim() || null;
+        // 地域: 明示カラムがあればそれを使う、なければ住所から自動抽出
+        const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
 
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
