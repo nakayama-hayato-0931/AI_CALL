@@ -51,9 +51,8 @@ export default function AdminCompanies() {
   const [selectedPrefs, setSelectedPrefs] = useState([]);
   const [addingRules, setAddingRules] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
-  // NGワード
+  // NGワード（全業種共通）
   const [excludeWords, setExcludeWords] = useState([]);
-  const [ngIndustry, setNgIndustry] = useState('');
   const [ngKeywordInput, setNgKeywordInput] = useState('');
 
   useEffect(() => {
@@ -242,12 +241,12 @@ export default function AdminCompanies() {
     fetchRules();
   };
 
-  // --- NGワード管理 ---
+  // --- NGワード管理（全業種共通） ---
   const handleAddNgWord = async () => {
-    if (!ngIndustry || !ngKeywordInput.trim()) { toast.error('業種キーワードとNGワードを入力してください'); return; }
+    if (!ngKeywordInput.trim()) { toast.error('NGワードを入力してください'); return; }
     try {
       const { data } = await api.post('/api/admin/exclude-words', {
-        industry_name: ngIndustry, keyword: ngKeywordInput.trim(),
+        keyword: ngKeywordInput.trim(),
       });
       if (data.success) {
         toast.success('NGワードを追加しました');
@@ -265,16 +264,6 @@ export default function AdminCompanies() {
       if (data.success) { toast.success('NGワードを削除しました'); fetchRules(); }
     } catch (err) { toast.error('NGワード削除に失敗しました'); }
   };
-
-  // NGワードを業種でグループ化
-  const groupedExcludeWords = excludeWords.reduce((acc, ew) => {
-    if (!acc[ew.industry_name]) acc[ew.industry_name] = [];
-    acc[ew.industry_name].push(ew);
-    return acc;
-  }, {});
-
-  // ルール内の業種キーワード一覧（NGワード設定用セレクト）
-  const ruleIndustryNames = [...new Set(rules.map(r => r.industry_name))];
 
   // ルールを業種でグループ化
   const groupedRules = rules.reduce((acc, rule) => {
@@ -642,52 +631,39 @@ export default function AdminCompanies() {
           <div className="mt-8 border-t border-gray-200 pt-6">
             <h3 className="text-sm font-bold text-gray-700 mb-2">NGワード設定（職種除外）</h3>
             <p className="text-xs text-gray-400 mb-4">
-              業種キーワードごとにNGワードを設定できます。職種（job_type）にNGワードが含まれる企業は架電リストから除外されます。
+              全ルール共通のNGワードです。職種にNGワードが含まれる企業は、業種ルールに一致しても架電リストから除外されます。
             </p>
 
             {/* NGワード追加フォーム */}
             <div className="card p-4 mb-4">
               <div className="flex items-end gap-3">
-                <div>
-                  <label className="input-label">対象業種キーワード</label>
-                  <select className="input text-sm" value={ngIndustry} onChange={e => setNgIndustry(e.target.value)}>
-                    <option value="">選択...</option>
-                    {ruleIndustryNames.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                  </select>
-                </div>
                 <div className="flex-1">
                   <label className="input-label">NGワード</label>
                   <input type="text" className="input text-sm" placeholder="例: 事務、経理、ドライバー..."
                     value={ngKeywordInput} onChange={e => setNgKeywordInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddNgWord(); } }} />
                 </div>
-                <button onClick={handleAddNgWord} disabled={!ngIndustry || !ngKeywordInput.trim()}
+                <button onClick={handleAddNgWord} disabled={!ngKeywordInput.trim()}
                   className="btn-primary !py-2.5 px-5 disabled:opacity-50">追加</button>
               </div>
             </div>
 
             {/* NGワード一覧 */}
-            {Object.keys(groupedExcludeWords).length === 0 ? (
+            {excludeWords.length === 0 ? (
               <div className="text-xs text-gray-400 text-center py-4">NGワードは設定されていません</div>
             ) : (
-              <div className="space-y-2">
-                {Object.entries(groupedExcludeWords).map(([industry, words]) => (
-                  <div key={industry} className="card p-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-700 flex-shrink-0">{industry}</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {words.map(ew => (
-                          <span key={ew.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
-                            {ew.keyword}
-                            <button onClick={() => handleDeleteNgWord(ew.id)}
-                              className="text-red-400 hover:text-red-600 transition-colors">&times;</button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="card p-4">
+                <div className="flex flex-wrap gap-2">
+                  {excludeWords.map(ew => (
+                    <span key={ew.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                      {ew.keyword}
+                      <button onClick={() => handleDeleteNgWord(ew.id)}
+                        className="text-red-400 hover:text-red-600 transition-colors">&times;</button>
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-3">{excludeWords.length}件のNGワード設定済み</p>
               </div>
             )}
           </div>

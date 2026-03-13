@@ -446,9 +446,10 @@ const getExcludeWords = async (req, res, next) => {
  */
 const addExcludeWord = async (req, res, next) => {
   try {
-    const { industry_name, keyword } = req.body;
-    if (!industry_name || !keyword) {
-      return ApiResponse.badRequest(res, '業種キーワードとNGワードは必須です');
+    const { keyword } = req.body;
+    const industry_name = '*'; // 全業種共通
+    if (!keyword) {
+      return ApiResponse.badRequest(res, 'NGワードは必須です');
     }
     try {
       const [result] = await pool.execute(
