@@ -245,7 +245,7 @@ const importExclusionList = async (req, res, next) => {
           continue;
         }
 
-        // 同一リスト内の重複チェック
+        // 同一リスト種別内の重複チェック（NGはNG内、既存は既存内）
         const dupQuery = phoneNumber
           ? 'SELECT id FROM exclusion_lists WHERE list_type = ? AND (phone_number = ? OR company_name = ?)'
           : 'SELECT id FROM exclusion_lists WHERE list_type = ? AND company_name = ?';
@@ -265,15 +265,36 @@ const importExclusionList = async (req, res, next) => {
           [companyName, phoneNumber, listType]
         );
 
-        // 既存 companies の一致企業を除外フラグ設定
-        const excludeQuery = phoneNumber
-          ? 'UPDATE companies SET exclusion_flag = 1 WHERE exclusion_flag = 0 AND (phone_number = ? OR company_name = ?)'
-          : 'UPDATE companies SET exclusion_flag = 1 WHERE exclusion_flag = 0 AND company_name = ?';
-        const excludeParams = phoneNumber
+        // 架電リスト（companies）から一致企業を削除
+        // 外部キー制約があるため、関連する calls, projects 等がある企業は削除できないので
+        // まず関連データがない企業を削除、ある企業は除外フラグを立てる
+        const findQuery = phoneNumber
+          ? 'SELECT id FROM companies WHERE phone_number = ? OR company_name = ?'
+          : 'SELECT id FROM companies WHERE company_name = ?';
+        const findParams = phoneNumber
           ? [phoneNumber, companyName]
           : [companyName];
-        const [excludeResult] = await conn.execute(excludeQuery, excludeParams);
-        excludedCompaniesCount += excludeResult.affectedRows;
+        const [matchedCompanies] = await conn.execute(findQuery, findParams);
+
+        for (const mc of matchedCompanies) {
+          try {
+            // 関連データを先に削除（割り当て、リコール等）
+            await conn.execute('DELETE FROM company_assignments WHERE company_id = ?', [mc.id]);
+            await conn.execute('DELETE FROM recall_tasks WHERE company_id = ?', [mc.id]);
+            // 通話履歴がある場合は削除できないので除外フラグ
+            const [callCheck] = await conn.execute('SELECT id FROM calls WHERE company_id = ? LIMIT 1', [mc.id]);
+            if (callCheck.length > 0) {
+              await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
+            } else {
+              await conn.execute('DELETE FROM companies WHERE id = ?', [mc.id]);
+            }
+            excludedCompaniesCount++;
+          } catch (delErr) {
+            // 削除失敗時は除外フラグで対応
+            await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
+            excludedCompaniesCount++;
+          }
+        }
 
         insertedCount++;
       }
@@ -297,7 +318,7 @@ const importExclusionList = async (req, res, next) => {
       duplicateCount,
       excludedCompaniesCount,
       errors: errors.slice(0, 50),
-    }, `${listLabel}に${insertedCount}件を登録しました（架電リストから${excludedCompaniesCount}件を除外）`);
+    }, `${listLabel}に${insertedCount}件を登録しました（架電リストから${excludedCompaniesCount}件を削除/除外）`);
   } catch (err) {
     cleanupFile(req.file?.path);
     next(err);
