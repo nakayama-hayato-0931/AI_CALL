@@ -100,8 +100,54 @@ export default function DashboardPage() {
   // AI分析用state
   const [analysisPeriod, setAnalysisPeriod] = useState('daily');
   const [analysisDate, setAnalysisDate] = useState(new Date().toISOString().slice(0, 10));
+  const [analysisMonth, setAnalysisMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [analysisWeek, setAnalysisWeek] = useState(() => {
+    const d = new Date().getDate();
+    return Math.min(Math.ceil(d / 7), 5);
+  });
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // 月内の週リストを計算
+  const getWeeksInMonth = (yearMonth) => {
+    const [year, month] = yearMonth.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    const weeks = [
+      { num: 1, label: '第1週 (1日〜7日)' },
+      { num: 2, label: '第2週 (8日〜14日)' },
+      { num: 3, label: '第3週 (15日〜21日)' },
+      { num: 4, label: '第4週 (22日〜28日)' },
+    ];
+    if (lastDay > 28) {
+      weeks.push({ num: 5, label: `第5週 (29日〜${lastDay}日)` });
+    }
+    return weeks;
+  };
+
+  // 期間からdate_from/date_toを計算
+  const calcAnalysisRange = () => {
+    const pad = (n) => String(n).padStart(2, '0');
+    switch (analysisPeriod) {
+      case 'daily':
+        return { date_from: analysisDate, date_to: analysisDate };
+      case 'weekly': {
+        const [year, m] = analysisMonth.split('-').map(Number);
+        const lastDay = new Date(year, m, 0).getDate();
+        const fromDay = (analysisWeek - 1) * 7 + 1;
+        const toDay = analysisWeek === 5 ? lastDay : Math.min(analysisWeek * 7, lastDay);
+        return { date_from: `${year}-${pad(m)}-${pad(fromDay)}`, date_to: `${year}-${pad(m)}-${pad(toDay)}` };
+      }
+      case 'monthly': {
+        const [year, m] = analysisMonth.split('-').map(Number);
+        const lastDay = new Date(year, m, 0).getDate();
+        return { date_from: `${year}-${pad(m)}-01`, date_to: `${year}-${pad(m)}-${pad(lastDay)}` };
+      }
+      case 'cumulative':
+        return { date_from: '2000-01-01', date_to: '2099-12-31' };
+      default:
+        return {};
+    }
+  };
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
 
@@ -132,9 +178,10 @@ export default function DashboardPage() {
     try {
       setAnalysisLoading(true);
       setAnalysis(null);
+      const range = calcAnalysisRange();
       const { data } = await api.post('/api/ai/analysis/team', {
         period: analysisPeriod,
-        date: analysisDate,
+        ...range,
       });
       if (data.success) {
         setAnalysis(data.data);
@@ -196,9 +243,25 @@ export default function DashboardPage() {
                   }`}>{p.label}</button>
               ))}
             </div>
-            {analysisPeriod !== 'cumulative' && (
+            {analysisPeriod === 'daily' && (
               <input type="date" className="input text-sm" value={analysisDate}
                 onChange={e => setAnalysisDate(e.target.value)} />
+            )}
+            {analysisPeriod === 'weekly' && (
+              <>
+                <input type="month" className="input text-sm" value={analysisMonth}
+                  onChange={e => { setAnalysisMonth(e.target.value); setAnalysisWeek(1); }} />
+                <select className="input text-sm" value={analysisWeek}
+                  onChange={e => setAnalysisWeek(Number(e.target.value))}>
+                  {getWeeksInMonth(analysisMonth).map(w => (
+                    <option key={w.num} value={w.num}>{w.label}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {analysisPeriod === 'monthly' && (
+              <input type="month" className="input text-sm" value={analysisMonth}
+                onChange={e => setAnalysisMonth(e.target.value)} />
             )}
             <button onClick={handleTeamAnalysis} disabled={analysisLoading}
               className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">

@@ -14,12 +14,19 @@ const { evaluateTeamAnalysis, evaluateOperatorCoaching } = require('../services/
  */
 const getTeamAnalysis = async (req, res, next) => {
   try {
-    const { period = 'daily', date } = req.body;
-    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
-    if (!range) {
-      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    const { period = 'daily', date, date_from, date_to } = req.body;
+    let dateFrom, dateTo;
+    if (date_from && date_to) {
+      dateFrom = date_from;
+      dateTo = date_to;
+    } else {
+      const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+      if (!range) {
+        return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+      }
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
     }
-    const { dateFrom, dateTo } = range;
 
     // 全オペレーターの集計データ取得
     const [rows] = await pool.query(

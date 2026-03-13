@@ -40,25 +40,39 @@ const ScoreCircle = ({ score, size = 56 }) => {
   );
 };
 
+// 月内の週リストを計算
+const getWeeksInMonth = (yearMonth) => {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const weeks = [
+    { num: 1, label: '第1週 (1日〜7日)' },
+    { num: 2, label: '第2週 (8日〜14日)' },
+    { num: 3, label: '第3週 (15日〜21日)' },
+    { num: 4, label: '第4週 (22日〜28日)' },
+  ];
+  if (lastDay > 28) {
+    weeks.push({ num: 5, label: `第5週 (29日〜${lastDay}日)` });
+  }
+  return weeks;
+};
+
 /** 期間からdate_from / date_to を計算 */
-const calcDateRange = (period, refDate) => {
-  const d = new Date(refDate);
+const calcDateRange = (period, dailyDate, month, weekNum) => {
+  const pad = (n) => String(n).padStart(2, '0');
   switch (period) {
     case 'daily':
-      return { date_from: refDate, date_to: refDate };
+      return { date_from: dailyDate, date_to: dailyDate };
     case 'weekly': {
-      const day = d.getDay();
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      return { date_from: monday.toISOString().slice(0, 10), date_to: sunday.toISOString().slice(0, 10) };
+      const [year, m] = month.split('-').map(Number);
+      const lastDay = new Date(year, m, 0).getDate();
+      const fromDay = (weekNum - 1) * 7 + 1;
+      const toDay = weekNum === 5 ? lastDay : Math.min(weekNum * 7, lastDay);
+      return { date_from: `${year}-${pad(m)}-${pad(fromDay)}`, date_to: `${year}-${pad(m)}-${pad(toDay)}` };
     }
     case 'monthly': {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const lastDay = new Date(year, d.getMonth() + 1, 0).getDate();
-      return { date_from: `${year}-${month}-01`, date_to: `${year}-${month}-${String(lastDay).padStart(2, '0')}` };
+      const [year, m] = month.split('-').map(Number);
+      const lastDay = new Date(year, m, 0).getDate();
+      return { date_from: `${year}-${pad(m)}-01`, date_to: `${year}-${pad(m)}-${pad(lastDay)}` };
     }
     case 'cumulative':
       return { date_from: '', date_to: '' };
@@ -74,7 +88,12 @@ export default function AdminEvaluations() {
   const [pagination, setPagination] = useState({});
   const [operators, setOperators] = useState([]);
   const [period, setPeriod] = useState('daily');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [weekNum, setWeekNum] = useState(() => {
+    const d = new Date().getDate();
+    return Math.min(Math.ceil(d / 7), 5);
+  });
   const [filters, setFilters] = useState({ user_id: '', date_from: '', date_to: '' });
   const [expandedId, setExpandedId] = useState(null);
   const [page, setPage] = useState(1);
@@ -87,10 +106,10 @@ export default function AdminEvaluations() {
 
   // 期間変更時にフィルターの日付を自動設定
   useEffect(() => {
-    const range = calcDateRange(period, date);
+    const range = calcDateRange(period, dailyDate, month, weekNum);
     setFilters(f => ({ ...f, date_from: range.date_from, date_to: range.date_to }));
     setPage(1);
-  }, [period, date]);
+  }, [period, dailyDate, month, weekNum]);
 
   useEffect(() => {
     if (user) fetchEvaluations();
@@ -156,8 +175,24 @@ export default function AdminEvaluations() {
               }`}>{p.label}</button>
           ))}
         </div>
-        {period !== 'cumulative' && (
-          <input type="date" className="input text-sm" value={date} onChange={e => setDate(e.target.value)} />
+        {period === 'daily' && (
+          <input type="date" className="input text-sm" value={dailyDate} onChange={e => setDailyDate(e.target.value)} />
+        )}
+        {period === 'weekly' && (
+          <>
+            <input type="month" className="input text-sm" value={month}
+              onChange={e => { setMonth(e.target.value); setWeekNum(1); }} />
+            <select className="input text-sm" value={weekNum}
+              onChange={e => setWeekNum(Number(e.target.value))}>
+              {getWeeksInMonth(month).map(w => (
+                <option key={w.num} value={w.num}>{w.label}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {period === 'monthly' && (
+          <input type="month" className="input text-sm" value={month}
+            onChange={e => setMonth(e.target.value)} />
         )}
       </div>
 
@@ -187,8 +222,8 @@ export default function AdminEvaluations() {
             {operators.map(op => <option key={op.id} value={op.id}>{op.name}</option>)}
           </select>
         </div>
-        {filters.user_id && filters.date_from && (
-          <button onClick={() => handleRunEvaluation(filters.user_id, filters.date_from)}
+        {filters.user_id && (period === 'daily') && (
+          <button onClick={() => handleRunEvaluation(filters.user_id, dailyDate)}
             className="btn-primary text-sm">AI評価実行</button>
         )}
       </div>
