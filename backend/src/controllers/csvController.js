@@ -74,46 +74,54 @@ const parseFile = async (filePath, originalName) => {
 };
 
 /**
- * 電話番号の正規化
- * - メールアドレスが混在している場合は除去して電話番号部分だけ抽出
- * - 全角数字 → 半角数字
- * - 全角ハイフン・ダッシュ類（ー－—―‐‑⁃₋−）→ 除去
- * - 半角ハイフン・ダッシュ類（- – —）→ 除去
- * - スペース（全角・半角）→ 除去
- * - 括弧（全角・半角）→ 除去
- * - 結果: 数字のみの文字列（例: 09012345678）
- * - 数字が10〜11桁でない場合は空文字を返す（電話番号ではない）
+ * 電話番号を抽出（複数対応）
+ * - 入力文字列から電話番号パターン（10〜11桁）をすべて抽出して配列で返す
+ * - メールアドレス、URL、文字列など電話番号以外はすべて無視
+ * - 全角数字→半角、ハイフン・括弧等の区切り文字を考慮
+ * - 2行に分かれて複数番号が入っている場合も両方抽出
+ * @param {string} phone - 電話番号フィールドの生値
+ * @returns {string[]} 正規化済み電話番号の配列（例: ['09012345678', '0312345678']）
+ */
+const extractPhoneNumbers = (phone) => {
+  if (!phone) return [];
+
+  // 全角数字 → 半角数字に統一
+  let text = phone.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+
+  // 電話番号パターンを抽出（ハイフン・ダッシュ・ドット・スペース・括弧区切りに対応）
+  // 例: 090-1234-5678, 03(1234)5678, 0120.123.456, ０３ー１２３４ー５６７８
+  const phonePattern = /(?:\+?[\d]{1,4}[\s.\-ー－—―‐‑⁃₋−]?)?[\(（]?[0-9]{1,5}[\)）]?[\s.\-ー－—―‐‑⁃₋−]?[0-9]{1,4}[\s.\-ー－—―‐‑⁃₋−]?[0-9]{1,5}/g;
+
+  const matches = text.match(phonePattern) || [];
+  const results = [];
+
+  for (const m of matches) {
+    // 数字だけ抽出
+    const digits = m.replace(/[^0-9]/g, '');
+    // 日本の電話番号は10桁（固定）or 11桁（携帯/フリーダイヤル）
+    if (digits.length >= 10 && digits.length <= 11) {
+      // 重複排除
+      if (!results.includes(digits)) {
+        results.push(digits);
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * 後方互換: 単一電話番号を返す（架電リストインポート用）
+ * 最初に見つかった電話番号を返す。見つからなければ空文字。
  */
 const normalizePhoneNumber = (phone) => {
-  if (!phone) return phone;
-  // まずメールアドレスを除去（電話番号とメールが混在しているケース）
-  let cleaned = phone.replace(/[A-Za-zＡ-Ｚａ-ｚ0-9０-９._%+\-]+@[A-Za-zＡ-Ｚａ-ｚ0-9０-９.\-]+\.[A-Za-zＡ-Ｚａ-ｚ]{2,}/g, '');
-
-  let normalized = cleaned
-    // 全角数字 → 半角数字
-    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-    // 全角・半角のハイフン、ダッシュ、長音記号をすべて除去
-    .replace(/[ー－—―‐‑⁃₋−\-–]/g, '')
-    // 全角・半角スペース除去
-    .replace(/[\s　]/g, '')
-    // 括弧類を除去（全角・半角）
-    .replace(/[()（）]/g, '')
-    // プラス記号を除去（国際番号対応）
-    .replace(/[+＋]/g, '')
-    // ドット区切りを除去
-    .replace(/[.．]/g, '')
-    // 数字以外をすべて除去（残留文字対策）
-    .replace(/[^0-9]/g, '');
-
-  // 日本の電話番号は10桁（固定）or 11桁（携帯）— それ以外は無効
-  if (normalized.length < 10 || normalized.length > 11) {
-    return '';
-  }
-  return normalized;
+  const phones = extractPhoneNumbers(phone);
+  return phones.length > 0 ? phones[0] : '';
 };
 
 /**
  * 会社名の正規化
+ * - 【ヒトキワ】【グーナビ】等のタグを除去（【...】形式すべて）
  * - 全角スペース → 半角スペースに統一
  * - 連続スペース → 1つに圧縮
  * - 前後の空白除去
@@ -122,6 +130,8 @@ const normalizePhoneNumber = (phone) => {
 const normalizeCompanyName = (name) => {
   if (!name) return name;
   let normalized = name
+    // 【...】タグを除去（【ヒトキワ】【グーナビ】等）
+    .replace(/【[^】]*】/g, '')
     // 全角英数 → 半角英数
     .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
     // 全角スペース → 半角
@@ -292,18 +302,9 @@ const importExclusionList = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      for (let i = 0; i < records.length; i++) {
-        const row = records[i];
-        const lineNum = i + 2;
-
-        const companyName = normalizeCompanyName((row.company_name || '').trim()) || null;
-        const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim()) || null;
-
-        if (!companyName && !phoneNumber) {
-          errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
-          continue;
-        }
-
+      // 1行に複数電話番号が含まれる場合、それぞれを個別レコードとして登録する
+      // ヘルパー: 1件分の除外リスト登録＋架電リスト照合
+      const insertOneExclusion = async (companyName, phoneNumber) => {
         // 同一リスト種別内の重複チェック（NGはNG内、既存は既存内）
         const dupConditions = [];
         const dupParams = [listType];
@@ -314,7 +315,7 @@ const importExclusionList = async (req, res, next) => {
 
         if (existing.length > 0) {
           duplicateCount++;
-          continue;
+          return;
         }
 
         // exclusion_lists にインサート
@@ -323,9 +324,7 @@ const importExclusionList = async (req, res, next) => {
           [companyName, phoneNumber, listType]
         );
 
-        // 架電リスト（companies）から一致企業を削除
-        // 外部キー制約があるため、関連する calls, projects 等がある企業は削除できないので
-        // まず関連データがない企業を削除、ある企業は除外フラグを立てる
+        // 架電リスト（companies）から一致企業を削除/除外
         const findConditions = [];
         const findParams = [];
         if (phoneNumber) { findConditions.push('phone_number = ?'); findParams.push(phoneNumber); }
@@ -335,10 +334,8 @@ const importExclusionList = async (req, res, next) => {
 
         for (const mc of matchedCompanies) {
           try {
-            // 関連データを先に削除（割り当て、リコール等）
             await conn.execute('DELETE FROM company_assignments WHERE company_id = ?', [mc.id]);
             await conn.execute('DELETE FROM recall_tasks WHERE company_id = ?', [mc.id]);
-            // 通話履歴がある場合は削除できないので除外フラグ
             const [callCheck] = await conn.execute('SELECT id FROM calls WHERE company_id = ? LIMIT 1', [mc.id]);
             if (callCheck.length > 0) {
               await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
@@ -347,13 +344,36 @@ const importExclusionList = async (req, res, next) => {
             }
             excludedCompaniesCount++;
           } catch (delErr) {
-            // 削除失敗時は除外フラグで対応
             await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
             excludedCompaniesCount++;
           }
         }
 
         insertedCount++;
+      };
+
+      for (let i = 0; i < records.length; i++) {
+        const row = records[i];
+        const lineNum = i + 2;
+
+        const companyName = normalizeCompanyName((row.company_name || '').trim()) || null;
+        // 電話番号を複数抽出（改行・スペース区切りで2件以上入っている場合がある）
+        const phoneNumbers = extractPhoneNumbers((row.phone_number || '').trim());
+
+        if (!companyName && phoneNumbers.length === 0) {
+          errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
+          continue;
+        }
+
+        if (phoneNumbers.length > 0) {
+          // 電話番号ごとに個別レコードとして登録
+          for (const pn of phoneNumbers) {
+            await insertOneExclusion(companyName, pn);
+          }
+        } else {
+          // 電話番号なし、企業名のみで登録
+          await insertOneExclusion(companyName, null);
+        }
       }
 
       await conn.commit();
