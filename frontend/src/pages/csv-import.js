@@ -196,8 +196,8 @@ export default function CallListPage() {
       {/* ヘッダー */}
       <div className="flex items-end justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">架電リスト</h1>
-          <p className="text-sm text-gray-400 mt-0.5">企業データの一覧・インポート</p>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">リストインポート</h1>
+          <p className="text-sm text-gray-400 mt-0.5">架電リスト・NGリスト・既存案件リストのインポート</p>
         </div>
         <button
           onClick={() => setShowImport(!showImport)}

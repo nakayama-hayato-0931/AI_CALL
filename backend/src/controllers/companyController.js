@@ -52,13 +52,13 @@ const getCompanies = async (req, res, next) => {
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    const [countRows] = await pool.execute(
+    const [countRows] = await pool.query(
       `SELECT COUNT(*) as total FROM companies c ${whereStr}`,
       params
     );
     const total = countRows[0].total;
 
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       `SELECT c.*,
               u_lock.name as locked_by_user_name,
               (SELECT MAX(cl.call_started_at) FROM calls cl WHERE cl.company_id = c.id) as last_call_date,
