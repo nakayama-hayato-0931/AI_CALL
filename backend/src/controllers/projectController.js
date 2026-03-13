@@ -50,7 +50,7 @@ const getProjects = async (req, res, next) => {
        ${whereStr}
        ORDER BY p.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, String(limit), String(offset)]
     );
 
     return ApiResponse.success(res, {
