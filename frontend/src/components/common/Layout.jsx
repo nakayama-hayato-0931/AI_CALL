@@ -90,6 +90,7 @@ const getNavItems = (role) => {
       { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
       { href: '/admin/projects', label: '案件管理', icon: 'project' },
       { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
+      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
       { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
     ];
   }
@@ -100,6 +101,7 @@ const getNavItems = (role) => {
       { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
       { href: '/admin/projects', label: '案件管理', icon: 'project' },
       { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
+      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
       { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
     ];
   }
