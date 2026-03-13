@@ -44,6 +44,16 @@ export default function CallListPage() {
   const [importResult, setImportResult] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // 除外リスト統計（件数・最終更新日）
+  const [exclusionStats, setExclusionStats] = useState({ ng: null, existing_project: null });
+  const fetchExclusionStats = async () => {
+    try {
+      const { data } = await api.get('/api/csv/exclusion-stats');
+      setExclusionStats(data.data);
+    } catch (err) { /* ignore */ }
+  };
+  useEffect(() => { fetchExclusionStats(); }, []);
+
   // Pickup state
   const [pickingUp, setPickingUp] = useState(null); // company ID being picked up
 
@@ -182,7 +192,7 @@ export default function CallListPage() {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (importTab === 'calllist') fetchCompanies(1);
-      else fetchCompanies(pagination.page || 1); // 除外フラグ更新を反映
+      else { fetchCompanies(pagination.page || 1); fetchExclusionStats(); } // 除外フラグ更新・統計を反映
     } catch (err) {
       const msg = err.response?.data?.message || 'インポートに失敗しました';
       toast.error(msg);
@@ -269,6 +279,16 @@ export default function CallListPage() {
                     <p className="text-xs text-gray-400">必須項目: 会社名（company_name）または 電話番号（phone_number）のどちらか</p>
                     <p className="text-xs text-gray-400 mt-0.5">既存の架電リストに一致する企業は自動的に除外されます</p>
                     <p className="text-xs text-gray-400 mt-0.5">電話番号は全角・ハイフン等を自動で正規化します</p>
+                    {exclusionStats.ng && (
+                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-3">
+                        <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                          登録数: {exclusionStats.ng.totalCount}件
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          最終更新: {new Date(exclusionStats.ng.lastUpdatedAt).toLocaleString('ja-JP')}
+                        </span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -277,6 +297,16 @@ export default function CallListPage() {
                     <p className="text-xs text-gray-400">必須項目: 会社名（company_name）または 電話番号（phone_number）のどちらか</p>
                     <p className="text-xs text-gray-400 mt-0.5">既存の架電リストに一致する企業は自動的に除外されます</p>
                     <p className="text-xs text-gray-400 mt-0.5">電話番号は全角・ハイフン等を自動で正規化します</p>
+                    {exclusionStats.existing_project && (
+                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-3">
+                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                          登録数: {exclusionStats.existing_project.totalCount}件
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          最終更新: {new Date(exclusionStats.existing_project.lastUpdatedAt).toLocaleString('ja-JP')}
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

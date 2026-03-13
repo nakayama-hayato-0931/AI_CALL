@@ -370,4 +370,31 @@ const importExclusionList = async (req, res, next) => {
   }
 };
 
-module.exports = { importCompanies, importExclusionList };
+/**
+ * GET /api/csv/exclusion-stats
+ * NG / 既存案件リストの件数と最終更新日を返す
+ */
+const getExclusionStats = async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(`
+      SELECT
+        list_type,
+        COUNT(*) AS total_count,
+        MAX(created_at) AS last_updated_at
+      FROM exclusion_lists
+      GROUP BY list_type
+    `);
+    const stats = { ng: null, existing_project: null };
+    for (const row of rows) {
+      stats[row.list_type] = {
+        totalCount: row.total_count,
+        lastUpdatedAt: row.last_updated_at,
+      };
+    }
+    return ApiResponse.success(res, stats);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { importCompanies, importExclusionList, getExclusionStats };
