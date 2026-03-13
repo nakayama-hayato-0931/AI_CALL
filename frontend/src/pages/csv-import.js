@@ -10,6 +10,14 @@ import toast from 'react-hot-toast';
 
 const LOCK_TIMEOUT_MINUTES = 5;
 
+// 住所から都道府県を抽出
+const PREFS = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+const extractPref = (address) => {
+  if (!address) return null;
+  for (const p of PREFS) { if (address.startsWith(p)) return p; }
+  return null;
+};
+
 const RESULT_STYLES = {
   INTERESTED: { label: '興味あり', style: 'bg-emerald-50 text-emerald-700' },
   CALLBACK: { label: 'コールバック', style: 'bg-blue-50 text-blue-700' },
@@ -530,7 +538,7 @@ export default function CallListPage() {
                     <th className="table-header" style={{width:'110px'}}>電話番号</th>
                     <th className="table-header" style={{width:'80px'}}>業種</th>
                     <th className="table-header" style={{width:'100px'}}>職種</th>
-                    <th className="table-header" style={{width:'50px'}}>地域</th>
+                    <th className="table-header" style={{width:'70px'}}>地域</th>
                     <th className="table-header" style={{width:'90px'}}>最終架電</th>
                     <th className="table-header" style={{width:'70px'}}>最終結果</th>
                     <th className="table-header" style={{width:'70px'}}>ステータス</th>
@@ -548,7 +556,7 @@ export default function CallListPage() {
                         <td className="table-cell text-gray-600 whitespace-nowrap">{c.phone_number}</td>
                         <td className="table-cell text-gray-500 truncate max-w-[80px]" title={c.industry || ''}>{c.industry || '-'}</td>
                         <td className="table-cell text-gray-500 truncate max-w-[100px]" title={c.job_type || ''}>{c.job_type || '-'}</td>
-                        <td className="table-cell text-gray-500 whitespace-nowrap">{c.region || '-'}</td>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">{extractPref(c.address) || c.region || '-'}</td>
                         <td className="table-cell text-gray-500 whitespace-nowrap">
                           {c.last_call_date
                             ? new Date(c.last_call_date).toLocaleString('ja-JP')
