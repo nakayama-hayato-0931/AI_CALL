@@ -176,6 +176,17 @@ const updateCompany = async (req, res, next) => {
 };
 
 /**
+ * 業種×地域ルールフィルタ（ルールに合致する企業のみ表示）
+ * ルールが1件もない場合は全企業除外（管理者がルール設定するまで）
+ */
+const industryRegionFilterSQL = `
+  AND EXISTS (
+    SELECT 1 FROM industry_region_rules irr
+    WHERE irr.industry_name = c.industry AND irr.region = c.region
+  )
+`;
+
+/**
  * 割り当てフィルタSQL（自分に割り当て or 未割り当てのみ表示、他OPに割り当て済みは除外）
  */
 const assignmentFilterSQL = `
@@ -203,6 +214,7 @@ const getNextCallTarget = async (req, res, next) => {
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0
+         ${industryRegionFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT 1`,
       [userId, now]
@@ -224,6 +236,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT 1`,
       [userId, currentTime, userId]
@@ -240,6 +253,7 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT 1`,
       [userId, userId]
@@ -259,6 +273,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.id IN (SELECT cl.company_id FROM calls cl WHERE cl.result_code = 'NO_ANSWER')
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
       [userId, userId]
@@ -305,6 +320,7 @@ const getCallList = async (req, res, next) => {
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0
          ${lockFilterSQL}
+         ${industryRegionFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
       [userId, now, userId, LIST_SIZE]
@@ -330,6 +346,7 @@ const getCallList = async (req, res, next) => {
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
          ${lockFilterSQL}
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
@@ -353,6 +370,7 @@ const getCallList = async (req, res, next) => {
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lockFilterSQL}
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
@@ -378,6 +396,7 @@ const getCallList = async (req, res, next) => {
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
          ${lockFilterSQL}
          ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,

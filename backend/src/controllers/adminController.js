@@ -348,6 +348,81 @@ const unassignCompany = async (req, res, next) => {
   }
 };
 
+// ==================== 業種×地域ルール ====================
+
+/**
+ * GET /api/admin/industry-region-rules
+ * ルール一覧 + 選択肢（業種・地域のDISTINCT）
+ */
+const getIndustryRegionRules = async (req, res, next) => {
+  try {
+    const [rules] = await pool.query(
+      'SELECT id, industry_name, region, created_at FROM industry_region_rules ORDER BY industry_name, region'
+    );
+    // 企業テーブルから業種・地域の選択肢を取得
+    const [industries] = await pool.query(
+      "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL AND industry != '' ORDER BY industry"
+    );
+    const [regions] = await pool.query(
+      "SELECT DISTINCT region FROM companies WHERE region IS NOT NULL AND region != '' ORDER BY region"
+    );
+
+    return ApiResponse.success(res, {
+      rules,
+      industries: industries.map(r => r.industry),
+      regions: regions.map(r => r.region),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/admin/industry-region-rules
+ * ルール追加
+ */
+const addIndustryRegionRule = async (req, res, next) => {
+  try {
+    const { industry_name, region } = req.body;
+    if (!industry_name || !region) {
+      return ApiResponse.badRequest(res, '業種と地域は必須です');
+    }
+    try {
+      const [result] = await pool.execute(
+        'INSERT INTO industry_region_rules (industry_name, region) VALUES (?, ?)',
+        [industry_name, region]
+      );
+      logger.info(`エリアルール追加: ${industry_name} → ${region}`);
+      return ApiResponse.created(res, { id: result.insertId, industry_name, region }, 'ルールを追加しました');
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') {
+        return ApiResponse.badRequest(res, 'このルールは既に登録されています');
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/admin/industry-region-rules/:id
+ * ルール削除
+ */
+const deleteIndustryRegionRule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute('DELETE FROM industry_region_rules WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, 'ルールが見つかりません');
+    }
+    logger.info(`エリアルール削除: ID ${id}`);
+    return ApiResponse.success(res, null, 'ルールを削除しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
@@ -357,4 +432,7 @@ module.exports = {
   getCompanies,
   assignCompany,
   unassignCompany,
+  getIndustryRegionRules,
+  addIndustryRegionRule,
+  deleteIndustryRegionRule,
 };

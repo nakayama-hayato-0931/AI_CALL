@@ -174,6 +174,16 @@ INSERT INTO industry_time_rules (industry_name, start_time, end_time, priority_w
   ('小売', '11:00:00', '13:00:00', 20),
   ('小売', '16:00:00', '18:00:00', 15);
 
+-- 業種×地域ルール（架電エリア制御）
+CREATE TABLE IF NOT EXISTS industry_region_rules (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  industry_name VARCHAR(100) NOT NULL,
+  region VARCHAR(100) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_industry_region (industry_name, region),
+  INDEX idx_industry (industry_name)
+) ENGINE=InnoDB COMMENT='業種×地域の架電エリアルール';
+
 -- 初期データ: 管理者ユーザー (パスワード: admin123)
 INSERT INTO users (name, email, password_hash, role) VALUES
   ('管理者', 'admin@example.com', '$2b$10$8K1p/a0dL1LXMIgoEDFrwOfMQkT.RZfL1IdBCemO3vGKCVjnZPGlG', 'admin');

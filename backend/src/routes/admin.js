@@ -8,6 +8,7 @@ const {
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany,
+  getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const { authenticate, requireAdmin, requireManager } = require('../middlewares/auth');
@@ -27,6 +28,11 @@ router.get('/performance', requireManager, getAllOperatorPerformance);
 router.get('/companies', requireManager, getCompanies);
 router.post('/companies/assign', requireManager, assignCompany);
 router.delete('/companies/:companyId/assign/:userId', requireManager, unassignCompany);
+
+// 業種×地域ルール (admin + manager)
+router.get('/industry-region-rules', requireManager, getIndustryRegionRules);
+router.post('/industry-region-rules', requireManager, addIndustryRegionRule);
+router.delete('/industry-region-rules/:id', requireManager, deleteIndustryRegionRule);
 
 // 申請管理 (admin + manager)
 router.get('/requests', requireManager, getAllRequests);

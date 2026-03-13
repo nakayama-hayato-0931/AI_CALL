@@ -5,17 +5,32 @@ import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
+const TABS = [
+  { value: 'list', label: '架電リスト' },
+  { value: 'area', label: 'エリア設定' },
+];
+
 export default function AdminCompanies() {
   const { user } = useAuth();
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState('list');
+
+  // === 架電リスト タブ ===
   const [companies, setCompanies] = useState([]);
   const [operators, setOperators] = useState([]);
   const [pagination, setPagination] = useState({});
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [assignModal, setAssignModal] = useState(null); // company object or null
+  const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
+
+  // === エリア設定 タブ ===
+  const [rules, setRules] = useState([]);
+  const [industries, setIndustries] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [newIndustry, setNewIndustry] = useState('');
+  const [newRegion, setNewRegion] = useState('');
 
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
@@ -26,6 +41,11 @@ export default function AdminCompanies() {
     if (user) fetchCompanies();
   }, [user, page, search]);
 
+  useEffect(() => {
+    if (user && activeTab === 'area') fetchRules();
+  }, [user, activeTab]);
+
+  // === 架電リスト 関数 ===
   const fetchOperators = async () => {
     try {
       const { data } = await api.get('/api/admin/users');
@@ -82,136 +102,248 @@ export default function AdminCompanies() {
     }
   };
 
+  // === エリア設定 関数 ===
+  const fetchRules = async () => {
+    try {
+      const { data } = await api.get('/api/admin/industry-region-rules');
+      if (data.success) {
+        setRules(data.data.rules);
+        setIndustries(data.data.industries);
+        setRegions(data.data.regions);
+      }
+    } catch (err) { toast.error('エリアルール取得に失敗しました'); }
+  };
+
+  const handleAddRule = async () => {
+    if (!newIndustry || !newRegion) { toast.error('業種と地域を選択してください'); return; }
+    try {
+      const { data } = await api.post('/api/admin/industry-region-rules', {
+        industry_name: newIndustry,
+        region: newRegion,
+      });
+      if (data.success) {
+        toast.success('ルールを追加しました');
+        fetchRules();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'ルール追加に失敗しました');
+    }
+  };
+
+  const handleDeleteRule = async (id, industryName, region) => {
+    if (!confirm(`${industryName} → ${region} のルールを削除しますか？`)) return;
+    try {
+      const { data } = await api.delete(`/api/admin/industry-region-rules/${id}`);
+      if (data.success) {
+        toast.success('ルールを削除しました');
+        fetchRules();
+      }
+    } catch (err) { toast.error('ルール削除に失敗しました'); }
+  };
+
+  // ルールを業種でグループ化
+  const groupedRules = rules.reduce((acc, rule) => {
+    if (!acc[rule.industry_name]) acc[rule.industry_name] = [];
+    acc[rule.industry_name].push(rule);
+    return acc;
+  }, {});
+
   if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
 
   return (
     <Layout>
-      <h1 className="text-xl font-bold text-gray-900 mb-6">架電リスト管理</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-gray-900 tracking-tight">架電リスト管理</h1>
+        <p className="text-sm text-gray-400 mt-0.5">架電リストの管理とエリア設定</p>
+      </div>
 
-      {/* 検索 */}
-      <form onSubmit={handleSearch} className="card p-4 mb-6 flex items-end gap-4">
-        <div className="flex-1">
-          <label className="input-label">企業名・電話番号で検索</label>
-          <input
-            type="text"
-            className="input text-sm"
-            placeholder="検索キーワード..."
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-          />
-        </div>
-        <button type="submit" className="btn-primary !py-2.5 px-6">検索</button>
-        {search && (
-          <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
-            className="btn-secondary !py-2.5 px-4">クリア</button>
-        )}
-      </form>
+      {/* タブ */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-6 w-fit">
+        {TABS.map(t => (
+          <button key={t.value} onClick={() => setActiveTab(t.value)}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === t.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}>{t.label}</button>
+        ))}
+      </div>
 
-      {/* 件数表示 */}
-      {pagination.total !== undefined && (
-        <p className="text-sm text-gray-500 mb-3">全 {pagination.total.toLocaleString()} 件</p>
+      {/* ============ 架電リストタブ ============ */}
+      {activeTab === 'list' && (
+        <>
+          {/* 検索 */}
+          <form onSubmit={handleSearch} className="card p-4 mb-6 flex items-end gap-4">
+            <div className="flex-1">
+              <label className="input-label">企業名・電話番号で検索</label>
+              <input type="text" className="input text-sm" placeholder="検索キーワード..."
+                value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+            </div>
+            <button type="submit" className="btn-primary !py-2.5 px-6">検索</button>
+            {search && (
+              <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
+                className="btn-secondary !py-2.5 px-4">クリア</button>
+            )}
+          </form>
+
+          {pagination.total !== undefined && (
+            <p className="text-sm text-gray-500 mb-3">全 {pagination.total.toLocaleString()} 件</p>
+          )}
+
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="table-header">企業名</th>
+                  <th className="table-header">電話番号</th>
+                  <th className="table-header">業種</th>
+                  <th className="table-header">地域</th>
+                  <th className="table-header">割り当てOP</th>
+                  <th className="table-header w-24">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {companies.map(c => (
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                    <td className="table-cell font-medium">{c.company_name}</td>
+                    <td className="table-cell text-gray-500">{c.phone_number}</td>
+                    <td className="table-cell text-gray-500">{c.industry || '-'}</td>
+                    <td className="table-cell text-gray-500">{c.region || '-'}</td>
+                    <td className="table-cell">
+                      {c.assigned_operators && c.assigned_operators.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {c.assigned_operators.map(op => (
+                            <span key={op.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                              {op.name}
+                              <button onClick={() => handleUnassign(c.id, op.id, c.company_name, op.name)}
+                                className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors" title="割り当て解除">&times;</button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 text-xs">未割り当て</span>
+                      )}
+                    </td>
+                    <td className="table-cell">
+                      <button onClick={() => { setAssignModal(c); setSelectedOp(''); }}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 割り当て</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {companies.length === 0 && (
+              <div className="text-center py-8 text-gray-400">企業がありません</div>
+            )}
+          </div>
+
+          {pagination.totalPages > 1 && (
+            <div className="flex justify-center gap-2 mt-4">
+              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
+                .filter(p => Math.abs(p - page) <= 3 || p === 1 || p === pagination.totalPages)
+                .map((p, idx, arr) => (
+                  <span key={p}>
+                    {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-400">...</span>}
+                    <button onClick={() => setPage(p)}
+                      className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{p}</button>
+                  </span>
+                ))}
+            </div>
+          )}
+
+          {/* 割り当てモーダル */}
+          {assignModal && (
+            <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setAssignModal(null)}>
+              <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h3 className="text-base font-bold text-gray-900 mb-1">オペレーター割り当て</h3>
+                <p className="text-sm text-gray-500 mb-5">{assignModal.company_name}</p>
+                <div className="mb-5">
+                  <label className="input-label">オペレーターを選択</label>
+                  <select className="input" value={selectedOp} onChange={e => setSelectedOp(e.target.value)}>
+                    <option value="">選択してください</option>
+                    {operators
+                      .filter(op => !assignModal.assigned_operators?.some(a => a.id === op.id))
+                      .map(op => <option key={op.id} value={op.id}>{op.name}</option>)
+                    }
+                  </select>
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => setAssignModal(null)} className="btn-secondary !py-2 px-5">キャンセル</button>
+                  <button onClick={handleAssign} disabled={!selectedOp} className="btn-primary !py-2 px-5 disabled:opacity-50">割り当て</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* テーブル */}
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="table-header">企業名</th>
-              <th className="table-header">電話番号</th>
-              <th className="table-header">業種</th>
-              <th className="table-header">地域</th>
-              <th className="table-header">割り当てOP</th>
-              <th className="table-header w-24">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {companies.map(c => (
-              <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                <td className="table-cell font-medium">{c.company_name}</td>
-                <td className="table-cell text-gray-500">{c.phone_number}</td>
-                <td className="table-cell text-gray-500">{c.industry || '-'}</td>
-                <td className="table-cell text-gray-500">{c.region || '-'}</td>
-                <td className="table-cell">
-                  {c.assigned_operators && c.assigned_operators.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {c.assigned_operators.map(op => (
-                        <span key={op.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                          {op.name}
-                          <button
-                            onClick={() => handleUnassign(c.id, op.id, c.company_name, op.name)}
-                            className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors"
-                            title="割り当て解除"
-                          >
-                            &times;
-                          </button>
+      {/* ============ エリア設定タブ ============ */}
+      {activeTab === 'area' && (
+        <>
+          {/* 説明 */}
+          <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
+            <p className="text-sm text-blue-800">
+              業種ごとに架電可能な地域を設定します。ルールが設定された業種×地域の企業のみ、オペレーターの架電リストに表示されます。
+              管理者画面では全企業が閲覧できます。
+            </p>
+          </div>
+
+          {/* ルール追加フォーム */}
+          <div className="card p-4 mb-6">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">ルール追加</h3>
+            <div className="flex items-end gap-3">
+              <div>
+                <label className="input-label">業種</label>
+                <select className="input text-sm" value={newIndustry} onChange={e => setNewIndustry(e.target.value)}>
+                  <option value="">選択...</option>
+                  {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="input-label">地域</label>
+                <select className="input text-sm" value={newRegion} onChange={e => setNewRegion(e.target.value)}>
+                  <option value="">選択...</option>
+                  {regions.map(reg => <option key={reg} value={reg}>{reg}</option>)}
+                </select>
+              </div>
+              <button onClick={handleAddRule} disabled={!newIndustry || !newRegion}
+                className="btn-primary !py-2.5 px-6 disabled:opacity-50">追加</button>
+            </div>
+          </div>
+
+          {/* ルール一覧（業種ごとにグループ化） */}
+          <div className="space-y-3">
+            {Object.keys(groupedRules).length === 0 ? (
+              <div className="card p-8 text-center text-gray-400">
+                エリアルールが設定されていません。<br />
+                ルールを追加すると、オペレーターの架電リストにフィルターが適用されます。
+              </div>
+            ) : (
+              Object.entries(groupedRules).map(([industry, ruleList]) => (
+                <div key={industry} className="card p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-800 w-24 flex-shrink-0">{industry}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {ruleList.map(rule => (
+                        <span key={rule.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {rule.region}
+                          <button onClick={() => handleDeleteRule(rule.id, rule.industry_name, rule.region)}
+                            className="text-emerald-400 hover:text-red-500 transition-colors font-bold">&times;</button>
                         </span>
                       ))}
                     </div>
-                  ) : (
-                    <span className="text-gray-300 text-xs">未割り当て</span>
-                  )}
-                </td>
-                <td className="table-cell">
-                  <button
-                    onClick={() => { setAssignModal(c); setSelectedOp(''); }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    + 割り当て
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {companies.length === 0 && (
-          <div className="text-center py-8 text-gray-400">企業がありません</div>
-        )}
-      </div>
-
-      {/* ページネーション */}
-      {pagination.totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
-            .filter(p => Math.abs(p - page) <= 3 || p === 1 || p === pagination.totalPages)
-            .map((p, idx, arr) => (
-              <span key={p}>
-                {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-400">...</span>}
-                <button
-                  onClick={() => setPage(p)}
-                  className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
-                >
-                  {p}
-                </button>
-              </span>
-            ))}
-        </div>
-      )}
-
-      {/* 割り当てモーダル */}
-      {assignModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setAssignModal(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-gray-900 mb-1">オペレーター割り当て</h3>
-            <p className="text-sm text-gray-500 mb-5">{assignModal.company_name}</p>
-
-            <div className="mb-5">
-              <label className="input-label">オペレーターを選択</label>
-              <select className="input" value={selectedOp} onChange={e => setSelectedOp(e.target.value)}>
-                <option value="">選択してください</option>
-                {operators
-                  .filter(op => !assignModal.assigned_operators?.some(a => a.id === op.id))
-                  .map(op => <option key={op.id} value={op.id}>{op.name}</option>)
-                }
-              </select>
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setAssignModal(null)} className="btn-secondary !py-2 px-5">キャンセル</button>
-              <button onClick={handleAssign} disabled={!selectedOp} className="btn-primary !py-2 px-5 disabled:opacity-50">割り当て</button>
-            </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-        </div>
+
+          {/* サマリー */}
+          {Object.keys(groupedRules).length > 0 && (
+            <div className="mt-4 text-xs text-gray-400">
+              {Object.keys(groupedRules).length} 業種 / {rules.length} ルール設定済み
+            </div>
+          )}
+        </>
       )}
     </Layout>
   );
