@@ -182,7 +182,7 @@ const updateCompany = async (req, res, next) => {
  * 判定ロジック:
  * 1. industry_name キーワードで c.industry を部分一致 (例: 飲食 → 飲食店, 飲食料品小売業)
  * 2. region（都道府県名）で c.address を前方一致 (例: 富山県 → 富山県黒部市...)
- * 3. industry_exclude_words に登録されたNGワードが c.job_type に含まれていたら除外
+ * 3. industry_exclude_words に登録されたNGワードが c.job_type / c.industry / c.comment に含まれていたら除外
  *    (例: industry=飲食店 でも job_type=事務作業 なら除外)
  */
 const industryRegionFilterSQL = `
@@ -197,6 +197,8 @@ const industryRegionFilterSQL = `
       AND NOT EXISTS (
         SELECT 1 FROM industry_exclude_words iew
         WHERE c.job_type LIKE CONCAT('%', iew.keyword, '%')
+           OR c.industry LIKE CONCAT('%', iew.keyword, '%')
+           OR c.comment LIKE CONCAT('%', iew.keyword, '%')
       )
     )
   )
