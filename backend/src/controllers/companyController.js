@@ -188,19 +188,17 @@ const updateCompany = async (req, res, next) => {
 const industryRegionFilterSQL = `
   AND (
     (SELECT COUNT(*) FROM industry_region_rules) = 0
-    OR (
-      EXISTS (
-        SELECT 1 FROM industry_region_rules irr
-        WHERE c.industry LIKE CONCAT('%', irr.industry_name, '%')
-          AND c.address LIKE CONCAT(irr.region, '%')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM industry_exclude_words iew
-        WHERE c.job_type LIKE CONCAT('%', iew.keyword, '%')
-           OR c.industry LIKE CONCAT('%', iew.keyword, '%')
-           OR c.comment LIKE CONCAT('%', iew.keyword, '%')
-      )
+    OR EXISTS (
+      SELECT 1 FROM industry_region_rules irr
+      WHERE c.industry LIKE CONCAT('%', irr.industry_name, '%')
+        AND c.address LIKE CONCAT(irr.region, '%')
     )
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM industry_exclude_words iew
+    WHERE c.job_type LIKE CONCAT('%', iew.keyword, '%')
+       OR c.industry LIKE CONCAT('%', iew.keyword, '%')
+       OR c.comment LIKE CONCAT('%', iew.keyword, '%')
   )
 `;
 
