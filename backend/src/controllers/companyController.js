@@ -177,12 +177,15 @@ const updateCompany = async (req, res, next) => {
 
 /**
  * 業種×地域ルールフィルタ（ルールに合致する企業のみ表示）
- * ルールが1件もない場合は全企業除外（管理者がルール設定するまで）
+ * ルールが0件の場合はフィルターをスキップ（全企業表示）
  */
 const industryRegionFilterSQL = `
-  AND EXISTS (
-    SELECT 1 FROM industry_region_rules irr
-    WHERE irr.industry_name = c.industry AND irr.region = c.region
+  AND (
+    (SELECT COUNT(*) FROM industry_region_rules) = 0
+    OR EXISTS (
+      SELECT 1 FROM industry_region_rules irr
+      WHERE irr.industry_name = c.industry AND irr.region = c.region
+    )
   )
 `;
 
