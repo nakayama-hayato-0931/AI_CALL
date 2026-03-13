@@ -74,6 +74,53 @@ const parseFile = async (filePath, originalName) => {
 };
 
 /**
+ * 電話番号の正規化
+ * - 全角数字 → 半角数字
+ * - 全角ハイフン・ダッシュ類（ー－—―‐‑⁃₋−）→ 除去
+ * - 半角ハイフン・ダッシュ類（- – —）→ 除去
+ * - スペース（全角・半角）→ 除去
+ * - 括弧（全角・半角）→ 除去
+ * - 結果: 数字のみの文字列（例: 09012345678）
+ */
+const normalizePhoneNumber = (phone) => {
+  if (!phone) return phone;
+  let normalized = phone
+    // 全角数字 → 半角数字
+    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    // 全角・半角のハイフン、ダッシュ、長音記号をすべて除去
+    .replace(/[ー－—―‐‑⁃₋−\-–]/g, '')
+    // 全角・半角スペース除去
+    .replace(/[\s　]/g, '')
+    // 括弧類を除去（全角・半角）
+    .replace(/[()（）]/g, '')
+    // プラス記号を除去（国際番号対応）
+    .replace(/[+＋]/g, '')
+    // ドット区切りを除去
+    .replace(/[.．]/g, '');
+  return normalized;
+};
+
+/**
+ * 会社名の正規化
+ * - 全角スペース → 半角スペースに統一
+ * - 連続スペース → 1つに圧縮
+ * - 前後の空白除去
+ * - 全角英数 → 半角英数
+ */
+const normalizeCompanyName = (name) => {
+  if (!name) return name;
+  let normalized = name
+    // 全角英数 → 半角英数
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    // 全角スペース → 半角
+    .replace(/　/g, ' ')
+    // 連続スペース → 1つ
+    .replace(/\s+/g, ' ')
+    .trim();
+  return normalized;
+};
+
+/**
  * 一時ファイルを安全に削除
  */
 const cleanupFile = (filePath) => {
@@ -114,8 +161,8 @@ const importCompanies = async (req, res, next) => {
         const row = records[i];
         const lineNum = i + 2;
 
-        const companyName = (row.company_name || '').trim();
-        const phoneNumber = (row.phone_number || '').trim();
+        const companyName = normalizeCompanyName((row.company_name || '').trim());
+        const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim());
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
         const jobType = (row.job_type || '').trim() || null;
         const comment = (row.comment || '').trim() || null;
@@ -237,8 +284,8 @@ const importExclusionList = async (req, res, next) => {
         const row = records[i];
         const lineNum = i + 2;
 
-        const companyName = (row.company_name || '').trim() || null;
-        const phoneNumber = (row.phone_number || '').trim() || null;
+        const companyName = normalizeCompanyName((row.company_name || '').trim()) || null;
+        const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim()) || null;
 
         if (!companyName && !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
