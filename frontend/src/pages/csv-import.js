@@ -25,9 +25,20 @@ export default function CallListPage() {
   const router = useRouter();
   const fileInputRef = useRef(null);
 
+  // クエリパラメータからタブを自動選択
+  const queryTab = router.query.tab;
+
   // CSV import state
-  const [showImport, setShowImport] = useState(false);
+  const [showImport, setShowImport] = useState(true);
   const [importTab, setImportTab] = useState('calllist'); // 'calllist' | 'ng' | 'existing'
+
+  // クエリパラメータが変わったらタブを切り替え
+  useEffect(() => {
+    if (queryTab === 'ng' || queryTab === 'existing' || queryTab === 'calllist') {
+      setImportTab(queryTab);
+      setShowImport(true);
+    }
+  }, [queryTab]);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState(null);
