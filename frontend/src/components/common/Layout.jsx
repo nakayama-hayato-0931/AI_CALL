@@ -81,25 +81,21 @@ const icons = {
   ),
 };
 
+// 管理者メニュー（マスター定義）— ここに追加すればマネージャーにも自動反映
+const ADMIN_NAV = [
+  { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
+  { href: '/admin/users', label: 'ユーザー管理', icon: 'users', adminOnly: true },
+  { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
+  { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
+  { href: '/admin/projects', label: '案件管理', icon: 'project' },
+  { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
+  { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
+  { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
+];
+
 const getNavItems = (role) => {
-  // admin と manager は同じメニュー（admin のみユーザー管理あり）
-  if (role === 'admin' || role === 'manager') {
-    const items = [
-      { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
-    ];
-    if (role === 'admin') {
-      items.push({ href: '/admin/users', label: 'ユーザー管理', icon: 'users' });
-    }
-    items.push(
-      { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
-      { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
-      { href: '/admin/projects', label: '案件管理', icon: 'project' },
-      { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
-      { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
-      { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
-    );
-    return items;
-  }
+  if (role === 'admin') return ADMIN_NAV;
+  if (role === 'manager') return ADMIN_NAV.filter(item => !item.adminOnly);
   if (role === 'sales') {
     return [
       { href: '/sales/projects', label: '案件管理', icon: 'project' },
