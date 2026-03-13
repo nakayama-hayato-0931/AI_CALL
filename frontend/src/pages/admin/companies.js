@@ -38,8 +38,9 @@ export default function AdminCompanies() {
   const [rules, setRules] = useState([]);
   const [industries, setIndustries] = useState([]);
   const [regions, setRegions] = useState([]);
-  const [newIndustry, setNewIndustry] = useState('');
-  const [newRegion, setNewRegion] = useState('');
+  const [selectedIndustries, setSelectedIndustries] = useState([]);
+  const [selectedRegions, setSelectedRegions] = useState([]);
+  const [addingRules, setAddingRules] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
@@ -126,20 +127,38 @@ export default function AdminCompanies() {
     } catch (err) { toast.error('エリアルール取得に失敗しました'); }
   };
 
-  const handleAddRule = async () => {
-    if (!newIndustry || !newRegion) { toast.error('業種と地域を選択してください'); return; }
-    try {
-      const { data } = await api.post('/api/admin/industry-region-rules', {
-        industry_name: newIndustry,
-        region: newRegion,
-      });
-      if (data.success) {
-        toast.success('ルールを追加しました');
-        fetchRules();
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'ルール追加に失敗しました');
+  const toggleIndustry = (ind) => {
+    setSelectedIndustries(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
+  };
+  const toggleRegion = (reg) => {
+    setSelectedRegions(prev => prev.includes(reg) ? prev.filter(r => r !== reg) : [...prev, reg]);
+  };
+
+  const handleAddRules = async () => {
+    if (selectedIndustries.length === 0 || selectedRegions.length === 0) {
+      toast.error('業種と地域をそれぞれ1つ以上選択してください'); return;
     }
+    setAddingRules(true);
+    let added = 0, skipped = 0;
+    for (const ind of selectedIndustries) {
+      for (const reg of selectedRegions) {
+        try {
+          const { data } = await api.post('/api/admin/industry-region-rules', {
+            industry_name: ind, region: reg,
+          });
+          if (data.success) added++;
+        } catch (err) {
+          if (err.response?.status === 400) skipped++; // 重複
+          else { toast.error(`${ind}→${reg} の追加に失敗しました`); }
+        }
+      }
+    }
+    setAddingRules(false);
+    if (added > 0) toast.success(`${added}件のルールを追加しました${skipped > 0 ? `（${skipped}件は既存）` : ''}`);
+    else if (skipped > 0) toast.error('選択したルールは全て登録済みです');
+    setSelectedIndustries([]);
+    setSelectedRegions([]);
+    fetchRules();
   };
 
   const handleDeleteRule = async (id, industryName, region) => {
@@ -301,23 +320,58 @@ export default function AdminCompanies() {
           {/* ルール追加フォーム */}
           <div className="card p-4 mb-6">
             <h3 className="text-sm font-bold text-gray-700 mb-3">ルール追加</h3>
-            <div className="flex items-end gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {/* 業種選択 */}
               <div>
-                <label className="input-label">業種</label>
-                <select className="input text-sm" value={newIndustry} onChange={e => setNewIndustry(e.target.value)}>
-                  <option value="">選択...</option>
-                  {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                </select>
+                <label className="input-label mb-2">業種（複数選択可）</label>
+                <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">
+                  {industries.map(ind => (
+                    <label key={ind} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                      selectedIndustries.includes(ind) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}>
+                      <input type="checkbox" checked={selectedIndustries.includes(ind)}
+                        onChange={() => toggleIndustry(ind)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                      <span className="text-sm text-gray-700">{ind}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedIndustries.length > 0 && (
+                  <p className="text-xs text-blue-600 mt-1">{selectedIndustries.length}件選択中</p>
+                )}
               </div>
+              {/* 地域選択 */}
               <div>
-                <label className="input-label">地域</label>
-                <select className="input text-sm" value={newRegion} onChange={e => setNewRegion(e.target.value)}>
-                  <option value="">選択...</option>
-                  {regions.map(reg => <option key={reg} value={reg}>{reg}</option>)}
-                </select>
+                <label className="input-label mb-2">地域（複数選択可）</label>
+                <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">
+                  {regions.map(reg => (
+                    <label key={reg} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                      selectedRegions.includes(reg) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}>
+                      <input type="checkbox" checked={selectedRegions.includes(reg)}
+                        onChange={() => toggleRegion(reg)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                      <span className="text-sm text-gray-700">{reg}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedRegions.length > 0 && (
+                  <p className="text-xs text-blue-600 mt-1">{selectedRegions.length}件選択中</p>
+                )}
               </div>
-              <button onClick={handleAddRule} disabled={!newIndustry || !newRegion}
-                className="btn-primary !py-2.5 px-6 disabled:opacity-50">追加</button>
+            </div>
+            {/* 選択プレビュー + 追加ボタン */}
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-500">
+                {selectedIndustries.length > 0 && selectedRegions.length > 0
+                  ? `${selectedIndustries.length}業種 × ${selectedRegions.length}地域 = ${selectedIndustries.length * selectedRegions.length}件のルールを追加`
+                  : '業種と地域をそれぞれ選択してください'}
+              </div>
+              <button onClick={handleAddRules}
+                disabled={selectedIndustries.length === 0 || selectedRegions.length === 0 || addingRules}
+                className="btn-primary !py-2.5 px-6 disabled:opacity-50">
+                {addingRules ? '追加中...' : '一括追加'}
+              </button>
             </div>
           </div>
 
