@@ -523,18 +523,19 @@ export default function CallListPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="table-header">企業名</th>
-                    <th className="table-header">電話番号</th>
-                    <th className="table-header">業種</th>
-                    <th className="table-header">地域</th>
-                    <th className="table-header">最終架電</th>
-                    <th className="table-header">最終結果</th>
-                    <th className="table-header">ステータス</th>
-                    <th className="table-header">除外</th>
-                    <th className="table-header text-center">操作</th>
+                    <th className="table-header" style={{width:'180px'}}>企業名</th>
+                    <th className="table-header" style={{width:'110px'}}>電話番号</th>
+                    <th className="table-header" style={{width:'80px'}}>業種</th>
+                    <th className="table-header" style={{width:'100px'}}>職種</th>
+                    <th className="table-header" style={{width:'50px'}}>地域</th>
+                    <th className="table-header" style={{width:'90px'}}>最終架電</th>
+                    <th className="table-header" style={{width:'70px'}}>最終結果</th>
+                    <th className="table-header" style={{width:'70px'}}>ステータス</th>
+                    <th className="table-header" style={{width:'36px'}}>除外</th>
+                    <th className="table-header text-center" style={{width:'90px'}}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -543,10 +544,11 @@ export default function CallListPage() {
                     const resultInfo = c.last_result ? RESULT_STYLES[c.last_result] : null;
                     return (
                       <tr key={c.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
-                        <td className="table-cell font-medium text-gray-900">{c.company_name}</td>
-                        <td className="table-cell text-gray-600">{c.phone_number}</td>
-                        <td className="table-cell text-gray-500">{c.industry || '-'}</td>
-                        <td className="table-cell text-gray-500">{c.region || '-'}</td>
+                        <td className="table-cell font-medium text-gray-900 truncate max-w-[180px]" title={c.company_name}>{c.company_name}</td>
+                        <td className="table-cell text-gray-600 whitespace-nowrap">{c.phone_number}</td>
+                        <td className="table-cell text-gray-500 truncate max-w-[80px]" title={c.industry || ''}>{c.industry || '-'}</td>
+                        <td className="table-cell text-gray-500 truncate max-w-[100px]" title={c.job_type || ''}>{c.job_type || '-'}</td>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">{c.region || '-'}</td>
                         <td className="table-cell text-gray-500 whitespace-nowrap">
                           {c.last_call_date
                             ? new Date(c.last_call_date).toLocaleString('ja-JP')
