@@ -21,8 +21,9 @@ const getProjects = async (req, res, next) => {
     let whereClauses = [];
     let params = [];
 
-    // operatorは自分の案件のみ表示、admin/manager/salesは全件表示可
-    if (req.user.role === 'operator') {
+    // my_only=1 で自分の案件のみフィルタ (全ロール共通)
+    const { my_only } = req.query;
+    if (my_only === '1') {
       whereClauses.push('p.owner_user_id = ?');
       params.push(req.user.id);
     } else if (owner_user_id) {

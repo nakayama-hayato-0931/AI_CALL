@@ -211,6 +211,20 @@ const assignmentFilterSQL = `
 `;
 
 /**
+ * 再ピックアップ除外SQL
+ * - SKIP/PROJECT/RECALL/INTERESTED: 永久除外（再ピックアップ禁止）
+ * - NO_ANSWER: 最終架電から2日後以降に再ピックアップ可能
+ * - NG: 最終架電から3ヶ月後以降に別オペレーターのみ再ピックアップ可能
+ */
+const lastResultExclusionSQL = `
+  AND NOT EXISTS (
+    SELECT 1 FROM calls cl2
+    WHERE cl2.company_id = c.id
+      AND cl2.result_code IN ('SKIP', 'PROJECT', 'RECALL', 'INTERESTED')
+  )
+`;
+
+/**
  * GET /api/companies/call-list/next
  * 次の架電先を1件取得 (自動架電リスト)
  * 割り当て優先: 自分に割り当てられた企業 → 未割り当て企業
@@ -251,6 +265,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         ${lastResultExclusionSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
@@ -268,6 +283,7 @@ const getNextCallTarget = async (req, res, next) => {
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${lastResultExclusionSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
@@ -278,7 +294,7 @@ const getNextCallTarget = async (req, res, next) => {
       return ApiResponse.success(res, { target: untouchedRows[0], reason: 'untouched' });
     }
 
-    // 4. 前回不通（割り当て優先）
+    // 4. 前回不通 → 2日後以降に再ピックアップ
     const [noAnswerRows] = await pool.query(
       `SELECT c.*,
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
@@ -286,8 +302,9 @@ const getNextCallTarget = async (req, res, next) => {
        FROM companies c
        WHERE c.exclusion_flag = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
-         AND c.id IN (SELECT cl.company_id FROM calls cl WHERE cl.result_code = 'NO_ANSWER')
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+         ${lastResultExclusionSQL}
+         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
@@ -296,6 +313,28 @@ const getNextCallTarget = async (req, res, next) => {
     );
     if (noAnswerRows.length > 0) {
       return ApiResponse.success(res, { target: noAnswerRows[0], reason: 'retry_no_answer' });
+    }
+
+    // 5. 前回NG → 3ヶ月後以降に別オペレーターのみ再ピックアップ
+    const [ngRetryRows] = await pool.query(
+      `SELECT c.*,
+              (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${lastResultExclusionSQL}
+         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
+         AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
+         ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
+       ORDER BY is_assigned DESC, c.last_called_at ASC
+       LIMIT 1`,
+      [userId, userId, userId]
+    );
+    if (ngRetryRows.length > 0) {
+      return ApiResponse.success(res, { target: ngRetryRows[0], reason: 'retry_ng' });
     }
 
     return ApiResponse.success(res, { target: null, reason: 'no_target' }, '架電対象がありません');
@@ -360,6 +399,7 @@ const getCallList = async (req, res, next) => {
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         ${lastResultExclusionSQL}
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
@@ -384,6 +424,7 @@ const getCallList = async (req, res, next) => {
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${lastResultExclusionSQL}
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
@@ -399,7 +440,7 @@ const getCallList = async (req, res, next) => {
       return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
     }
 
-    // 4. 前回不通（2時間以上前、割り当て優先）
+    // 4. 前回不通 → 2日後以降に再ピックアップ
     const remaining4 = LIST_SIZE - targets.length;
     const [retryRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
@@ -408,8 +449,9 @@ const getCallList = async (req, res, next) => {
        FROM companies c
        WHERE c.exclusion_flag = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
-         AND c.id IN (SELECT cl.company_id FROM calls cl WHERE cl.result_code = 'NO_ANSWER')
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+         ${lastResultExclusionSQL}
+         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
@@ -419,6 +461,34 @@ const getCallList = async (req, res, next) => {
       [userId, userId, userId, ...excludeIds, remaining4]
     );
     targets.push(...retryRows);
+    excludeIds = targets.map(t => t.id);
+
+    if (targets.length >= LIST_SIZE) {
+      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
+    }
+
+    // 5. 前回NG → 3ヶ月後以降に別OPのみ再ピックアップ
+    const remaining5 = LIST_SIZE - targets.length;
+    const [ngRetryRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+              'retry_ng' as reason,
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0
+         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         ${lastResultExclusionSQL}
+         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
+         AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
+         ${lockFilterSQL}
+         ${assignmentFilterSQL}
+         ${industryRegionFilterSQL}
+         ${notInClause(excludeIds)}
+       ORDER BY is_assigned DESC, c.last_called_at ASC
+       LIMIT ?`,
+      [userId, userId, userId, userId, ...excludeIds, remaining5]
+    );
+    targets.push(...ngRetryRows);
 
     return ApiResponse.success(res, { targets });
   } catch (err) {

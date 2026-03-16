@@ -59,6 +59,7 @@ export default function SalesProjects() {
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [myOnly, setMyOnly] = useState(false);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
@@ -69,12 +70,13 @@ export default function SalesProjects() {
 
   useEffect(() => {
     if (user) fetchProjects();
-  }, [user, status, dateFrom, dateTo, sortBy, sortOrder, page]);
+  }, [user, status, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
 
   const fetchProjects = async () => {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
       if (status) params.append('status', status);
+      if (myOnly) params.append('my_only', '1');
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
       const { data } = await api.get(`/api/projects?${params}`);
@@ -100,11 +102,29 @@ export default function SalesProjects() {
     return <span className="text-blue-600 ml-0.5">{sortOrder === 'asc' ? '▲' : '▼'}</span>;
   };
 
+  // 面接日が4日以内かつメール返信・電話確認が未完了 → 赤く強調
+  const isUrgentUnconfirmed = (p) => {
+    if (p.mail_replied || p.phone_confirmed) return false;
+    if (!p.interview_date) return false;
+    const interview = new Date(p.interview_date);
+    const now = new Date();
+    const diffDays = (interview - now) / (1000 * 60 * 60 * 24);
+    return diffDays >= 0 && diffDays <= 4;
+  };
+
   if (!user || user.role !== 'sales') return null;
 
   return (
     <Layout>
-      <h1 className="text-xl font-bold text-gray-900 mb-6">案件一覧</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold text-gray-900">案件一覧</h1>
+        <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            myOnly ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>
+          {myOnly ? '自分の案件のみ' : '全員の案件'}
+        </button>
+      </div>
 
       {/* フィルター */}
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-4">
@@ -156,44 +176,47 @@ export default function SalesProjects() {
               </tr>
             </thead>
             <tbody>
-              {projects.map(p => (
-                <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer"
-                  onClick={() => router.push(`/projects/${p.id}`)}>
-                  <td className="table-cell text-gray-500 whitespace-nowrap">
-                    {new Date(p.created_at).toLocaleDateString('ja-JP')}
-                  </td>
-                  <td className="table-cell truncate" title={p.owner_name}>{p.owner_name || '-'}</td>
-                  <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
-                  <td className="table-cell font-medium truncate" title={p.company_name}>{p.company_name}</td>
-                  <td className="table-cell">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}>
-                      {getStatusLabel(p.status)}
-                    </span>
-                  </td>
-                  <td className="table-cell text-gray-500 whitespace-nowrap">
-                    {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
-                  </td>
-                  <td className="table-cell whitespace-nowrap">
-                    {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
-                  </td>
-                  <td className="table-cell text-center">
-                    <span className={p.mail_sent ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
-                      {p.mail_sent ? '済' : '未'}
-                    </span>
-                  </td>
-                  <td className="table-cell text-center">
-                    <span className={p.mail_replied ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
-                      {p.mail_replied ? '済' : '未'}
-                    </span>
-                  </td>
-                  <td className="table-cell text-center">
-                    <span className={p.phone_confirmed ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
-                      {p.phone_confirmed ? '済' : '未'}
-                    </span>
-                  </td>
-                  <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>
-                </tr>
-              ))}
+              {projects.map(p => {
+                const urgent = isUrgentUnconfirmed(p);
+                return (
+                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer"
+                    onClick={() => router.push(`/projects/${p.id}`)}>
+                    <td className="table-cell text-gray-500 whitespace-nowrap">
+                      {new Date(p.created_at).toLocaleDateString('ja-JP')}
+                    </td>
+                    <td className="table-cell truncate" title={p.owner_name}>{p.owner_name || '-'}</td>
+                    <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
+                    <td className="table-cell font-medium truncate" title={p.company_name}>{p.company_name}</td>
+                    <td className="table-cell">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}>
+                        {getStatusLabel(p.status)}
+                      </span>
+                    </td>
+                    <td className="table-cell text-gray-500 whitespace-nowrap">
+                      {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
+                    </td>
+                    <td className="table-cell whitespace-nowrap">
+                      {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
+                    </td>
+                    <td className="table-cell text-center">
+                      <span className={p.mail_sent ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
+                        {p.mail_sent ? '済' : '未'}
+                      </span>
+                    </td>
+                    <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
+                      <span className={p.mail_replied ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
+                        {p.mail_replied ? '済' : '未'}
+                      </span>
+                    </td>
+                    <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
+                      <span className={p.phone_confirmed ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
+                        {p.phone_confirmed ? '済' : '未'}
+                      </span>
+                    </td>
+                    <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
