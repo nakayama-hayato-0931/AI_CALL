@@ -207,7 +207,8 @@ const industryRegionFilterSQL = `
  */
 const assignmentFilterSQL = `
   AND (c.id NOT IN (SELECT ca.company_id FROM company_assignments ca)
-       OR c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ?))
+       OR c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ?)
+       OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= NOW()))
 `;
 
 /**

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
 import api from '../utils/api';
+import toast from 'react-hot-toast';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -97,6 +98,74 @@ export default function DashboardPage() {
   const [connectionTable, setConnectionTable] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 稼働時間編集
+  const [showWorkHoursModal, setShowWorkHoursModal] = useState(false);
+  const [workStartTime, setWorkStartTime] = useState('09:30');
+  const [workEndTime, setWorkEndTime] = useState('18:00');
+  const [savingWorkHours, setSavingWorkHours] = useState(false);
+
+  // 時間文字列を分に変換するヘルパー
+  const parseTimeToMinutes = (t) => {
+    const [h, m] = (t || '0:0').split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  // 稼働時間を計算（時間単位）
+  const calcWorkHours = (start, end) => {
+    const diff = parseTimeToMinutes(end) - parseTimeToMinutes(start);
+    return diff > 0 ? (diff / 60) : 0;
+  };
+
+  // 稼働時間保存
+  const handleSaveWorkHours = async () => {
+    setSavingWorkHours(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await api.post('/api/dashboard/work-hours', {
+        date: today, start_time: workStartTime, end_time: workEndTime,
+      });
+      setStats(prev => ({
+        ...prev,
+        manualWorkHours: { start_time: workStartTime, end_time: workEndTime },
+      }));
+      setShowWorkHoursModal(false);
+      toast.success('稼働時間を保存しました');
+    } catch (err) {
+      toast.error('保存に失敗しました');
+    } finally {
+      setSavingWorkHours(false);
+    }
+  };
+
+  // コールデータコピー（値のみ改行区切り）
+  const handleCopyCallData = () => {
+    if (!stats) return;
+    const wh = stats.manualWorkHours;
+    const workValue = wh ? calcWorkHours(wh.start_time, wh.end_time) : (stats.workMinutes || 0);
+    const lines = [workValue, stats.callCount || 0, stats.recallGained || 0,
+      stats.recallDone || 0, stats.effectiveCount || 0, stats.personCount || 0, stats.projectCount || 0];
+    navigator.clipboard.writeText(lines.join('\n'));
+    toast.success('コールデータをコピーしました');
+  };
+
+  // 日報報告用コピー
+  const handleCopyDailyReport = () => {
+    if (!stats) return;
+    const wh = stats.manualWorkHours;
+    const workTimeStr = wh ? `${wh.start_time}〜${wh.end_time}` : `${stats.workMinutes || 0}分`;
+    const lines = [
+      `コール時間：${workTimeStr}`,
+      `コール数：${stats.callCount || 0}`,
+      `リコール取得数：${stats.recallGained || 0}`,
+      `リコール消化数：${stats.recallDone || 0}`,
+      `有効接続数：${stats.effectiveCount || 0}`,
+      `担当接続数：${stats.personCount || 0}`,
+      `案件獲得数：${stats.projectCount || 0}`,
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    toast.success('日報データをコピーしました');
+  };
+
   // AI分析用state
   const [analysisPeriod, setAnalysisPeriod] = useState('daily');
   const [analysisDate, setAnalysisDate] = useState(new Date().toISOString().slice(0, 10));
@@ -163,7 +232,13 @@ export default function DashboardPage() {
         api.get('/api/dashboard/industry-conversion'),
         api.get('/api/dashboard/hourly-industry-connections'),
       ]);
-      setStats(statsRes.data.data);
+      const statsData = statsRes.data.data;
+      setStats(statsData);
+      // 保存済みの稼働時間があればフォームに反映
+      if (statsData.manualWorkHours) {
+        setWorkStartTime(statsData.manualWorkHours.start_time);
+        setWorkEndTime(statsData.manualWorkHours.end_time);
+      }
       setHourlyCalls(hourlyRes.data.data);
       setIndustryData(industryRes.data.data);
       setConnectionTable(connRes.data.data);
@@ -213,15 +288,84 @@ export default function DashboardPage() {
     <Layout>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900 tracking-tight">ダッシュボード</h1>
-        <p className="text-sm text-gray-400 mt-0.5">本日の営業活動サマリー</p>
+        <div className="flex items-center gap-3 mt-0.5">
+          <p className="text-sm text-gray-400">本日の営業活動サマリー</p>
+          <button
+            onClick={handleCopyCallData}
+            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            コールデータ
+          </button>
+          <button
+            onClick={handleCopyDailyReport}
+            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            日報コピー
+          </button>
+        </div>
       </div>
 
       {/* KPIカード */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-        {KPI_CONFIG.map((config) => (
-          <KpiCard key={config.key} config={config} value={stats?.[config.key]} />
-        ))}
+        {KPI_CONFIG.map((config) => {
+          // 稼働時間カードの特別処理
+          if (config.key === 'workMinutes') {
+            const wh = stats?.manualWorkHours;
+            const displayValue = wh
+              ? calcWorkHours(wh.start_time, wh.end_time).toFixed(1)
+              : (stats?.workMinutes ?? 0);
+            const displaySuffix = wh ? '時間' : '分';
+            return (
+              <div key={config.key} onClick={() => setShowWorkHoursModal(true)} className="cursor-pointer">
+                <KpiCard config={{ ...config, suffix: displaySuffix }} value={displayValue} />
+              </div>
+            );
+          }
+          return <KpiCard key={config.key} config={config} value={stats?.[config.key]} />;
+        })}
       </div>
+
+      {/* 稼働時間入力モーダル */}
+      {showWorkHoursModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowWorkHoursModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl p-5 w-80 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-800 mb-4">稼働時間を入力</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
+                <input type="time" value={workStartTime} onChange={(e) => setWorkStartTime(e.target.value)}
+                  className="input text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
+                <input type="time" value={workEndTime} onChange={(e) => setWorkEndTime(e.target.value)}
+                  className="input text-sm" />
+              </div>
+              {workStartTime && workEndTime && (
+                <p className="text-center text-lg font-bold text-blue-600">
+                  {calcWorkHours(workStartTime, workEndTime).toFixed(1)} <span className="text-sm font-medium text-gray-400">時間</span>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setShowWorkHoursModal(false)}
+                className="flex-1 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                キャンセル
+              </button>
+              <button onClick={handleSaveWorkHours} disabled={savingWorkHours}
+                className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+                {savingWorkHours ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI総合分析セクション（管理者/マネージャーのみ） */}
       {isManager && (

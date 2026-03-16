@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
+import useAuth from '../hooks/useAuth';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -31,7 +32,9 @@ const RESULT_STYLES = {
 
 export default function CallListPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const fileInputRef = useRef(null);
+  const isManager = user?.role === 'admin' || user?.role === 'manager';
 
   // クエリパラメータからタブを自動選択
   const queryTab = router.query.tab;
@@ -58,6 +61,17 @@ export default function CallListPage() {
     company_name: '', phone_number: '', industry: '', job_type: '', comment: '', address: '', region: ''
   });
   const [manualSubmitting, setManualSubmitting] = useState(false);
+
+  // 優先オペレーター設定（管理者/マネージャーのみ）
+  const [operators, setOperators] = useState([]);
+  const [selectedOperators, setSelectedOperators] = useState([]);
+  const [graceDays, setGraceDays] = useState(5);
+
+  useEffect(() => {
+    if (isManager) {
+      api.get('/api/calls/operators').then(({ data }) => setOperators(data.data || [])).catch(() => {});
+    }
+  }, [isManager]);
 
   // 除外リスト統計（件数・最終更新日）
   const [exclusionStats, setExclusionStats] = useState({ ng: null, existing_project: null });
@@ -194,6 +208,12 @@ export default function CallListPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+
+      // 優先オペレーター設定
+      if (importTab === 'calllist' && isManager && selectedOperators.length > 0 && graceDays > 0) {
+        formData.append('priority_operator_ids', JSON.stringify(selectedOperators));
+        formData.append('grace_days', String(graceDays));
+      }
 
       let url = '/api/csv/import';
       if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
@@ -388,6 +408,49 @@ export default function CallListPage() {
               </div>
             </div>
           </div>
+
+          {/* 優先オペレーター設定（管理者/マネージャー・架電リストのみ） */}
+          {isManager && importTab === 'calllist' && (
+            <div className="card p-4">
+              <p className="text-xs font-medium text-gray-700 mb-2">優先オペレーター設定（任意）</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {operators.map((op) => (
+                  <label key={op.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all border ${
+                    selectedOperators.includes(op.id)
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedOperators.includes(op.id)}
+                      onChange={(e) => {
+                        setSelectedOperators(prev =>
+                          e.target.checked ? [...prev, op.id] : prev.filter(id => id !== op.id)
+                        );
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                    />
+                    {op.name}
+                  </label>
+                ))}
+                {operators.length === 0 && <span className="text-xs text-gray-400">オペレーターが登録されていません</span>}
+              </div>
+              {selectedOperators.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500">架電猶予日数:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={graceDays}
+                    onChange={(e) => setGraceDays(parseInt(e.target.value) || 5)}
+                    className="input !w-20 !py-1 text-sm text-center"
+                  />
+                  <span className="text-xs text-gray-400">日間は選択されたオペレーターのみピックアップ可能</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-4 items-start">
             {/* ドロップエリア */}

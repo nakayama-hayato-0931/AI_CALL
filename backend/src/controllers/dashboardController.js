@@ -44,6 +44,12 @@ const getDailyStats = async (req, res, next) => {
       );
     }
 
+    // 手動入力の稼働時間を取得
+    const [whRows] = await pool.execute(
+      'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
+      [userId, date]
+    );
+
     return ApiResponse.success(res, {
       date,
       workMinutes,
@@ -53,6 +59,7 @@ const getDailyStats = async (req, res, next) => {
       effectiveCount: s.effective_count,
       personCount: s.person_count,
       projectCount: s.project_count,
+      manualWorkHours: whRows[0] || null,
     });
   } catch (err) {
     next(err);
@@ -175,4 +182,43 @@ const getHourlyIndustryConnections = async (req, res, next) => {
   }
 };
 
-module.exports = { getDailyStats, getHourlyCalls, getIndustryConversion, getHourlyIndustryConnections };
+/**
+ * GET /api/dashboard/work-hours?date=YYYY-MM-DD
+ * 手動入力の稼働時間を取得
+ */
+const getWorkHours = async (req, res, next) => {
+  try {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const [rows] = await pool.execute(
+      'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
+      [req.user.id, date]
+    );
+    return ApiResponse.success(res, rows[0] || null);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/dashboard/work-hours
+ * 稼働時間の開始/終了を保存
+ */
+const saveWorkHours = async (req, res, next) => {
+  try {
+    const { date, start_time, end_time } = req.body;
+    if (!date || !start_time || !end_time) {
+      return ApiResponse.badRequest(res, '日付・開始時間・終了時間は必須です');
+    }
+    await pool.execute(
+      `INSERT INTO work_hours (user_id, date, start_time, end_time)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time)`,
+      [req.user.id, date, start_time, end_time]
+    );
+    return ApiResponse.success(res, { date, start_time, end_time }, '稼働時間を保存しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getDailyStats, getHourlyCalls, getIndustryConversion, getHourlyIndustryConnections, getWorkHours, saveWorkHours };

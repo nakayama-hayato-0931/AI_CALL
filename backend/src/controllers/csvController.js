@@ -209,6 +209,14 @@ const importCompanies = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'ファイルにデータがありません');
     }
 
+    // 優先オペレーター設定（管理者/マネージャーのみ）
+    let priorityOperatorIds = [];
+    let graceDays = 0;
+    if (req.user.role !== 'operator' && req.body.priority_operator_ids) {
+      try { priorityOperatorIds = JSON.parse(req.body.priority_operator_ids); } catch (e) { /* ignore */ }
+      graceDays = parseInt(req.body.grace_days) || 0;
+    }
+
     let insertedCount = 0;
     let skippedCount = 0;
     let duplicateCount = 0;
@@ -277,6 +285,24 @@ const importCompanies = async (req, res, next) => {
             );
           } catch (assignErr) {
             if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
+          }
+        }
+
+        // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
+        if (priorityOperatorIds.length > 0 && graceDays > 0) {
+          await conn.execute(
+            'UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?',
+            [graceDays, insertResult.insertId]
+          );
+          for (const opId of priorityOperatorIds) {
+            try {
+              await conn.execute(
+                'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+                [insertResult.insertId, opId, req.user.id]
+              );
+            } catch (assignErr) {
+              if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
+            }
           }
         }
 
