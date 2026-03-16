@@ -100,7 +100,9 @@ export default function DashboardPage() {
 
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
-  const [kpiScope, setKpiScope] = useState('self');
+  const [kpiScope, setKpiScope] = useState(() =>
+    (user?.role === 'admin' || user?.role === 'manager') ? 'team' : 'self'
+  );
   const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
   const [operators, setOperators] = useState([]);
 
@@ -356,12 +358,12 @@ export default function DashboardPage() {
           </div>
           {isManager && (
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-              {[{ value: 'self', label: '自分' }, { value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
+              {[{ value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
                 <button key={s.value} onClick={() => {
                   setKpiScope(s.value);
                   if (s.value !== 'operator') setKpiTargetUserId(null);
                   if (s.value === 'operator' && operators.length > 0 && !kpiTargetUserId) {
-                    setKpiTargetUserId(operators[0].id);
+                    setKpiTargetUserId(String(operators[0].id));
                   }
                 }}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
@@ -374,7 +376,7 @@ export default function DashboardPage() {
             <select value={kpiTargetUserId || ''} onChange={e => setKpiTargetUserId(e.target.value)}
               className="input text-sm py-1.5">
               {operators.map(op => (
-                <option key={op.id} value={op.id}>{op.name}</option>
+                <option key={op.id} value={String(op.id)}>{op.name}</option>
               ))}
             </select>
           )}
@@ -411,7 +413,7 @@ export default function DashboardPage() {
                   displayValue = stats?.workMinutes ?? 0;
                   displaySuffix = '分';
                 }
-                const canEdit = kpiScope === 'self' || (kpiScope === 'operator' && kpiPeriod === 'daily');
+                const canEdit = !isManager || (kpiScope === 'operator' && kpiPeriod === 'daily');
                 return (
                   <div key={config.key} onClick={canEdit ? () => setShowWorkHoursModal(true) : undefined}
                     className={canEdit ? 'cursor-pointer' : ''}>
@@ -522,7 +524,7 @@ export default function DashboardPage() {
               <button onClick={() => {
                 setAnalysisScope('operator');
                 setAnalysis(null);
-                if (operators.length > 0 && !analysisTargetUserId) setAnalysisTargetUserId(operators[0].id);
+                if (operators.length > 0 && !analysisTargetUserId) setAnalysisTargetUserId(String(operators[0].id));
               }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   analysisScope === 'operator' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
