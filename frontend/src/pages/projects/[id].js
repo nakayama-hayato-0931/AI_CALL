@@ -37,6 +37,10 @@ export default function ProjectDetailPage() {
     status: '', interview_date: '', interview_type: '',
     document_screening: '', mail_sent: false, memo: '',
   });
+  const [companyForm, setCompanyForm] = useState({
+    company_name: '', industry: '', region: '',
+  });
+  const [companyEditing, setCompanyEditing] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
 
   useEffect(() => {
@@ -57,6 +61,11 @@ export default function ProjectDetailPage() {
         mail_sent: !!p.mail_sent,
         memo: p.memo || '',
       });
+      setCompanyForm({
+        company_name: p.company_name || '',
+        industry: p.industry || '',
+        region: p.region || '',
+      });
     } catch (err) {
       toast.error('案件の取得に失敗しました');
     } finally {
@@ -73,6 +82,21 @@ export default function ProjectDetailPage() {
         document_screening: form.document_screening || null,
       });
       toast.success('案件を更新しました');
+      fetchProject();
+    } catch (err) {
+      toast.error('更新に失敗しました');
+    }
+  };
+
+  const handleCompanyUpdate = async () => {
+    try {
+      await api.put(`/api/projects/${id}`, {
+        company_name: companyForm.company_name || null,
+        industry: companyForm.industry || null,
+        region: companyForm.region || null,
+      });
+      toast.success('企業情報を更新しました');
+      setCompanyEditing(false);
       fetchProject();
     } catch (err) {
       toast.error('更新に失敗しました');
@@ -127,7 +151,64 @@ export default function ProjectDetailPage() {
         {/* 左: 企業情報 & 案件編集 */}
         <div className="space-y-5">
           <div className="card p-5">
-            <h2 className="text-sm font-bold text-gray-800 mb-4">企業情報</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-gray-800">企業情報</h2>
+              {!isSales && !companyEditing && (
+                <button onClick={() => setCompanyEditing(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                  編集
+                </button>
+              )}
+            </div>
+            {companyEditing ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="input-label">企業名</label>
+                  <input type="text" value={companyForm.company_name}
+                    onChange={e => setCompanyForm({...companyForm, company_name: e.target.value})}
+                    className="input" />
+                </div>
+                <div className="text-sm">
+                  <span className="text-xs text-gray-400">電話番号</span>
+                  <p className="font-medium text-gray-800 mt-0.5">{project.phone_number || '-'}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="input-label">業種</label>
+                    <input type="text" value={companyForm.industry}
+                      onChange={e => setCompanyForm({...companyForm, industry: e.target.value})}
+                      className="input" />
+                  </div>
+                  <div>
+                    <label className="input-label">地域</label>
+                    <input type="text" value={companyForm.region}
+                      onChange={e => setCompanyForm({...companyForm, region: e.target.value})}
+                      className="input" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div className="text-sm">
+                    <span className="text-xs text-gray-400">担当OP</span>
+                    <p className="font-medium text-gray-800 mt-0.5">{project.owner_name || '-'}</p>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-xs text-gray-400">担当営業</span>
+                    <p className="font-medium text-gray-800 mt-0.5">{project.sales_name || '-'}</p>
+                  </div>
+                </div>
+                <div className="text-sm">
+                  <span className="text-xs text-gray-400">案件化日時</span>
+                  <p className="font-medium text-gray-800 mt-0.5">
+                    {new Date(project.created_at).toLocaleString('ja-JP')}
+                  </p>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={handleCompanyUpdate} className="btn-primary text-sm !py-1.5 flex-1">保存</button>
+                  <button onClick={() => { setCompanyEditing(false); setCompanyForm({ company_name: project.company_name || '', industry: project.industry || '', region: project.region || '' }); }}
+                    className="btn-secondary text-sm !py-1.5 flex-1">キャンセル</button>
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               {[
                 { label: '企業名', value: project.company_name },
@@ -149,6 +230,7 @@ export default function ProjectDetailPage() {
                 </p>
               </div>
             </div>
+            )}
           </div>
 
           {!isSales && (

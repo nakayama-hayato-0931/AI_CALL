@@ -3,6 +3,7 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_OPTIONS = [
+  { value: '', label: '未選択' },
   { value: 'BOSHUCHU', label: '募集中' },
   { value: 'SHORUI_CHU', label: '書類選考中' },
   { value: 'MENSETSU_KAKUTEI', label: '面接確定' },
@@ -20,7 +21,7 @@ const STATUS_OPTIONS = [
 
 export default function ProjectModal({ projectId, onClose }) {
   const [form, setForm] = useState({
-    status: 'BOSHUCHU',
+    status: '',
     job_number: '',
     interview_date: '',
     interview_type: '',

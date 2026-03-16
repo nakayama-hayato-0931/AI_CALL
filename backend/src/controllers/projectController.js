@@ -151,6 +151,10 @@ const updateProject = async (req, res, next) => {
       status,
       memo,
       sales_user_id,
+      // 企業情報の編集フィールド
+      company_name,
+      industry,
+      region,
     } = req.body;
 
     // 営業ロールは sales_user_id のみ更新可能
@@ -209,6 +213,21 @@ const updateProject = async (req, res, next) => {
 
     if (result.affectedRows === 0) {
       return ApiResponse.notFound(res, '案件が見つかりません');
+    }
+
+    // 企業情報の更新（company_name, industry, region）
+    if (company_name || industry !== undefined || region !== undefined) {
+      const [proj] = await pool.execute('SELECT company_id FROM projects WHERE id = ?', [id]);
+      if (proj.length > 0) {
+        await pool.execute(
+          `UPDATE companies SET
+            company_name = COALESCE(?, company_name),
+            industry = COALESCE(?, industry),
+            region = COALESCE(?, region)
+           WHERE id = ?`,
+          [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, proj[0].company_id]
+        );
+      }
     }
 
     logger.info(`案件更新: project=${id}, status=${status}`);
