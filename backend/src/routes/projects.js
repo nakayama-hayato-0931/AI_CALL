@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getProjects, getProjectById, updateProject } = require('../controllers/projectController');
+const { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers } = require('../controllers/projectController');
 const { authenticate } = require('../middlewares/auth');
 
 router.use(authenticate);
@@ -11,8 +11,14 @@ router.use(authenticate);
 // GET /api/projects - 案件一覧
 router.get('/', getProjects);
 
+// GET /api/projects/sales-users - 営業ユーザー一覧
+router.get('/sales-users', getSalesUsers);
+
 // GET /api/projects/:id - 案件詳細
 router.get('/:id', getProjectById);
+
+// GET /api/projects/:id/call-logs - 案件の全通話ログ
+router.get('/:id/call-logs', getCallLogs);
 
 // PUT /api/projects/:id - 案件更新
 router.put('/:id', updateProject);

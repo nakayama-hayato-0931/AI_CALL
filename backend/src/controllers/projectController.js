@@ -64,10 +64,12 @@ const getProjects = async (req, res, next) => {
 
     const [rows] = await pool.execute(
       `SELECT p.*, c.company_name, c.phone_number, c.industry,
-              u.name as owner_name
+              u.name as owner_name,
+              su.name as sales_name
        FROM projects p
        JOIN companies c ON p.company_id = c.id
        LEFT JOIN users u ON p.owner_user_id = u.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
        ${whereStr}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
@@ -98,10 +100,12 @@ const getProjectById = async (req, res, next) => {
 
     const [rows] = await pool.execute(
       `SELECT p.*, c.company_name, c.phone_number, c.industry, c.region, c.address,
-              u.name as owner_name
+              u.name as owner_name,
+              su.name as sales_name
        FROM projects p
        JOIN companies c ON p.company_id = c.id
        LEFT JOIN users u ON p.owner_user_id = u.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
        WHERE p.id = ?`,
       [id]
     );
@@ -135,11 +139,6 @@ const getProjectById = async (req, res, next) => {
  */
 const updateProject = async (req, res, next) => {
   try {
-    // salesは編集不可
-    if (req.user.role === 'sales') {
-      return ApiResponse.forbidden(res, '営業担当者は案件を編集できません');
-    }
-
     const { id } = req.params;
     const {
       interview_date,
@@ -151,7 +150,24 @@ const updateProject = async (req, res, next) => {
       job_number,
       status,
       memo,
+      sales_user_id,
     } = req.body;
+
+    // 営業ロールは sales_user_id のみ更新可能
+    if (req.user.role === 'sales') {
+      if (sales_user_id === undefined) {
+        return ApiResponse.forbidden(res, '営業担当者は担当営業の割り当てのみ変更できます');
+      }
+      const [result] = await pool.execute(
+        'UPDATE projects SET sales_user_id = ? WHERE id = ?',
+        [sales_user_id || null, id]
+      );
+      if (result.affectedRows === 0) {
+        return ApiResponse.notFound(res, '案件が見つかりません');
+      }
+      logger.info(`担当営業割り当て: project=${id}, sales_user_id=${sales_user_id}`);
+      return ApiResponse.success(res, null, '担当営業を更新しました');
+    }
 
     // ステータスバリデーション
     const validStatuses = [
@@ -173,7 +189,8 @@ const updateProject = async (req, res, next) => {
         phone_confirmed = COALESCE(?, phone_confirmed),
         job_number = COALESCE(?, job_number),
         status = COALESCE(?, status),
-        memo = COALESCE(?, memo)
+        memo = COALESCE(?, memo),
+        sales_user_id = COALESCE(?, sales_user_id)
        WHERE id = ?`,
       [
         interview_date || null,
@@ -185,6 +202,7 @@ const updateProject = async (req, res, next) => {
         job_number || null,
         status || null,
         memo || null,
+        sales_user_id !== undefined ? (sales_user_id || null) : null,
         id,
       ]
     );
@@ -201,4 +219,57 @@ const updateProject = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject };
+/**
+ * GET /api/projects/:id/call-logs
+ * 案件の企業への全通話ログ（同じ電話番号の全通話を含む）
+ */
+const getCallLogs = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // 案件の企業情報を取得
+    const [projRows] = await pool.execute(
+      'SELECT p.company_id, c.phone_number FROM projects p JOIN companies c ON p.company_id = c.id WHERE p.id = ?',
+      [id]
+    );
+    if (projRows.length === 0) {
+      return ApiResponse.notFound(res, '案件が見つかりません');
+    }
+
+    const { company_id, phone_number } = projRows[0];
+
+    // 同じ電話番号を持つ全企業への通話を取得
+    // phone_number は +81 形式の場合があるので、同じ company_id + 同じ phone_number の企業をまとめて検索
+    const [calls] = await pool.query(
+      `SELECT cl.id, cl.call_started_at, cl.call_ended_at, cl.result_code, cl.memo, cl.transcript,
+              u.name as operator_name
+       FROM calls cl
+       LEFT JOIN users u ON cl.user_id = u.id
+       LEFT JOIN companies co ON cl.company_id = co.id
+       WHERE co.phone_number = ? OR cl.company_id = ?
+       ORDER BY cl.call_started_at DESC`,
+      [phone_number, company_id]
+    );
+
+    return ApiResponse.success(res, calls);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/projects/sales-users
+ * 営業ロールのユーザー一覧
+ */
+const getSalesUsers = async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT id, name FROM users WHERE role = 'sales' AND is_active = 1 ORDER BY name"
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers };

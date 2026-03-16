@@ -134,7 +134,8 @@ export default function ProjectDetailPage() {
                 { label: '電話番号', value: project.phone_number },
                 { label: '業種', value: project.industry },
                 { label: '地域', value: project.region },
-                { label: '担当者', value: project.owner_name },
+                { label: '担当OP', value: project.owner_name },
+                { label: '担当営業', value: project.sales_name },
               ].map((item) => (
                 <div key={item.label} className="text-sm">
                   <span className="text-xs text-gray-400">{item.label}</span>

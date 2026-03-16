@@ -99,7 +99,8 @@ export default function ProjectsPage() {
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="table-header">企業名</th>
                   <th className="table-header">電話番号</th>
-                  <th className="table-header">担当者</th>
+                  <th className="table-header">担当OP</th>
+                  <th className="table-header">担当営業</th>
                   <th className="table-header">面接日</th>
                   <th className="table-header">メール</th>
                   <th className="table-header">面接形式</th>
@@ -114,6 +115,7 @@ export default function ProjectsPage() {
                     <td className="table-cell font-medium text-gray-900">{p.company_name}</td>
                     <td className="table-cell text-gray-600">{p.phone_number}</td>
                     <td className="table-cell text-gray-500">{p.owner_name || '-'}</td>
+                    <td className="table-cell text-gray-500">{p.sales_name || '-'}</td>
                     <td className="table-cell text-gray-500">
                       {p.interview_date ? new Date(p.interview_date).toLocaleString('ja-JP') : '-'}
                     </td>
