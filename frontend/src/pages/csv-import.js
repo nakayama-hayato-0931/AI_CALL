@@ -52,6 +52,13 @@ export default function CallListPage() {
   const [importResult, setImportResult] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // 手動入力モード
+  const [entryMode, setEntryMode] = useState('file'); // 'file' | 'manual'
+  const [manualForm, setManualForm] = useState({
+    company_name: '', phone_number: '', industry: '', job_type: '', comment: '', address: '', region: ''
+  });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+
   // 除外リスト統計（件数・最終更新日）
   const [exclusionStats, setExclusionStats] = useState({ ng: null, existing_project: null });
   const fetchExclusionStats = async () => {
@@ -209,13 +216,52 @@ export default function CallListPage() {
     }
   };
 
+  // 手動登録ハンドラ
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (importTab === 'calllist') {
+      if (!manualForm.company_name.trim() || !manualForm.phone_number.trim()) {
+        toast.error('企業名と電話番号は必須です');
+        return;
+      }
+    } else {
+      if (!manualForm.company_name.trim() && !manualForm.phone_number.trim()) {
+        toast.error('企業名または電話番号のどちらかは必須です');
+        return;
+      }
+    }
+    setManualSubmitting(true);
+    try {
+      if (importTab === 'calllist') {
+        const { data } = await api.post('/api/csv/manual-company', manualForm);
+        toast.success(data.message || '登録しました');
+        fetchCompanies(1);
+      } else {
+        const listType = importTab === 'ng' ? 'ng' : 'existing_project';
+        const { data } = await api.post('/api/csv/manual-exclusion', {
+          company_name: manualForm.company_name,
+          phone_number: manualForm.phone_number,
+          list_type: listType,
+        });
+        toast.success(data.message || '登録しました');
+        fetchExclusionStats();
+        fetchCompanies(pagination.page || 1);
+      }
+      setManualForm({ company_name: '', phone_number: '', industry: '', job_type: '', comment: '', address: '', region: '' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || '登録に失敗しました');
+    } finally {
+      setManualSubmitting(false);
+    }
+  };
+
   return (
     <Layout>
       {/* ヘッダー */}
       <div className="flex items-end justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">リストインポート</h1>
-          <p className="text-sm text-gray-400 mt-0.5">架電リスト・NGリスト・既存案件リストのインポート</p>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">リスト管理</h1>
+          <p className="text-sm text-gray-400 mt-0.5">架電リスト・NGリスト・既存案件リストのインポート・手動登録</p>
         </div>
         <button
           onClick={() => setShowImport(!showImport)}
@@ -247,7 +293,7 @@ export default function CallListPage() {
             ].map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => { setImportTab(tab.key); setFile(null); setImportResult(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                onClick={() => { setImportTab(tab.key); setFile(null); setImportResult(null); setEntryMode('file'); setManualForm({ company_name: '', phone_number: '', industry: '', job_type: '', comment: '', address: '', region: '' }); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                 className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                   importTab === tab.key
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -259,6 +305,28 @@ export default function CallListPage() {
             ))}
           </div>
 
+          {/* ファイル / 手動 サブ切り替え */}
+          <div className="flex gap-1 bg-gray-50 p-0.5 rounded-md w-fit">
+            {[
+              { key: 'file', label: 'ファイルインポート' },
+              { key: 'manual', label: '手動入力' },
+            ].map((m) => (
+              <button
+                key={m.key}
+                onClick={() => { setEntryMode(m.key); setImportResult(null); }}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                  entryMode === m.key
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {entryMode === 'file' ? (
+          <>
           {/* フォーマット説明 */}
           <div className="card p-4">
             <div className="flex items-start gap-3">
@@ -444,6 +512,126 @@ export default function CallListPage() {
               )}
             </div>
           </div>
+          </>
+          ) : (
+          /* 手動入力フォーム */
+          <div className="card p-5">
+            <form onSubmit={handleManualSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    企業名 {importTab === 'calllist' && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={manualForm.company_name}
+                    onChange={(e) => setManualForm(f => ({ ...f, company_name: e.target.value }))}
+                    className="input"
+                    placeholder="株式会社〇〇"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    電話番号 {importTab === 'calllist' && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={manualForm.phone_number}
+                    onChange={(e) => setManualForm(f => ({ ...f, phone_number: e.target.value }))}
+                    className="input"
+                    placeholder="03-1234-5678"
+                  />
+                </div>
+              </div>
+
+              {importTab === 'calllist' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">業種</label>
+                      <select
+                        value={manualForm.industry}
+                        onChange={(e) => setManualForm(f => ({ ...f, industry: e.target.value }))}
+                        className="input"
+                      >
+                        <option value="">選択してください</option>
+                        <option value="飲食">飲食</option>
+                        <option value="製造">製造</option>
+                        <option value="小売">小売</option>
+                        <option value="IT">IT</option>
+                        <option value="建設">建設</option>
+                        <option value="不動産">不動産</option>
+                        <option value="医療">医療</option>
+                        <option value="サービス">サービス</option>
+                        <option value="運輸">運輸</option>
+                        <option value="教育">教育</option>
+                        <option value="人材">人材</option>
+                        <option value="広告">広告</option>
+                        <option value="金融">金融</option>
+                        <option value="物流">物流</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">職種</label>
+                      <input
+                        type="text"
+                        value={manualForm.job_type}
+                        onChange={(e) => setManualForm(f => ({ ...f, job_type: e.target.value }))}
+                        className="input"
+                        placeholder="営業、事務など"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">住所</label>
+                    <input
+                      type="text"
+                      value={manualForm.address}
+                      onChange={(e) => setManualForm(f => ({ ...f, address: e.target.value }))}
+                      className="input"
+                      placeholder="東京都渋谷区..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">コメント</label>
+                    <input
+                      type="text"
+                      value={manualForm.comment}
+                      onChange={(e) => setManualForm(f => ({ ...f, comment: e.target.value }))}
+                      className="input"
+                      placeholder="備考メモ"
+                    />
+                  </div>
+                </>
+              )}
+
+              {importTab !== 'calllist' && (
+                <p className="text-xs text-gray-400">
+                  {importTab === 'ng' ? 'NGリスト' : '既存案件リスト'}に手動で1件登録します。企業名または電話番号のどちらかは必須です。
+                  架電リストに該当企業がある場合は自動的に除外されます。
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={manualSubmitting}
+                  className="btn-primary !py-2.5 px-6 disabled:opacity-40"
+                >
+                  {manualSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      登録中...
+                    </span>
+                  ) : '登録'}
+                </button>
+              </div>
+            </form>
+          </div>
+          )}
         </div>
       )}
 

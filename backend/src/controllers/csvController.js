@@ -260,11 +260,12 @@ const importCompanies = async (req, res, next) => {
           continue;
         }
 
-        // インサート
+        // インサート（オペレーターの場合はimported_by_user_idを設定）
+        const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
         const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [companyName, phoneNumber, industry, jobType, comment, region, address]
+          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, imported_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [companyName, phoneNumber, industry, jobType, comment, region, address, importedByUserId]
         );
 
         // オペレーター: 自動割り当て
@@ -470,4 +471,153 @@ const getExclusionStats = async (req, res, next) => {
   }
 };
 
-module.exports = { importCompanies, importExclusionList, getExclusionStats };
+/**
+ * POST /api/csv/manual-company
+ * 架電リストに1件手動登録
+ */
+const manualAddCompany = async (req, res, next) => {
+  try {
+    const { company_name, phone_number, industry, job_type, comment, address, region } = req.body;
+
+    if (!company_name || !phone_number) {
+      return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
+    }
+
+    const companyName = normalizeCompanyName(company_name);
+    const phoneNumber = normalizePhoneNumber(phone_number);
+
+    if (!phoneNumber) {
+      return ApiResponse.badRequest(res, '有効な電話番号を入力してください');
+    }
+
+    // 除外リストチェック
+    const [excluded] = await pool.execute(
+      'SELECT id, list_type FROM exclusion_lists WHERE phone_number = ? OR company_name = ?',
+      [phoneNumber, companyName]
+    );
+    if (excluded.length > 0) {
+      const listLabel = excluded[0].list_type === 'ng' ? 'NGリスト' : '既存案件リスト';
+      return ApiResponse.badRequest(res, `${listLabel}に登録済みのため追加できません`);
+    }
+
+    // 重複チェック
+    const [existing] = await pool.execute(
+      'SELECT id FROM companies WHERE phone_number = ? OR company_name = ?',
+      [phoneNumber, companyName]
+    );
+    if (existing.length > 0) {
+      return ApiResponse.badRequest(res, '既に架電リストに登録済みです');
+    }
+
+    const derivedRegion = region || extractRegionFromAddress(address);
+    const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+
+    const [insertResult] = await pool.execute(
+      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, imported_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyName, phoneNumber, industry || null, job_type || null, comment || null, derivedRegion, address || null, importedByUserId]
+    );
+
+    // オペレーター: 自動割り当て
+    if (req.user.role === 'operator') {
+      try {
+        await pool.execute(
+          'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+          [insertResult.insertId, req.user.id, req.user.id]
+        );
+      } catch (assignErr) {
+        if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
+      }
+    }
+
+    logger.info(`手動企業登録: id=${insertResult.insertId}, user=${req.user.id}`);
+    return ApiResponse.created(res, { companyId: insertResult.insertId }, '架電リストに登録しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/csv/manual-exclusion
+ * NG/既存案件リストに1件手動登録
+ */
+const manualAddExclusion = async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const { company_name, phone_number, list_type } = req.body;
+
+    if (!list_type || !['ng', 'existing_project'].includes(list_type)) {
+      return ApiResponse.badRequest(res, 'list_typeはng または existing_project を指定してください');
+    }
+    if (!company_name && !phone_number) {
+      return ApiResponse.badRequest(res, '企業名または電話番号のいずれかは必須です');
+    }
+
+    const companyName = company_name ? normalizeCompanyName(company_name) : null;
+    const phoneNumber = phone_number ? normalizePhoneNumber(phone_number) : null;
+
+    await conn.beginTransaction();
+
+    // 重複チェック
+    let dupWhere = [];
+    let dupParams = [];
+    if (phoneNumber) { dupWhere.push('phone_number = ?'); dupParams.push(phoneNumber); }
+    if (companyName) { dupWhere.push('company_name = ?'); dupParams.push(companyName); }
+    const [dupRows] = await conn.execute(
+      `SELECT id FROM exclusion_lists WHERE list_type = ? AND (${dupWhere.join(' OR ')})`,
+      [list_type, ...dupParams]
+    );
+    if (dupRows.length > 0) {
+      await conn.rollback();
+      const listLabel = list_type === 'ng' ? 'NGリスト' : '既存案件リスト';
+      return ApiResponse.badRequest(res, `${listLabel}に既に登録済みです`);
+    }
+
+    // 除外リストに登録
+    await conn.execute(
+      'INSERT INTO exclusion_lists (company_name, phone_number, list_type) VALUES (?, ?, ?)',
+      [companyName, phoneNumber, list_type]
+    );
+
+    // 架電リストから一致する企業を検索・処理
+    let matchWhere = [];
+    let matchParams = [];
+    if (phoneNumber) { matchWhere.push('phone_number = ?'); matchParams.push(phoneNumber); }
+    if (companyName) { matchWhere.push('company_name = ?'); matchParams.push(companyName); }
+    const [matchedCompanies] = await conn.execute(
+      `SELECT c.id, (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id) as call_count
+       FROM companies c WHERE ${matchWhere.join(' OR ')}`,
+      matchParams
+    );
+
+    let excludedCount = 0;
+    for (const company of matchedCompanies) {
+      // 関連データ削除
+      await conn.execute('DELETE FROM company_assignments WHERE company_id = ?', [company.id]);
+      await conn.execute('DELETE FROM recall_tasks WHERE company_id = ?', [company.id]);
+
+      if (company.call_count > 0) {
+        // 通話履歴あり → 除外フラグ
+        await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [company.id]);
+      } else {
+        // 通話履歴なし → 削除
+        await conn.execute('DELETE FROM companies WHERE id = ?', [company.id]);
+      }
+      excludedCount++;
+    }
+
+    await conn.commit();
+
+    const listLabel = list_type === 'ng' ? 'NGリスト' : '既存案件リスト';
+    logger.info(`手動除外登録: list_type=${list_type}, excluded=${excludedCount}, user=${req.user.id}`);
+    return ApiResponse.created(res, { excludedCompaniesCount: excludedCount },
+      `${listLabel}に登録しました${excludedCount > 0 ? `（架電リストから${excludedCount}件を除外）` : ''}`);
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
+  }
+};
+
+module.exports = { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion };

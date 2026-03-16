@@ -54,8 +54,9 @@ export default function AIEvaluationPage() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  const [mode, setMode] = useState('daily'); // 'daily' | 'range'
+  const [mode, setMode] = useState('daily'); // 'daily' | 'monthly'
   const [date, setDate] = useState(today);
+  const [month, setMonth] = useState(today.slice(0, 7));
   const [dateFrom, setDateFrom] = useState(weekAgo);
   const [dateTo, setDateTo] = useState(today);
   const [calls, setCalls] = useState([]);
@@ -74,6 +75,17 @@ export default function AIEvaluationPage() {
   const [sheetLogs, setSheetLogs] = useState([]);
   const [searched, setSearched] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // 月変更時にdateFrom/dateToを計算
+  useEffect(() => {
+    if (mode === 'monthly' && month) {
+      const [y, m] = month.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const pad = n => String(n).padStart(2, '0');
+      setDateFrom(`${y}-${pad(m)}-01`);
+      setDateTo(`${y}-${pad(m)}-${pad(lastDay)}`);
+    }
+  }, [mode, month]);
 
   // 架電データ取得
   const fetchCalls = async () => {
@@ -115,7 +127,7 @@ export default function AIEvaluationPage() {
     fetchCalls();
     fetchSummary();
     fetchEvalLimit();
-  }, [mode, date, dateFrom, dateTo]);
+  }, [mode, date, month, dateFrom, dateTo]);
 
   // AI一括評価
   const handleBatchEvaluate = async () => {
@@ -179,7 +191,7 @@ export default function AIEvaluationPage() {
           <p className="text-sm text-gray-400 mt-0.5">架電データからAIが自動採点・フィードバック</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {/* 日別/期間 切り替え */}
+          {/* 日別/月間 切り替え */}
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setMode('daily')}
@@ -188,11 +200,11 @@ export default function AIEvaluationPage() {
               }`}
             >日別</button>
             <button
-              onClick={() => setMode('range')}
+              onClick={() => setMode('monthly')}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                mode === 'range' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                mode === 'monthly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
-            >期間</button>
+            >月間</button>
           </div>
 
           {/* 日付ピッカー */}
@@ -204,21 +216,12 @@ export default function AIEvaluationPage() {
               className="input !w-44"
             />
           ) : (
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="input !w-40"
-              />
-              <span className="text-gray-400 text-xs">〜</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="input !w-40"
-              />
-            </div>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="input !w-44"
+            />
           )}
 
           {/* AI一括評価（日別モードのみ） */}

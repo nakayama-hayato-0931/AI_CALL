@@ -64,26 +64,43 @@ export default function CallPage() {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(null);
 
+  // ピックアップモード
+  const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist'
+  const [selectedIndustry, setSelectedIndustry] = useState('');
+
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selectedTargetId;
+
+  // モードパラメータ構築ヘルパー
+  const getModeParams = useCallback(() => {
+    const params = {};
+    if (pickupMode !== 'auto') params.mode = pickupMode;
+    if (pickupMode === 'industry' && selectedIndustry) params.industry = selectedIndustry;
+    return params;
+  }, [pickupMode, selectedIndustry]);
 
   // 架電リスト取得
   const fetchCallList = useCallback(async () => {
     setListLoading(true);
     try {
-      const { data } = await api.get('/api/companies/call-list');
+      const { data } = await api.get('/api/companies/call-list', { params: getModeParams() });
       setTargetList(data.data.targets || []);
     } catch (err) {
       toast.error('架電リストの取得に失敗しました');
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [getModeParams]);
 
-  // 初回読み込み
+  // 初回読み込み + モード変更時
   useEffect(() => {
     fetchCallList();
   }, [fetchCallList]);
+
+  // ピックアップモード/業種変更時にリスト再取得
+  useEffect(() => {
+    fetchCallList();
+  }, [pickupMode, selectedIndustry]);
 
   // ピックアップ: 架電リストページからのロック済み企業を自動読み込み
   useEffect(() => {
@@ -170,9 +187,9 @@ export default function CallPage() {
   const autoAdvanceToNext = async (excludeId = null) => {
     try {
       // 最新リストを取得
-      const { data } = await api.get('/api/companies/call-list', {
-        params: excludeId ? { exclude: excludeId } : {},
-      });
+      const params = { ...getModeParams() };
+      if (excludeId) params.exclude = excludeId;
+      const { data } = await api.get('/api/companies/call-list', { params });
       const targets = data.data.targets || [];
       setTargetList(targets);
 
@@ -220,9 +237,9 @@ export default function CallPage() {
   const autoAdvanceAndCall = async (excludeId = null) => {
     try {
       // 最新リストを取得
-      const { data } = await api.get('/api/companies/call-list', {
-        params: excludeId ? { exclude: excludeId } : {},
-      });
+      const params = { ...getModeParams() };
+      if (excludeId) params.exclude = excludeId;
+      const { data } = await api.get('/api/companies/call-list', { params });
       const targets = data.data.targets || [];
       setTargetList(targets);
 
@@ -381,7 +398,11 @@ export default function CallPage() {
     <Layout>
       <div className="mb-5">
         <h1 className="text-xl font-bold text-gray-900 tracking-tight">架電画面</h1>
-        <p className="text-sm text-gray-400 mt-0.5">自動優先順位による架電対象</p>
+        <p className="text-sm text-gray-400 mt-0.5">
+          {pickupMode === 'auto' ? '自動優先順位による架電対象' :
+           pickupMode === 'industry' ? `業種別ピックアップ${selectedIndustry ? `（${selectedIndustry}）` : ''}` :
+           '自作リストからピックアップ'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
@@ -402,7 +423,36 @@ export default function CallPage() {
               </button>
             </div>
 
-            <div className="space-y-1.5 max-h-[calc(100vh-220px)] overflow-y-auto">
+            {/* ピックアップモード切替 */}
+            <div className="mb-3">
+              <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                {[
+                  { value: 'auto', label: '自動' },
+                  { value: 'industry', label: '業種別' },
+                  { value: 'mylist', label: '自作リスト' },
+                ].map(m => (
+                  <button key={m.value}
+                    onClick={() => { setPickupMode(m.value); }}
+                    className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
+                      pickupMode === m.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>{m.label}</button>
+                ))}
+              </div>
+              {pickupMode === 'industry' && (
+                <select
+                  value={selectedIndustry}
+                  onChange={e => setSelectedIndustry(e.target.value)}
+                  className="input text-xs mt-1.5 w-full"
+                >
+                  <option value="">業種を選択</option>
+                  {['飲食', '製造', '小売', 'IT', '建設', '不動産', '医療', 'サービス', '運輸', '教育', '人材', '広告', '金融', '物流'].map(ind => (
+                    <option key={ind} value={ind}>{ind}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="space-y-1.5 max-h-[calc(100vh-300px)] overflow-y-auto">
               {listLoading && targetList.length === 0 ? (
                 <div className="py-8 text-center">
                   <svg className="animate-spin w-5 h-5 text-gray-400 mx-auto" viewBox="0 0 24 24" fill="none">

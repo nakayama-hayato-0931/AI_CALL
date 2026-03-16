@@ -87,6 +87,7 @@ const ADMIN_NAV = [
   { href: '/admin/users', label: 'ユーザー管理', icon: 'users', adminOnly: true },
   { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
   { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
+  { href: '/call-results', label: '架電結果', icon: 'log' },
   { href: '/admin/projects', label: '案件管理', icon: 'project' },
   { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
   { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
@@ -108,6 +109,7 @@ const getNavItems = (role) => {
     { href: '/recalls', label: 'リコール管理', icon: 'recall' },
     { href: '/projects', label: '案件管理', icon: 'project' },
     { href: '/logs', label: 'AI評価', icon: 'ai' },
+    { href: '/call-results', label: '架電結果', icon: 'log' },
     { href: '/csv-import', label: '架電リスト', icon: 'csv' },
     { href: '/requests', label: 'メッセージ', icon: 'request' },
   ];

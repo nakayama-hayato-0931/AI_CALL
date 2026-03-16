@@ -3,13 +3,19 @@
  */
 const express = require('express');
 const router = express.Router();
-const { startCall, endCall, skipCall, getCalls } = require('../controllers/callController');
+const { startCall, endCall, skipCall, getCalls, updateCall, getOperators } = require('../controllers/callController');
 const { authenticate } = require('../middlewares/auth');
 
 router.use(authenticate);
 
 // GET /api/calls - 通話履歴一覧
 router.get('/', getCalls);
+
+// GET /api/calls/operators - オペレーター一覧（フィルター用）
+router.get('/operators', getOperators);
+
+// PUT /api/calls/:id/update - 通話ステータス・メモ更新
+router.put('/:id/update', updateCall);
 
 // POST /api/calls/start - 架電開始
 router.post('/start', startCall);

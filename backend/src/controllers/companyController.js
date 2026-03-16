@@ -235,6 +235,19 @@ const getNextCallTarget = async (req, res, next) => {
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 8);
 
+    // ピックアップモードフィルタ
+    const mode = req.query.mode || 'auto';
+    const industryParam = req.query.industry || '';
+    let modeFilterSQL = '';
+    let modeFilterParams = [];
+    if (mode === 'industry' && industryParam) {
+      modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
+      modeFilterParams = [industryParam];
+    } else if (mode === 'mylist') {
+      modeFilterSQL = `AND c.imported_by_user_id = ?`;
+      modeFilterParams = [userId];
+    }
+
     // 1. リコール期限
     const [recallRows] = await pool.execute(
       `SELECT rt.id as recall_task_id, c.*,
@@ -245,9 +258,10 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT 1`,
-      [userId, now]
+      [userId, now, ...modeFilterParams]
     );
     if (recallRows.length > 0) {
       return ApiResponse.success(res, { target: recallRows[0], reason: 'recall_due' });
@@ -268,9 +282,10 @@ const getNextCallTarget = async (req, res, next) => {
          ${lastResultExclusionSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, currentTime, userId]
+      [userId, currentTime, userId, ...modeFilterParams]
     );
     if (goldenRows.length > 0) {
       return ApiResponse.success(res, { target: goldenRows[0], reason: 'golden_time' });
@@ -286,9 +301,10 @@ const getNextCallTarget = async (req, res, next) => {
          ${lastResultExclusionSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT 1`,
-      [userId, userId]
+      [userId, userId, ...modeFilterParams]
     );
     if (untouchedRows.length > 0) {
       return ApiResponse.success(res, { target: untouchedRows[0], reason: 'untouched' });
@@ -307,9 +323,10 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, userId]
+      [userId, userId, ...modeFilterParams]
     );
     if (noAnswerRows.length > 0) {
       return ApiResponse.success(res, { target: noAnswerRows[0], reason: 'retry_no_answer' });
@@ -329,9 +346,10 @@ const getNextCallTarget = async (req, res, next) => {
          AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, userId, userId]
+      [userId, userId, userId, ...modeFilterParams]
     );
     if (ngRetryRows.length > 0) {
       return ApiResponse.success(res, { target: ngRetryRows[0], reason: 'retry_ng' });
@@ -355,6 +373,19 @@ const getCallList = async (req, res, next) => {
     const currentTime = now.toTimeString().slice(0, 8);
     const LIST_SIZE = 10;
 
+    // ピックアップモードフィルタ
+    const mode = req.query.mode || 'auto';
+    const industryParam = req.query.industry || '';
+    let modeFilterSQL = '';
+    let modeFilterParams = [];
+    if (mode === 'industry' && industryParam) {
+      modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
+      modeFilterParams = [industryParam];
+    } else if (mode === 'mylist') {
+      modeFilterSQL = `AND c.imported_by_user_id = ?`;
+      modeFilterParams = [userId];
+    }
+
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
     const excludeParam = req.query.exclude;
@@ -376,9 +407,10 @@ const getCallList = async (req, res, next) => {
          AND c.exclusion_flag = 0
          ${lockFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
-      [userId, now, userId, LIST_SIZE]
+      [userId, now, userId, ...modeFilterParams, LIST_SIZE]
     );
     targets.push(...recallRows);
     excludeIds = targets.map(t => t.id);
@@ -403,10 +435,11 @@ const getCallList = async (req, res, next) => {
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, ...excludeIds, remaining2]
+      [userId, currentTime, userId, userId, ...modeFilterParams, ...excludeIds, remaining2]
     );
     targets.push(...goldenRows);
     excludeIds = targets.map(t => t.id);
@@ -428,10 +461,11 @@ const getCallList = async (req, res, next) => {
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...excludeIds, remaining3]
+      [userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);
@@ -455,10 +489,11 @@ const getCallList = async (req, res, next) => {
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...excludeIds, remaining4]
+      [userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining4]
     );
     targets.push(...retryRows);
     excludeIds = targets.map(t => t.id);
@@ -483,10 +518,11 @@ const getCallList = async (req, res, next) => {
          ${lockFilterSQL}
          ${assignmentFilterSQL}
          ${industryRegionFilterSQL}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...excludeIds, remaining5]
+      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining5]
     );
     targets.push(...ngRetryRows);
 

@@ -204,7 +204,7 @@ const getCalls = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { user_id, company_id, result_code, date_from, date_to } = req.query;
+    const { user_id, company_id, result_code, date_from, date_to, search } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -228,6 +228,11 @@ const getCalls = async (req, res, next) => {
     if (date_to) {
       whereClauses.push('c.call_started_at <= ?');
       params.push(date_to);
+    }
+    if (search) {
+      whereClauses.push('(co.company_name LIKE ? OR co.phone_number LIKE ? OR c.memo LIKE ?)');
+      const s = `%${search}%`;
+      params.push(s, s, s);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -262,4 +267,66 @@ const getCalls = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, skipCall, getCalls };
+/**
+ * PUT /api/calls/:id/update
+ * 自分の通話のステータス・メモを更新
+ */
+const updateCall = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { result_code, memo } = req.body;
+    const userId = req.user.id;
+
+    // 自分の通話のみ編集可能
+    const [rows] = await pool.execute('SELECT id, user_id FROM calls WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return ApiResponse.notFound(res, '通話が見つかりません');
+    }
+    if (rows[0].user_id !== userId) {
+      return ApiResponse.forbidden(res, '自分の通話のみ編集できます');
+    }
+
+    const updates = [];
+    const params = [];
+    if (result_code !== undefined) {
+      const validCodes = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
+      if (!validCodes.includes(result_code)) {
+        return ApiResponse.badRequest(res, '有効な結果コードを指定してください');
+      }
+      updates.push('result_code = ?');
+      params.push(result_code);
+    }
+    if (memo !== undefined) {
+      updates.push('memo = ?');
+      params.push(memo || null);
+    }
+
+    if (updates.length === 0) {
+      return ApiResponse.badRequest(res, '更新する項目がありません');
+    }
+
+    params.push(id);
+    await pool.execute(`UPDATE calls SET ${updates.join(', ')} WHERE id = ?`, params);
+
+    return ApiResponse.success(res, null, '通話情報を更新しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/calls/operators
+ * オペレーター一覧（フィルター用）
+ */
+const getOperators = async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 ORDER BY name"
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { startCall, endCall, skipCall, getCalls, updateCall, getOperators };
