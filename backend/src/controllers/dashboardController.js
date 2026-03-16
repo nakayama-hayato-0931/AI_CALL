@@ -4,18 +4,46 @@
  */
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
+const { getDateRange } = require('../utils/periodHelper');
 
 /**
  * GET /api/dashboard/stats
- * 当日のKPI統計取得
+ * KPI統計取得（期間・スコープ対応）
+ * ?date=YYYY-MM-DD&period=daily|weekly|monthly|cumulative&scope=self|team|operator&target_user_id=N
  */
 const getDailyStats = async (req, res, next) => {
   try {
-    const userId = req.query.user_id || req.user.id;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const period = req.query.period || 'daily';
+    const scope = req.query.scope || 'self';
+    const targetUserId = req.query.target_user_id;
+    const userRole = req.user.role;
+
+    // scope=team/operator は manager以上のみ
+    if ((scope === 'team' || scope === 'operator') && userRole !== 'admin' && userRole !== 'manager') {
+      return ApiResponse.forbidden(res, '権限がありません');
+    }
+
+    // 日付範囲計算
+    const range = getDateRange(period, date);
+    const dateFrom = range.dateFrom;
+    const dateTo = range.dateTo;
+
+    // ユーザー条件
+    let userCondition = '';
+    let userParams = [];
+    if (scope === 'team') {
+      // 全ユーザー → user_id条件なし
+    } else if (scope === 'operator' && targetUserId) {
+      userCondition = 'AND c.user_id = ?';
+      userParams = [targetUserId];
+    } else {
+      userCondition = 'AND c.user_id = ?';
+      userParams = [req.user.id];
+    }
 
     // 1クエリで全KPIを集計 (SKIPを除外)
-    const [statsRows] = await pool.execute(
+    const [statsRows] = await pool.query(
       `SELECT
          MIN(call_started_at) as first_call,
          MAX(COALESCE(call_ended_at, call_started_at)) as last_call,
@@ -24,16 +52,30 @@ const getDailyStats = async (req, res, next) => {
          SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_count,
          SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_count,
          SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) as project_count
-       FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'`,
-      [userId, date]
+       FROM calls c
+       WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+         ${userCondition}`,
+      [dateFrom, dateTo, ...userParams]
     );
 
-    // リコール消化数 (別テーブル)
-    const [recallDoneRows] = await pool.execute(
+    // リコール消化数
+    let recallUserCondition = '';
+    let recallUserParams = [];
+    if (scope === 'team') {
+      // 全ユーザー
+    } else if (scope === 'operator' && targetUserId) {
+      recallUserCondition = 'AND user_id = ?';
+      recallUserParams = [targetUserId];
+    } else {
+      recallUserCondition = 'AND user_id = ?';
+      recallUserParams = [req.user.id];
+    }
+
+    const [recallDoneRows] = await pool.query(
       `SELECT COUNT(*) as recall_done FROM recall_tasks
-       WHERE user_id = ? AND DATE(updated_at) = ? AND status = 'completed'`,
-      [userId, date]
+       WHERE DATE(updated_at) BETWEEN ? AND ? AND status = 'completed'
+         ${recallUserCondition}`,
+      [dateFrom, dateTo, ...recallUserParams]
     );
 
     const s = statsRows[0];
@@ -44,14 +86,61 @@ const getDailyStats = async (req, res, next) => {
       );
     }
 
-    // 手動入力の稼働時間を取得
-    const [whRows] = await pool.execute(
-      'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
-      [userId, date]
-    );
+    // 手動入力の稼働時間
+    let manualWorkHours = null;
+    if (scope === 'team') {
+      // チーム全体: 全員のwork_hoursを集計（期間範囲内）
+      const [whTeamRows] = await pool.query(
+        `SELECT
+           SUM(
+             TIMESTAMPDIFF(MINUTE,
+               STR_TO_DATE(start_time, '%H:%i'),
+               STR_TO_DATE(end_time, '%H:%i')
+             )
+           ) as total_minutes,
+           COUNT(*) as entry_count
+         FROM work_hours
+         WHERE date BETWEEN ? AND ?`,
+        [dateFrom, dateTo]
+      );
+      if (whTeamRows[0] && whTeamRows[0].total_minutes) {
+        manualWorkHours = { totalMinutes: whTeamRows[0].total_minutes, entryCount: whTeamRows[0].entry_count };
+      }
+    } else {
+      const whUserId = (scope === 'operator' && targetUserId) ? targetUserId : req.user.id;
+      if (period === 'daily') {
+        const [whRows] = await pool.execute(
+          'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
+          [whUserId, date]
+        );
+        manualWorkHours = whRows[0] || null;
+      } else {
+        // 期間範囲の合計
+        const [whRows] = await pool.query(
+          `SELECT
+             SUM(
+               TIMESTAMPDIFF(MINUTE,
+                 STR_TO_DATE(start_time, '%H:%i'),
+                 STR_TO_DATE(end_time, '%H:%i')
+               )
+             ) as total_minutes,
+             COUNT(*) as entry_count
+           FROM work_hours
+           WHERE user_id = ? AND date BETWEEN ? AND ?`,
+          [whUserId, dateFrom, dateTo]
+        );
+        if (whRows[0] && whRows[0].total_minutes) {
+          manualWorkHours = { totalMinutes: whRows[0].total_minutes, entryCount: whRows[0].entry_count };
+        }
+      }
+    }
 
     return ApiResponse.success(res, {
       date,
+      period,
+      scope,
+      dateFrom,
+      dateTo,
       workMinutes,
       callCount: s.call_count,
       recallGained: s.recall_gained,
@@ -59,7 +148,7 @@ const getDailyStats = async (req, res, next) => {
       effectiveCount: s.effective_count,
       personCount: s.person_count,
       projectCount: s.project_count,
-      manualWorkHours: whRows[0] || null,
+      manualWorkHours,
     });
   } catch (err) {
     next(err);

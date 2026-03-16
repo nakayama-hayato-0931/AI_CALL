@@ -98,6 +98,12 @@ export default function DashboardPage() {
   const [connectionTable, setConnectionTable] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // KPI期間・スコープ切替
+  const [kpiPeriod, setKpiPeriod] = useState('daily');
+  const [kpiScope, setKpiScope] = useState('self');
+  const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
+  const [operators, setOperators] = useState([]);
+
   // 稼働時間編集
   const [showWorkHoursModal, setShowWorkHoursModal] = useState(false);
   const [workStartTime, setWorkStartTime] = useState('09:30');
@@ -167,6 +173,8 @@ export default function DashboardPage() {
   };
 
   // AI分析用state
+  const [analysisScope, setAnalysisScope] = useState('team');
+  const [analysisTargetUserId, setAnalysisTargetUserId] = useState(null);
   const [analysisPeriod, setAnalysisPeriod] = useState('daily');
   const [analysisDate, setAnalysisDate] = useState(new Date().toISOString().slice(0, 10));
   const [analysisMonth, setAnalysisMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -220,32 +228,53 @@ export default function DashboardPage() {
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
 
+  // 初回: オペレーター一覧取得 + ダッシュボードデータ
   useEffect(() => {
-    fetchDashboardData();
+    if (isManager) {
+      api.get('/api/calls/operators').then(res => {
+        setOperators(res.data.data || []);
+      }).catch(() => {});
+    }
+    fetchChartData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  // KPI期間・スコープ変更時にstats再取得
+  useEffect(() => {
+    fetchStats();
+  }, [kpiPeriod, kpiScope, kpiTargetUserId]);
+
+  const fetchStats = async () => {
     try {
-      const [statsRes, hourlyRes, industryRes, connRes] = await Promise.all([
-        api.get('/api/dashboard/stats'),
+      const params = { period: kpiPeriod, scope: kpiScope };
+      if (kpiScope === 'operator' && kpiTargetUserId) {
+        params.target_user_id = kpiTargetUserId;
+      }
+      const res = await api.get('/api/dashboard/stats', { params });
+      const statsData = res.data.data;
+      setStats(statsData);
+      if (statsData.manualWorkHours?.start_time) {
+        setWorkStartTime(statsData.manualWorkHours.start_time);
+        setWorkEndTime(statsData.manualWorkHours.end_time);
+      }
+    } catch (err) {
+      console.error('KPIデータ取得失敗:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchChartData = async () => {
+    try {
+      const [hourlyRes, industryRes, connRes] = await Promise.all([
         api.get('/api/dashboard/hourly-calls'),
         api.get('/api/dashboard/industry-conversion'),
         api.get('/api/dashboard/hourly-industry-connections'),
       ]);
-      const statsData = statsRes.data.data;
-      setStats(statsData);
-      // 保存済みの稼働時間があればフォームに反映
-      if (statsData.manualWorkHours) {
-        setWorkStartTime(statsData.manualWorkHours.start_time);
-        setWorkEndTime(statsData.manualWorkHours.end_time);
-      }
       setHourlyCalls(hourlyRes.data.data);
       setIndustryData(industryRes.data.data);
       setConnectionTable(connRes.data.data);
     } catch (err) {
-      console.error('ダッシュボードデータ取得失敗:', err);
-    } finally {
-      setLoading(false);
+      console.error('チャートデータ取得失敗:', err);
     }
   };
 
@@ -254,12 +283,18 @@ export default function DashboardPage() {
       setAnalysisLoading(true);
       setAnalysis(null);
       const range = calcAnalysisRange();
-      const { data } = await api.post('/api/ai/analysis/team', {
-        period: analysisPeriod,
-        ...range,
-      });
-      if (data.success) {
-        setAnalysis(data.data);
+
+      if (analysisScope === 'team') {
+        const { data } = await api.post('/api/ai/analysis/team', {
+          period: analysisPeriod,
+          ...range,
+        });
+        if (data.success) setAnalysis(data.data);
+      } else if (analysisTargetUserId) {
+        const { data } = await api.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
+          params: { period: analysisPeriod, ...range },
+        });
+        if (data.success) setAnalysis(data.data);
       }
     } catch (err) {
       console.error('AI分析エラー:', err);
@@ -287,49 +322,147 @@ export default function DashboardPage() {
   return (
     <Layout>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900 tracking-tight">ダッシュボード</h1>
-        <div className="flex items-center gap-3 mt-0.5">
-          <p className="text-sm text-gray-400">本日の営業活動サマリー</p>
-          <button
-            onClick={handleCopyCallData}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-            コールデータ
-          </button>
-          <button
-            onClick={handleCopyDailyReport}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-            日報コピー
-          </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">ダッシュボード</h1>
+            <div className="flex items-center gap-3 mt-0.5">
+              <p className="text-sm text-gray-400">営業活動サマリー</p>
+              <button onClick={handleCopyCallData}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+                コールデータ
+              </button>
+              <button onClick={handleCopyDailyReport}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+                日報コピー
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* 期間トグル + スコープトグル */}
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            {PERIODS.map(p => (
+              <button key={p.value} onClick={() => setKpiPeriod(p.value)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  kpiPeriod === p.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>{p.label}</button>
+            ))}
+          </div>
+          {isManager && (
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+              {[{ value: 'self', label: '自分' }, { value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
+                <button key={s.value} onClick={() => {
+                  setKpiScope(s.value);
+                  if (s.value !== 'operator') setKpiTargetUserId(null);
+                  if (s.value === 'operator' && operators.length > 0 && !kpiTargetUserId) {
+                    setKpiTargetUserId(operators[0].id);
+                  }
+                }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    kpiScope === s.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}>{s.label}</button>
+              ))}
+            </div>
+          )}
+          {isManager && kpiScope === 'operator' && (
+            <select value={kpiTargetUserId || ''} onChange={e => setKpiTargetUserId(e.target.value)}
+              className="input text-sm py-1.5">
+              {operators.map(op => (
+                <option key={op.id} value={op.id}>{op.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
       {/* KPIカード */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-        {KPI_CONFIG.map((config) => {
-          // 稼働時間カードの特別処理
-          if (config.key === 'workMinutes') {
-            const wh = stats?.manualWorkHours;
-            const displayValue = wh
-              ? calcWorkHours(wh.start_time, wh.end_time).toFixed(1)
-              : (stats?.workMinutes ?? 0);
-            const displaySuffix = wh ? '時間' : '分';
-            return (
-              <div key={config.key} onClick={() => setShowWorkHoursModal(true)} className="cursor-pointer">
-                <KpiCard config={{ ...config, suffix: displaySuffix }} value={displayValue} />
-              </div>
-            );
-          }
-          return <KpiCard key={config.key} config={config} value={stats?.[config.key]} />;
-        })}
-      </div>
+      {(() => {
+        // 稼働時間計算（/h率用）
+        const wh = stats?.manualWorkHours;
+        let totalWorkHours = 0;
+        if (wh?.totalMinutes) {
+          totalWorkHours = wh.totalMinutes / 60;
+        } else if (wh?.start_time && wh?.end_time) {
+          totalWorkHours = calcWorkHours(wh.start_time, wh.end_time);
+        } else {
+          totalWorkHours = (stats?.workMinutes || 0) / 60;
+        }
+        const perHour = (val) => totalWorkHours > 0 ? (val / totalWorkHours).toFixed(1) : '-';
+
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+            {KPI_CONFIG.map((config) => {
+              // 稼働時間カードの特別処理
+              if (config.key === 'workMinutes') {
+                let displayValue, displaySuffix;
+                if (wh?.totalMinutes) {
+                  displayValue = (wh.totalMinutes / 60).toFixed(1);
+                  displaySuffix = '時間';
+                } else if (wh?.start_time && wh?.end_time) {
+                  displayValue = calcWorkHours(wh.start_time, wh.end_time).toFixed(1);
+                  displaySuffix = '時間';
+                } else {
+                  displayValue = stats?.workMinutes ?? 0;
+                  displaySuffix = '分';
+                }
+                const canEdit = kpiScope === 'self' || (kpiScope === 'operator' && kpiPeriod === 'daily');
+                return (
+                  <div key={config.key} onClick={canEdit ? () => setShowWorkHoursModal(true) : undefined}
+                    className={canEdit ? 'cursor-pointer' : ''}>
+                    <KpiCard config={{ ...config, suffix: displaySuffix }} value={displayValue} />
+                  </div>
+                );
+              }
+              // 案件獲得の獲得効率表示
+              if (config.key === 'projectCount') {
+                const val = stats?.[config.key] || 0;
+                const efficiency = val > 0 ? (totalWorkHours / val).toFixed(1) : '-';
+                return (
+                  <div key={config.key} className="card p-4 animate-fade-in">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
+                        <p className="text-2xl font-bold text-gray-900 tracking-tight">
+                          {val}<span className="text-xs font-medium text-gray-400 ml-0.5">{config.suffix}</span>
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{efficiency}h/件</p>
+                      </div>
+                      <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
+                        <KpiIcon type={config.gradient} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              // その他: /h率付き
+              const val = stats?.[config.key] || 0;
+              const rate = perHour(val);
+              return (
+                <div key={config.key} className="card p-4 animate-fade-in">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
+                      <p className="text-2xl font-bold text-gray-900 tracking-tight">
+                        {val}<span className="text-xs font-medium text-gray-400 ml-0.5">{config.suffix}</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{rate}/h</p>
+                    </div>
+                    <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
+                      <KpiIcon type={config.gradient} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* 稼働時間入力モーダル */}
       {showWorkHoursModal && (
@@ -373,11 +506,37 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-bold text-gray-800">AI総合分析</h2>
-              <p className="text-[11px] text-gray-400 mt-0.5">チーム全体のパフォーマンスをAIが分析</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {analysisScope === 'team' ? 'チーム全体' : operators.find(o => String(o.id) === String(analysisTargetUserId))?.name || 'オペレーター'}のパフォーマンスをAIが分析
+              </p>
             </div>
           </div>
 
-          {/* 期間セレクター + 実行ボタン */}
+          {/* スコープ切替 + 期間セレクター + 実行ボタン */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+              <button onClick={() => { setAnalysisScope('team'); setAnalysis(null); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  analysisScope === 'team' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>全体</button>
+              <button onClick={() => {
+                setAnalysisScope('operator');
+                setAnalysis(null);
+                if (operators.length > 0 && !analysisTargetUserId) setAnalysisTargetUserId(operators[0].id);
+              }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  analysisScope === 'operator' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>オペレーター別</button>
+            </div>
+            {analysisScope === 'operator' && (
+              <select value={analysisTargetUserId || ''} onChange={e => { setAnalysisTargetUserId(e.target.value); setAnalysis(null); }}
+                className="input text-sm py-1.5">
+                {operators.map(op => (
+                  <option key={op.id} value={op.id}>{op.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               {PERIODS.map(p => (
