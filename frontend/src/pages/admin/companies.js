@@ -63,6 +63,7 @@ export default function AdminCompanies() {
   const [newTimeRule, setNewTimeRule] = useState({
     industry_name: '飲食', start_time: '09:00', end_time: '11:00', priority_weight: 20
   });
+  const [editingTimeRule, setEditingTimeRule] = useState(null); // { id, industry_name, start_time, end_time, priority_weight }
 
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
@@ -295,6 +296,14 @@ export default function AdminCompanies() {
       const { data } = await api.delete(`/api/admin/time-rules/${id}`);
       if (data.success) { toast.success('削除しました'); fetchTimeRules(); }
     } catch (err) { toast.error('削除に失敗しました'); }
+  };
+
+  const handleUpdateTimeRule = async () => {
+    if (!editingTimeRule) return;
+    try {
+      const { data } = await api.put(`/api/admin/time-rules/${editingTimeRule.id}`, editingTimeRule);
+      if (data.success) { toast.success('更新しました'); setEditingTimeRule(null); fetchTimeRules(); }
+    } catch (err) { toast.error('更新に失敗しました'); }
   };
 
   // 時間帯×業種マトリクス用: ルールからセルデータを生成
@@ -590,13 +599,40 @@ export default function AdminCompanies() {
                     <div key={industry}>
                       <p className="text-xs font-bold text-gray-600 mb-2">{industry}</p>
                       <div className="flex flex-wrap gap-2">
-                        {rules.map(r => (
-                          <span key={r.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+                        {rules.map(r => editingTimeRule && editingTimeRule.id === r.id ? (
+                          <span key={r.id} className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-300 rounded-lg text-xs">
+                            <select value={editingTimeRule.industry_name}
+                              onChange={e => setEditingTimeRule(p => ({ ...p, industry_name: e.target.value }))}
+                              className="text-xs border border-gray-200 rounded px-1 py-0.5">
+                              {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                            </select>
+                            <input type="time" value={editingTimeRule.start_time} min="08:00" max="21:00"
+                              onChange={e => setEditingTimeRule(p => ({ ...p, start_time: e.target.value }))}
+                              className="text-xs border border-gray-200 rounded px-1 py-0.5 w-[90px]" />
+                            <span className="text-gray-400">〜</span>
+                            <input type="time" value={editingTimeRule.end_time} min="08:00" max="21:00"
+                              onChange={e => setEditingTimeRule(p => ({ ...p, end_time: e.target.value }))}
+                              className="text-xs border border-gray-200 rounded px-1 py-0.5 w-[90px]" />
+                            <input type="number" value={editingTimeRule.priority_weight} min="1" max="100"
+                              onChange={e => setEditingTimeRule(p => ({ ...p, priority_weight: parseInt(e.target.value) || 10 }))}
+                              className="text-xs border border-gray-200 rounded px-1 py-0.5 w-12 text-center" />
+                            <button onClick={handleUpdateTimeRule}
+                              className="text-blue-600 hover:text-blue-800 font-bold transition-colors">✓</button>
+                            <button onClick={() => setEditingTimeRule(null)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors">&times;</button>
+                          </span>
+                        ) : (
+                          <span key={r.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs cursor-pointer hover:bg-gray-100 transition-colors"
+                            onClick={() => setEditingTimeRule({
+                              id: r.id, industry_name: r.industry_name,
+                              start_time: r.start_time.slice(0,5), end_time: r.end_time.slice(0,5),
+                              priority_weight: r.priority_weight,
+                            })}>
                             <span className="text-gray-700">{r.start_time.slice(0,5)} 〜 {r.end_time.slice(0,5)}</span>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] ${getWeightStyle(r.priority_weight)}`}>
                               {r.priority_weight}
                             </span>
-                            <button onClick={() => handleDeleteTimeRule(r.id)}
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteTimeRule(r.id); }}
                               className="text-red-400 hover:text-red-600 transition-colors">&times;</button>
                           </span>
                         ))}

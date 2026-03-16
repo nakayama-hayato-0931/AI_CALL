@@ -10,7 +10,7 @@ const {
   getCompanies, assignCompany, unassignCompany,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
-  getTimeRules, addTimeRule, deleteTimeRule,
+  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const { authenticate, requireAdmin, requireManager } = require('../middlewares/auth');
@@ -44,6 +44,7 @@ router.delete('/exclude-words/:id', requireManager, deleteExcludeWord);
 // 架電時間ルール (admin + manager)
 router.get('/time-rules', requireManager, getTimeRules);
 router.post('/time-rules', requireManager, addTimeRule);
+router.put('/time-rules/:id', requireManager, updateTimeRule);
 router.delete('/time-rules/:id', requireManager, deleteTimeRule);
 
 // 申請管理 (admin + manager)

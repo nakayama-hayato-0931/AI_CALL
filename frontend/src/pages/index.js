@@ -403,9 +403,13 @@ export default function DashboardPage() {
               // 稼働時間カードの特別処理
               if (config.key === 'workMinutes') {
                 let displayValue, displaySuffix;
+                let avgDaily = null;
                 if (wh?.totalMinutes) {
                   displayValue = (wh.totalMinutes / 60).toFixed(1);
                   displaySuffix = '時間';
+                  if (wh.entryCount && wh.entryCount > 0) {
+                    avgDaily = (wh.totalMinutes / 60 / wh.entryCount).toFixed(1);
+                  }
                 } else if (wh?.start_time && wh?.end_time) {
                   displayValue = calcWorkHours(wh.start_time, wh.end_time).toFixed(1);
                   displaySuffix = '時間';
@@ -417,7 +421,23 @@ export default function DashboardPage() {
                 return (
                   <div key={config.key} onClick={canEdit ? () => setShowWorkHoursModal(true) : undefined}
                     className={canEdit ? 'cursor-pointer' : ''}>
-                    <KpiCard config={{ ...config, suffix: displaySuffix }} value={displayValue} />
+                    <div className="card p-4 animate-fade-in">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
+                          <p className="text-2xl font-bold text-gray-900 tracking-tight">
+                            {displayValue}
+                            <span className="text-xs font-medium text-gray-400 ml-0.5">{displaySuffix}</span>
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {avgDaily ? `平均 ${avgDaily}h/日` : wh?.start_time ? `${wh.start_time}〜${wh.end_time}` : '\u00A0'}
+                          </p>
+                        </div>
+                        <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
+                          <KpiIcon type={config.gradient} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 );
               }

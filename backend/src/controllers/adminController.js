@@ -514,6 +514,31 @@ const addTimeRule = async (req, res, next) => {
 };
 
 /**
+ * PUT /api/admin/time-rules/:id
+ * ゴールデンタイムルール更新
+ */
+const updateTimeRule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { industry_name, start_time, end_time, priority_weight } = req.body;
+    if (!industry_name || !start_time || !end_time) {
+      return ApiResponse.badRequest(res, '業種・開始時間・終了時間は必須です');
+    }
+    const [result] = await pool.execute(
+      'UPDATE industry_time_rules SET industry_name = ?, start_time = ?, end_time = ?, priority_weight = ? WHERE id = ?',
+      [industry_name, start_time, end_time, priority_weight || 10, id]
+    );
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, 'ルールが見つかりません');
+    }
+    logger.info(`架電時間ルール更新: ID ${id} → ${industry_name} ${start_time}-${end_time} (weight: ${priority_weight})`);
+    return ApiResponse.success(res, null, '架電時間ルールを更新しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * DELETE /api/admin/time-rules/:id
  * ゴールデンタイムルール削除
  */
@@ -548,5 +573,6 @@ module.exports = {
   deleteExcludeWord,
   getTimeRules,
   addTimeRule,
+  updateTimeRule,
   deleteTimeRule,
 };
