@@ -8,6 +8,15 @@ import Layout from '../../components/common/Layout';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
+const RESULT_BADGES = {
+  NO_ANSWER: { bg: 'bg-gray-100', text: 'text-gray-600', label: '不通' },
+  NG: { bg: 'bg-red-50', text: 'text-red-600', label: 'NG' },
+  RECALL: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'リコール' },
+  INTERESTED: { bg: 'bg-blue-50', text: 'text-blue-700', label: '興味あり' },
+  PROJECT: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: '案件化' },
+  SKIP: { bg: 'bg-gray-50', text: 'text-gray-400', label: 'SKIP' },
+};
+
 const STATUS_OPTIONS = [
   { value: '', label: 'すべて' },
   { value: 'NEW', label: '新規' },
@@ -35,6 +44,35 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [pagination, setPagination] = useState({});
   const [loading, setLoading] = useState(true);
+
+  // 通話ログモーダル
+  const [callLogModal, setCallLogModal] = useState(null);
+  const [callLogs, setCallLogs] = useState([]);
+  const [callLogsLoading, setCallLogsLoading] = useState(false);
+  const [expandedTranscript, setExpandedTranscript] = useState(null);
+
+  const openCallLogs = async (e, project) => {
+    e.stopPropagation();
+    setCallLogModal({ projectId: project.id, companyName: project.company_name });
+    setCallLogsLoading(true);
+    setExpandedTranscript(null);
+    try {
+      const { data } = await api.get(`/api/projects/${project.id}/call-logs`);
+      if (data.success) setCallLogs(data.data);
+    } catch (err) {
+      toast.error('通話ログの取得に失敗しました');
+      setCallLogs([]);
+    } finally {
+      setCallLogsLoading(false);
+    }
+  };
+
+  const calcDuration = (start, end) => {
+    if (!start || !end) return '-';
+    const sec = Math.round((new Date(end) - new Date(start)) / 1000);
+    if (sec < 60) return `${sec}秒`;
+    return `${Math.floor(sec / 60)}分${sec % 60}秒`;
+  };
 
   const fetchProjects = async (page = 1) => {
     try {
@@ -106,6 +144,7 @@ export default function ProjectsPage() {
                   <th className="table-header">面接形式</th>
                   <th className="table-header">書類選考</th>
                   <th className="table-header">ステータス</th>
+                  <th className="table-header text-center">通話ログ</th>
                   <th className="table-header text-center">詳細</th>
                 </tr>
               </thead>
@@ -141,6 +180,14 @@ export default function ProjectsPage() {
                       </span>
                     </td>
                     <td className="table-cell text-center">
+                      <button
+                        onClick={e => openCallLogs(e, p)}
+                        className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded font-medium transition-colors"
+                      >
+                        表示
+                      </button>
+                    </td>
+                    <td className="table-cell text-center">
                       <svg className="w-4 h-4 text-gray-400 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="9 18 15 12 9 6" />
                       </svg>
@@ -170,6 +217,90 @@ export default function ProjectsPage() {
           </>
         )}
       </div>
+
+      {/* 通話ログモーダル */}
+      {callLogModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCallLogModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">通話ログ</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{callLogModal.companyName}</p>
+              </div>
+              <button onClick={() => setCallLogModal(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {callLogsLoading ? (
+                <div className="text-center py-12">
+                  <svg className="animate-spin w-6 h-6 text-gray-400 mx-auto" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+              ) : callLogs.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">通話ログがありません</div>
+              ) : (
+                <div className="space-y-3">
+                  {callLogs.map((log) => {
+                    const badge = RESULT_BADGES[log.result_code] || { bg: 'bg-gray-100', text: 'text-gray-500', label: log.result_code || '-' };
+                    const isExpanded = expandedTranscript === log.id;
+                    return (
+                      <div key={log.id} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-gray-700">
+                              {new Date(log.call_started_at).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>
+                              {badge.label}
+                            </span>
+                            <span className="text-xs text-gray-400">{calcDuration(log.call_started_at, log.call_ended_at)}</span>
+                          </div>
+                          <span className="text-xs text-gray-500">OP: {log.operator_name || '-'}</span>
+                        </div>
+                        {log.memo && (
+                          <p className="text-sm text-gray-600 mb-2">
+                            <span className="text-gray-400 text-xs mr-1">メモ:</span>{log.memo}
+                          </p>
+                        )}
+                        {log.transcript && (
+                          <div>
+                            <button
+                              onClick={() => setExpandedTranscript(isExpanded ? null : log.id)}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                            >
+                              <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
+                              </svg>
+                              文字起こし{isExpanded ? 'を閉じる' : 'を表示'}
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
+                                {log.transcript}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 text-right">
+              <span className="text-xs text-gray-400 mr-3">{callLogs.length}件の通話記録</span>
+              <button onClick={() => setCallLogModal(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors">
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
