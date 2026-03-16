@@ -2,7 +2,7 @@
  * リコール管理ページ
  * 今日・明日・期限超過のリコールを表示
  */
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/common/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ export default function RecallsPage() {
   const [counts, setCounts] = useState({ today: 0, tomorrow: 0, overdue: 0 });
   const [activeTab, setActiveTab] = useState('today');
   const [loading, setLoading] = useState(true);
+  const [expandedTranscript, setExpandedTranscript] = useState(null);
 
   const fetchRecalls = async () => {
     try {
@@ -122,12 +123,14 @@ export default function RecallsPage() {
                 <th className="table-header">電話番号</th>
                 <th className="table-header">業種</th>
                 <th className="table-header">前回メモ</th>
+                <th className="table-header">通話ログ</th>
                 <th className="table-header text-center">操作</th>
               </tr>
             </thead>
             <tbody>
               {activeRecalls.map((recall) => (
-                <tr key={recall.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                <React.Fragment key={recall.id}>
+                <tr className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                   <td className="table-cell text-gray-500">
                     {new Date(recall.recall_at).toLocaleString('ja-JP')}
                   </td>
@@ -135,6 +138,25 @@ export default function RecallsPage() {
                   <td className="table-cell text-gray-600">{recall.phone_number}</td>
                   <td className="table-cell text-gray-500">{recall.industry || '-'}</td>
                   <td className="table-cell text-gray-400 max-w-xs truncate">{recall.call_memo || '-'}</td>
+                  <td className="table-cell">
+                    {recall.call_transcript ? (
+                      <div>
+                        <button
+                          onClick={() => setExpandedTranscript(expandedTranscript === recall.id ? null : recall.id)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+                          </svg>
+                          {expandedTranscript === recall.id ? '閉じる' : '表示'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-300">-</span>
+                    )}
+                  </td>
                   <td className="table-cell text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button
@@ -152,6 +174,16 @@ export default function RecallsPage() {
                     </div>
                   </td>
                 </tr>
+                {expandedTranscript === recall.id && recall.call_transcript && (
+                  <tr className="bg-gray-50/50">
+                    <td colSpan="7" className="px-4 pb-4 pt-2">
+                      <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
+                        <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{recall.call_transcript}</pre>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

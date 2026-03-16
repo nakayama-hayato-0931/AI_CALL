@@ -96,6 +96,7 @@ export default function AdminEvaluations() {
   });
   const [filters, setFilters] = useState({ user_id: '', date_from: '', date_to: '' });
   const [expandedId, setExpandedId] = useState(null);
+  const [expandedTranscript, setExpandedTranscript] = useState(null);
   const [page, setPage] = useState(1);
   const [summaryStats, setSummaryStats] = useState(null);
 
@@ -305,6 +306,26 @@ export default function AdminEvaluations() {
                           )}
                         </div>
                       </div>
+                      {ev.transcript && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => setExpandedTranscript(expandedTranscript === ev.id ? null : ev.id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+                            </svg>
+                            {expandedTranscript === ev.id ? '通話ログを閉じる' : '通話ログを表示'}
+                          </button>
+                          {expandedTranscript === ev.id && (
+                            <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
+                              <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{ev.transcript}</pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </td>

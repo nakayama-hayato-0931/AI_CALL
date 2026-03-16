@@ -10,13 +10,19 @@ import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_OPTIONS = [
-  { value: 'NEW', label: '新規' },
-  { value: 'MAIL_SENT', label: 'メール送信済' },
-  { value: 'INTERVIEW_SET', label: '面接設定済' },
-  { value: 'INTERVIEW_DONE', label: '面接完了' },
-  { value: 'WAITING_RESULT', label: '結果待ち' },
-  { value: 'HIRED', label: '採用' },
+  { value: 'NAITEI', label: '内定' },
+  { value: 'FUGOKAKU', label: '不合格' },
+  { value: 'KEKKA_MACHI', label: '結果待ち' },
+  { value: 'MENSETSU_KAKUTEI', label: '面接確定' },
+  { value: 'BOSHUCHU', label: '募集中' },
+  { value: 'SHORUI_CHU', label: '書類選考中' },
   { value: 'LOST', label: '失注' },
+  { value: 'BARASHI', label: 'バラシ' },
+  { value: 'HORYU', label: '保留' },
+  { value: 'SHORUI_OCHI', label: '書類選考落ち' },
+  { value: 'KISON_NASHI', label: '既存対応なし' },
+  { value: 'MODOSHI', label: '戻し' },
+  { value: 'MODORI', label: '戻し戻り' },
 ];
 
 export default function ProjectDetailPage() {
@@ -31,6 +37,7 @@ export default function ProjectDetailPage() {
     status: '', interview_date: '', interview_type: '',
     document_screening: '', mail_sent: false, memo: '',
   });
+  const [expandedTranscript, setExpandedTranscript] = useState(null);
 
   useEffect(() => {
     if (id) fetchProject();
@@ -256,6 +263,26 @@ export default function ProjectDetailPage() {
                   <p className="text-xs text-gray-400">担当: {call.operator_name || '-'}</p>
                   {call.memo && (
                     <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{call.memo}</p>
+                  )}
+                  {call.transcript && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => setExpandedTranscript(expandedTranscript === call.id ? null : call.id)}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        {expandedTranscript === call.id ? '通話ログを閉じる' : '通話ログを表示'}
+                      </button>
+                      {expandedTranscript === call.id && (
+                        <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
+                          <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{call.transcript}</pre>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))

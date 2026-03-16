@@ -110,7 +110,7 @@ const getProjectById = async (req, res, next) => {
       return ApiResponse.notFound(res, '案件が見つかりません');
     }
 
-    // 関連通話履歴
+    // 関連通話履歴（transcript含む）
     const [callHistory] = await pool.execute(
       `SELECT cl.*, u.name as operator_name
        FROM calls cl

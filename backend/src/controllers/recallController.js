@@ -18,7 +18,8 @@ const getRecalls = async (req, res, next) => {
     // 今日のリコール
     const [todayRows] = await pool.execute(
       `SELECT rt.*, c.company_name, c.phone_number, c.industry,
-              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo,
+              (SELECT cl.transcript FROM calls cl WHERE cl.id = rt.call_id) as call_transcript
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND DATE(rt.recall_at) = ? AND rt.status = 'pending'
@@ -29,7 +30,8 @@ const getRecalls = async (req, res, next) => {
     // 明日のリコール
     const [tomorrowRows] = await pool.execute(
       `SELECT rt.*, c.company_name, c.phone_number, c.industry,
-              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo,
+              (SELECT cl.transcript FROM calls cl WHERE cl.id = rt.call_id) as call_transcript
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND DATE(rt.recall_at) = ? AND rt.status = 'pending'
@@ -40,7 +42,8 @@ const getRecalls = async (req, res, next) => {
     // 期限超過
     const [overdueRows] = await pool.execute(
       `SELECT rt.*, c.company_name, c.phone_number, c.industry,
-              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo,
+              (SELECT cl.transcript FROM calls cl WHERE cl.id = rt.call_id) as call_transcript
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND DATE(rt.recall_at) < ? AND rt.status = 'pending'

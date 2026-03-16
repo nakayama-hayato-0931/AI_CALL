@@ -38,6 +38,12 @@ const evaluate = async (req, res, next) => {
     // AI評価実行
     const evaluation = await evaluateCall(transcript, call.operator_name);
 
+    // トランスクリプトをcallsテーブルに保存
+    await pool.execute(
+      'UPDATE calls SET transcript = ? WHERE id = ?',
+      [transcript, call_id]
+    );
+
     // 評価結果をDBに保存
     const [result] = await pool.execute(
       `INSERT INTO ai_evaluations
@@ -520,7 +526,7 @@ const getAllEvaluations = async (req, res, next) => {
     );
 
     const [rows] = await pool.query(
-      `SELECT ae.*, u.name as operator_name, co.company_name, c.call_started_at, c.result_code
+      `SELECT ae.*, u.name as operator_name, co.company_name, c.call_started_at, c.result_code, c.transcript
        FROM ai_evaluations ae
        JOIN users u ON ae.user_id = u.id
        JOIN calls c ON ae.call_id = c.id
