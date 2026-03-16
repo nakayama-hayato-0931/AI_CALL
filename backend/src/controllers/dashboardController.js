@@ -14,76 +14,45 @@ const getDailyStats = async (req, res, next) => {
     const userId = req.query.user_id || req.user.id;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
-    // 稼働時間 (最初の架電から最後の架電までの差分)
-    const [workTimeRows] = await pool.execute(
+    // 1クエリで全KPIを集計 (SKIPを除外)
+    const [statsRows] = await pool.execute(
       `SELECT
          MIN(call_started_at) as first_call,
-         MAX(COALESCE(call_ended_at, call_started_at)) as last_call
+         MAX(COALESCE(call_ended_at, call_started_at)) as last_call,
+         COUNT(*) as call_count,
+         SUM(CASE WHEN result_code = 'RECALL' THEN 1 ELSE 0 END) as recall_gained,
+         SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_count,
+         SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_count,
+         SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) as project_count
        FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ?`,
+       WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'`,
       [userId, date]
     );
 
-    // コール数
-    const [callCountRows] = await pool.execute(
-      `SELECT COUNT(*) as call_count FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ?`,
-      [userId, date]
-    );
-
-    // リコール獲得数
-    const [recallGainRows] = await pool.execute(
-      `SELECT COUNT(*) as recall_gained FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code = 'RECALL'`,
-      [userId, date]
-    );
-
-    // リコール消化数
+    // リコール消化数 (別テーブル)
     const [recallDoneRows] = await pool.execute(
       `SELECT COUNT(*) as recall_done FROM recall_tasks
        WHERE user_id = ? AND DATE(updated_at) = ? AND status = 'completed'`,
       [userId, date]
     );
 
-    // 有効接続数
-    const [effectiveRows] = await pool.execute(
-      `SELECT COUNT(*) as effective_count FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND is_effective_connection = 1`,
-      [userId, date]
-    );
-
-    // 担当者接続数
-    const [personRows] = await pool.execute(
-      `SELECT COUNT(*) as person_count FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND is_person_in_charge = 1`,
-      [userId, date]
-    );
-
-    // 案件獲得数
-    const [projectRows] = await pool.execute(
-      `SELECT COUNT(*) as project_count FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND is_project_created = 1`,
-      [userId, date]
-    );
-
-    // 稼働時間計算 (分)
-    const workTime = workTimeRows[0];
+    const s = statsRows[0];
     let workMinutes = 0;
-    if (workTime.first_call && workTime.last_call) {
+    if (s.first_call && s.last_call) {
       workMinutes = Math.round(
-        (new Date(workTime.last_call) - new Date(workTime.first_call)) / 60000
+        (new Date(s.last_call) - new Date(s.first_call)) / 60000
       );
     }
 
     return ApiResponse.success(res, {
       date,
       workMinutes,
-      callCount: callCountRows[0].call_count,
-      recallGained: recallGainRows[0].recall_gained,
+      callCount: s.call_count,
+      recallGained: s.recall_gained,
       recallDone: recallDoneRows[0].recall_done,
-      effectiveCount: effectiveRows[0].effective_count,
-      personCount: personRows[0].person_count,
-      projectCount: projectRows[0].project_count,
+      effectiveCount: s.effective_count,
+      personCount: s.person_count,
+      projectCount: s.project_count,
     });
   } catch (err) {
     next(err);
@@ -102,7 +71,7 @@ const getHourlyCalls = async (req, res, next) => {
     const [rows] = await pool.execute(
       `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
        FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ?
+       WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'
        GROUP BY HOUR(call_started_at)
        ORDER BY hour`,
       [userId, date]
@@ -139,7 +108,7 @@ const getIndustryConversion = async (req, res, next) => {
          ) as conversion_rate
        FROM calls c
        JOIN companies co ON c.company_id = co.id
-       WHERE DATE(c.call_started_at) = ? AND co.industry IS NOT NULL
+       WHERE DATE(c.call_started_at) = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
        GROUP BY co.industry
        ORDER BY conversion_rate DESC`,
       [date]
@@ -165,7 +134,7 @@ const getHourlyIndustryConnections = async (req, res, next) => {
        FROM calls c
        JOIN companies co ON c.company_id = co.id
        WHERE c.user_id = ? AND DATE(c.call_started_at) = ?
-         AND c.result_code != 'NO_ANSWER' AND c.result_code IS NOT NULL
+         AND c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
          AND co.industry IS NOT NULL
        GROUP BY HOUR(c.call_started_at), co.industry
        ORDER BY hour, co.industry`,

@@ -172,35 +172,23 @@ const getAllOperatorPerformance = async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT
         u.id as user_id, u.name,
-        COUNT(c.id) as total_calls,
+        COUNT(DISTINCT c.id) as total_calls,
         SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_connections,
         SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_connections,
         SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) as projects,
-        COALESCE((SELECT ROUND(AVG(ae.overall_score), 1)
-         FROM ai_evaluations ae
-         JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_ai_score,
-        COALESCE((SELECT ROUND(AVG(ae.opening_score), 1)
-         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_opening,
-        COALESCE((SELECT ROUND(AVG(ae.clarity_score), 1)
-         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_clarity,
-        COALESCE((SELECT ROUND(AVG(ae.hearing_score), 1)
-         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_hearing,
-        COALESCE((SELECT ROUND(AVG(ae.rebuttal_score), 1)
-         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_rebuttal,
-        COALESCE((SELECT ROUND(AVG(ae.closing_score), 1)
-         FROM ai_evaluations ae JOIN calls c2 ON ae.call_id = c2.id
-         WHERE ae.user_id = u.id AND DATE(c2.call_started_at) BETWEEN ? AND ?), 0) as avg_closing
+        COALESCE(ROUND(AVG(ae.overall_score), 1), 0) as avg_ai_score,
+        COALESCE(ROUND(AVG(ae.opening_score), 1), 0) as avg_opening,
+        COALESCE(ROUND(AVG(ae.clarity_score), 1), 0) as avg_clarity,
+        COALESCE(ROUND(AVG(ae.hearing_score), 1), 0) as avg_hearing,
+        COALESCE(ROUND(AVG(ae.rebuttal_score), 1), 0) as avg_rebuttal,
+        COALESCE(ROUND(AVG(ae.closing_score), 1), 0) as avg_closing
       FROM users u
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+      LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role = 'operator' AND u.is_active = 1
       GROUP BY u.id, u.name
       ORDER BY total_calls DESC`,
-      [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
+      [dateFrom, dateTo]
     );
 
     return ApiResponse.success(res, {
