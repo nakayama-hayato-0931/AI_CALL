@@ -65,7 +65,7 @@ export default function CallResultsPage() {
 
   useEffect(() => {
     if (user) fetchCalls();
-  }, [page, viewMode, date, dateFrom, dateTo, onlyMine, resultCode, operatorId, search]);
+  }, [user, page, viewMode, date, dateFrom, dateTo, onlyMine, resultCode, operatorId, search]);
 
   const fetchOperators = async () => {
     try {
