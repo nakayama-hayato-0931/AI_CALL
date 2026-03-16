@@ -271,7 +271,18 @@ export default function CallResultsPage() {
                       </td>
                       <td className="table-cell font-medium text-gray-700 text-xs">{call.operator_name || '-'}</td>
                       <td className="table-cell font-medium text-gray-900">{call.company_name || '-'}</td>
-                      <td className="table-cell text-gray-500 text-xs">{call.phone_number || '-'}</td>
+                      <td className="table-cell text-xs">
+                        {call.phone_number ? (
+                          <a href={`/call?pickup=${call.company_id}`}
+                            className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                            title="クリックして再架電">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                            </svg>
+                            {call.phone_number}
+                          </a>
+                        ) : '-'}
+                      </td>
                       <td className="table-cell">
                         {isEditing ? (
                           <select value={editForm.result_code} onChange={e => setEditForm({...editForm, result_code: e.target.value})}

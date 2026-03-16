@@ -134,6 +134,21 @@ const endCall = async (req, res, next) => {
       projectId = projectResult.insertId;
     }
 
+    // NO_ANSWER: 自動割り当て（他オペレーターに再ピックアップされないようにする）
+    if (result_code === 'NO_ANSWER') {
+      const [existing] = await conn.execute(
+        'SELECT id FROM company_assignments WHERE company_id = ? AND user_id = ?',
+        [call.company_id, call.user_id]
+      );
+      if (existing.length === 0) {
+        await conn.execute(
+          'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+          [call.company_id, call.user_id, call.user_id]
+        );
+        logger.info(`不通自動割り当て: company=${call.company_id}, user=${call.user_id}`);
+      }
+    }
+
     // ロック解除
     await conn.execute(
       'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
