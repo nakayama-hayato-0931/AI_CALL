@@ -9,7 +9,7 @@ const { searchCallLogs } = require('../services/googleSheetsService');
 const logger = require('../utils/logger');
 
 // 1日あたりのAI評価回数上限
-const DAILY_EVAL_LIMIT = 3;
+const DAILY_EVAL_LIMIT = 2;
 
 /**
  * POST /api/ai/evaluate
