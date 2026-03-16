@@ -13,6 +13,7 @@ const {
   getLatestImprovement,
   getEvalLimit,
   getAllEvaluations,
+  suggestScripts,
 } = require('../controllers/aiController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 
@@ -38,6 +39,9 @@ router.get('/latest-improvement', getLatestImprovement);
 
 // GET /api/ai/admin/evaluations - 管理者: 全オペレーター評価一覧
 router.get('/admin/evaluations', requireManager, getAllEvaluations);
+
+// POST /api/ai/admin/evaluations/:id/suggest-scripts - 管理者: スクリプト提案生成
+router.post('/admin/evaluations/:id/suggest-scripts', requireManager, suggestScripts);
 
 // GET /api/ai/evaluations/:callId - 通話のAI評価取得
 router.get('/evaluations/:callId', getEvaluationByCallId);

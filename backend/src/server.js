@@ -27,6 +27,7 @@ const csvRoutes = require('./routes/csv');
 const logRoutes = require('./routes/logs');
 const adminRoutes = require('./routes/admin');
 const requestRoutes = require('./routes/requests');
+const scriptRoutes = require('./routes/scripts');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -94,6 +95,7 @@ app.use('/api/csv', csvRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/scripts', scriptRoutes);
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {

@@ -234,4 +234,55 @@ ${evalSummaries}`;
   }
 };
 
-module.exports = { evaluateCall, evaluateCallFromData, evaluateDailySummary };
+/**
+ * AI評価結果からアウト返し・Q&A候補を抽出する
+ * @param {object} callData - 通話データ（company_name, industry, memo, result_code等）
+ * @param {object} evaluation - AI評価結果（summary, good_points等）
+ * @returns {Array} 提案リスト [{ type, category, trigger_text, response_text }]
+ */
+const extractScriptSuggestions = async (callData, evaluation) => {
+  try {
+    const systemPrompt = `あなたは法人営業のナレッジ管理AIです。
+通話データとAI評価結果を分析し、他のオペレーターにも共有すべき優れたアウト返し（反論への切り返し）やQ&A（よくある質問への回答）を抽出してください。
+
+以下の条件を満たすものだけを提案してください:
+- 通話メモに具体的なやり取りの記述がある
+- 汎用的に使える切り返しや回答パターンである
+- 既存のスクリプトにない新しいパターンである可能性が高い
+
+出力は必ず以下のJSON形式のみで返してください:
+{
+  "suggestions": [
+    {
+      "type": "rebuttal または qa",
+      "category": "カテゴリ名（断り対応、費用質問、会社概要、日本語力、ビザ、生活、など）",
+      "trigger_text": "お客様の質問や反論（短く簡潔に）",
+      "response_text": "オペレーターの回答や切り返し（そのまま使えるトーク）"
+    }
+  ]
+}
+
+提案がない場合は {"suggestions": []} を返してください。
+最大3件まで提案してください。`;
+
+    const userContent = `【通話データ】
+企業名: ${callData.company_name || '不明'}
+業種: ${callData.industry || '不明'}
+結果コード: ${callData.result_code || '不明'}
+メモ: ${callData.memo || '（なし）'}
+
+【AI評価結果】
+総合スコア: ${evaluation.overall_score || '-'}点
+要約: ${evaluation.summary || '（なし）'}
+良かった点: ${evaluation.good_points || '（なし）'}
+改善点: ${evaluation.improvement_points || '（なし）'}`;
+
+    const result = await callClaude(systemPrompt, userContent, 1500, 0.4);
+    return result.suggestions || [];
+  } catch (err) {
+    logger.warn('スクリプト提案抽出エラー:', err.message);
+    return [];
+  }
+};
+
+module.exports = { evaluateCall, evaluateCallFromData, evaluateDailySummary, extractScriptSuggestions };

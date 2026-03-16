@@ -4,7 +4,7 @@
  */
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
-const { evaluateCall, evaluateCallFromData, evaluateDailySummary } = require('../services/aiEvaluationService');
+const { evaluateCall, evaluateCallFromData, evaluateDailySummary, extractScriptSuggestions } = require('../services/aiEvaluationService');
 const { searchCallLogs } = require('../services/googleSheetsService');
 const logger = require('../utils/logger');
 
@@ -551,6 +551,52 @@ const getAllEvaluations = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/ai/admin/evaluations/:id/suggest-scripts
+ * 管理者: AI評価からスクリプト提案を生成
+ */
+const suggestScripts = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // 評価データ + 通話データを取得
+    const [rows] = await pool.execute(
+      `SELECT ae.*, c.memo, c.result_code, c.is_effective_connection, c.is_person_in_charge,
+              co.company_name, co.industry
+       FROM ai_evaluations ae
+       JOIN calls c ON ae.call_id = c.id
+       LEFT JOIN companies co ON c.company_id = co.id
+       WHERE ae.id = ?`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return ApiResponse.notFound(res, '評価データが見つかりません');
+    }
+
+    const evalData = rows[0];
+    const callData = {
+      company_name: evalData.company_name,
+      industry: evalData.industry,
+      result_code: evalData.result_code,
+      memo: evalData.memo,
+    };
+    const evaluation = {
+      overall_score: evalData.overall_score,
+      summary: evalData.summary,
+      good_points: evalData.good_points,
+      improvement_points: evalData.improvement_points,
+    };
+
+    const suggestions = await extractScriptSuggestions(callData, evaluation);
+
+    logger.info(`スクリプト提案生成: evaluation_id=${id}, suggestions=${suggestions.length}件`);
+    return ApiResponse.success(res, { suggestions, evaluation_id: Number(id) });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   evaluate,
   getEvaluationByCallId,
@@ -561,4 +607,5 @@ module.exports = {
   getLatestImprovement,
   getEvalLimit,
   getAllEvaluations,
+  suggestScripts,
 };

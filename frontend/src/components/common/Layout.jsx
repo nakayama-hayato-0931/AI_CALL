@@ -64,6 +64,11 @@ const icons = {
       <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
     </svg>
   ),
+  script: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /><line x1="9" y1="9" x2="15" y2="9" /><line x1="9" y1="13" x2="13" y2="13" />
+    </svg>
+  ),
   collapse: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
@@ -90,6 +95,7 @@ const ADMIN_NAV = [
   { href: '/call-results', label: '架電結果', icon: 'log' },
   { href: '/admin/projects', label: '案件管理', icon: 'project' },
   { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
+  { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
   { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
   { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
 ];

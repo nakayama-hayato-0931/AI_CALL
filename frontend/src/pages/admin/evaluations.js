@@ -100,6 +100,12 @@ export default function AdminEvaluations() {
   const [page, setPage] = useState(1);
   const [summaryStats, setSummaryStats] = useState(null);
 
+  // スクリプト提案
+  const [suggestingId, setSuggestingId] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [editingSuggestions, setEditingSuggestions] = useState([]);
+
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
     if (user) fetchOperators();
@@ -155,6 +161,50 @@ export default function AdminEvaluations() {
       toast.success(`${data.data.evaluatedCount}件の評価を実行しました`);
       fetchEvaluations();
     } catch (err) { toast.error(err.response?.data?.message || '評価に失敗しました'); }
+  };
+
+  // スクリプト提案生成
+  const handleSuggestScripts = async (evalId) => {
+    setSuggestingId(evalId);
+    try {
+      const { data } = await api.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`);
+      const sug = data.data.suggestions || [];
+      if (sug.length === 0) {
+        toast('この通話からはスクリプト提案がありませんでした', { icon: 'ℹ️' });
+        setSuggestingId(null);
+        return;
+      }
+      setSuggestions(sug);
+      setEditingSuggestions(sug.map(s => ({ ...s })));
+      setShowSuggestModal(true);
+    } catch (err) {
+      toast.error('スクリプト提案の生成に失敗しました');
+    } finally {
+      setSuggestingId(null);
+    }
+  };
+
+  // 提案をスクリプトとして保存（pending）
+  const handleSaveSuggestion = async (index) => {
+    const s = editingSuggestions[index];
+    if (!s.trigger_text || !s.response_text) {
+      toast.error('質問/反論と回答は必須です');
+      return;
+    }
+    try {
+      await api.post('/api/admin/scripts', {
+        type: s.type,
+        category: s.category,
+        trigger_text: s.trigger_text,
+        response_text: s.response_text,
+        status: 'pending',
+      });
+      toast.success('承認待ちとして保存しました');
+      // 保存済みマーク
+      setEditingSuggestions(prev => prev.map((item, i) => i === index ? { ...item, _saved: true } : item));
+    } catch (err) {
+      toast.error('保存に失敗しました');
+    }
   };
 
   if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
@@ -306,8 +356,8 @@ export default function AdminEvaluations() {
                           )}
                         </div>
                       </div>
-                      {ev.transcript && (
-                        <div className="mt-3">
+                      <div className="mt-3 flex items-center gap-3">
+                        {ev.transcript && (
                           <button
                             onClick={() => setExpandedTranscript(expandedTranscript === ev.id ? null : ev.id)}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
@@ -319,11 +369,28 @@ export default function AdminEvaluations() {
                             </svg>
                             {expandedTranscript === ev.id ? '通話ログを閉じる' : '通話ログを表示'}
                           </button>
-                          {expandedTranscript === ev.id && (
-                            <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
-                              <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{ev.transcript}</pre>
-                            </div>
+                        )}
+                        <button
+                          onClick={() => handleSuggestScripts(ev.id)}
+                          disabled={suggestingId === ev.id}
+                          className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {suggestingId === ev.id ? (
+                            <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                            </svg>
                           )}
+                          {suggestingId === ev.id ? 'AI分析中...' : 'スクリプト提案'}
+                        </button>
+                      </div>
+                      {ev.transcript && expandedTranscript === ev.id && (
+                        <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
+                          <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{ev.transcript}</pre>
                         </div>
                       )}
                     </div>
@@ -345,6 +412,67 @@ export default function AdminEvaluations() {
             <button key={p} onClick={() => setPage(p)}
               className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{p}</button>
           ))}
+        </div>
+      )}
+      {/* スクリプト提案モーダル */}
+      {showSuggestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowSuggestModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">AIスクリプト提案</h2>
+                <button onClick={() => setShowSuggestModal(false)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">テキストを編集してから保存できます。保存後は「スクリプト管理」の承認待ちタブで最終承認してください。</p>
+            </div>
+            <div className="p-5 space-y-4">
+              {editingSuggestions.map((s, idx) => (
+                <div key={idx} className={`border rounded-lg p-4 ${s._saved ? 'border-emerald-200 bg-emerald-50/50' : 'border-gray-200'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                      s.type === 'rebuttal' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
+                    }`}>{s.type === 'rebuttal' ? 'アウト返し' : 'Q&A'}</span>
+                    {s.category && <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{s.category}</span>}
+                    {s._saved && <span className="text-[10px] text-emerald-600 font-medium">保存済み</span>}
+                  </div>
+                  <div className="mb-2">
+                    <label className="text-[11px] font-medium text-gray-500 mb-1 block">質問 / 反論</label>
+                    <input
+                      type="text"
+                      value={s.trigger_text}
+                      onChange={e => {
+                        const updated = [...editingSuggestions];
+                        updated[idx] = { ...updated[idx], trigger_text: e.target.value };
+                        setEditingSuggestions(updated);
+                      }}
+                      disabled={s._saved}
+                      className="input text-sm w-full"
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-[11px] font-medium text-gray-500 mb-1 block">回答</label>
+                    <textarea
+                      value={s.response_text}
+                      onChange={e => {
+                        const updated = [...editingSuggestions];
+                        updated[idx] = { ...updated[idx], response_text: e.target.value };
+                        setEditingSuggestions(updated);
+                      }}
+                      disabled={s._saved}
+                      className="input text-sm w-full resize-none"
+                      rows={3}
+                    />
+                  </div>
+                  {!s._saved && (
+                    <button
+                      onClick={() => handleSaveSuggestion(idx)}
+                      className="text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded transition-colors"
+                    >承認待ちとして保存</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </Layout>

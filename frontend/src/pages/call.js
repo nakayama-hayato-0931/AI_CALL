@@ -3,7 +3,7 @@
  * 架電リスト + 企業情報 + 架電操作 + 結果入力
  * 排他制御: 選択時にロック取得、終話/スキップ時にロック解除
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import ProjectModal from '../components/ProjectModal';
@@ -67,6 +67,12 @@ export default function CallPage() {
   // ピックアップモード
   const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist'
   const [selectedIndustry, setSelectedIndustry] = useState('');
+
+  // スクリプト（アウト返し・Q&A）
+  const [scripts, setScripts] = useState([]);
+  const [scriptTab, setScriptTab] = useState('rebuttal'); // 'rebuttal' | 'qa'
+  const [scriptSearch, setScriptSearch] = useState('');
+  const [scriptShowAll, setScriptShowAll] = useState(false);
 
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selectedTargetId;
@@ -143,6 +149,36 @@ export default function CallPage() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
+
+  // スクリプト取得
+  useEffect(() => {
+    const fetchScripts = async () => {
+      try {
+        const { data } = await api.get('/api/scripts');
+        setScripts(data.data || []);
+      } catch (err) {
+        // サイレント — スクリプト取得失敗は架電に影響しない
+      }
+    };
+    fetchScripts();
+  }, []);
+
+  // フィルタ済みスクリプト
+  const filteredScripts = useMemo(() => {
+    let items = scripts.filter(s => s.type === scriptTab);
+    // 業種フィルタ（企業選択中 & 全表示OFF）
+    if (company?.industry && !scriptShowAll) {
+      items = items.filter(s => !s.industry || s.industry === '' || s.industry === company.industry);
+    }
+    // 検索フィルタ
+    if (scriptSearch.trim()) {
+      const q = scriptSearch.trim().toLowerCase();
+      items = items.filter(s =>
+        s.trigger_text.toLowerCase().includes(q) || s.response_text.toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }, [scripts, scriptTab, scriptSearch, scriptShowAll, company?.industry]);
 
   // ターゲット選択 & ロック取得
   const handleSelectTarget = async (target) => {
@@ -707,6 +743,72 @@ export default function CallPage() {
                 >
                   {autoMode ? '保存して次へ架電 ▶' : '保存して次へ'}
                 </button>
+              </div>
+            </div>
+
+            {/* スクリプトパネル（アウト返し・Q&A） */}
+            <div className="card p-4 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-gray-800">アウト返し・Q&A</h2>
+                <div className="flex items-center gap-2">
+                  {company?.industry && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scriptShowAll}
+                        onChange={(e) => setScriptShowAll(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-gray-300"
+                      />
+                      全業種表示
+                    </label>
+                  )}
+                  <input
+                    type="text"
+                    value={scriptSearch}
+                    onChange={(e) => setScriptSearch(e.target.value)}
+                    placeholder="検索..."
+                    className="input text-xs py-1 px-2.5 w-36"
+                  />
+                </div>
+              </div>
+
+              {/* タブ切替 */}
+              <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 mb-3 w-fit">
+                {[
+                  { value: 'rebuttal', label: 'アウト返し' },
+                  { value: 'qa', label: 'Q&A' },
+                ].map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setScriptTab(t.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      scriptTab === t.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >{t.label}</button>
+                ))}
+              </div>
+
+              {/* スクリプト一覧 */}
+              <div className="max-h-[280px] overflow-y-auto space-y-2">
+                {filteredScripts.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-4">該当するスクリプトがありません</p>
+                ) : (
+                  filteredScripts.map(item => (
+                    <div key={item.id} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs font-bold text-blue-600 mt-0.5 flex-shrink-0">Q.</span>
+                        <p className="text-sm font-semibold text-gray-800">{item.trigger_text}</p>
+                      </div>
+                      <div className="flex items-start gap-2 mt-1.5">
+                        <span className="text-xs font-bold text-emerald-600 mt-0.5 flex-shrink-0">A.</span>
+                        <p className="text-sm text-gray-600 leading-relaxed">{item.response_text}</p>
+                      </div>
+                      {item.category && (
+                        <span className="inline-block mt-2 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{item.category}</span>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

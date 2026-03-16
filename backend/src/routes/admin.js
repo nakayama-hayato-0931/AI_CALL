@@ -13,6 +13,9 @@ const {
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
+const {
+  getScripts, createScript, updateScript, approveScript, rejectScript, deleteScript,
+} = require('../controllers/scriptController');
 const { authenticate, requireAdmin, requireManager } = require('../middlewares/auth');
 
 router.use(authenticate);
@@ -46,6 +49,14 @@ router.get('/time-rules', requireManager, getTimeRules);
 router.post('/time-rules', requireManager, addTimeRule);
 router.put('/time-rules/:id', requireManager, updateTimeRule);
 router.delete('/time-rules/:id', requireManager, deleteTimeRule);
+
+// スクリプト管理 (admin + manager)
+router.get('/scripts', requireManager, getScripts);
+router.post('/scripts', requireManager, createScript);
+router.put('/scripts/:id', requireManager, updateScript);
+router.put('/scripts/:id/approve', requireManager, approveScript);
+router.put('/scripts/:id/reject', requireManager, rejectScript);
+router.delete('/scripts/:id', requireManager, deleteScript);
 
 // 申請管理 (admin + manager)
 router.get('/requests', requireManager, getAllRequests);
