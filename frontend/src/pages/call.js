@@ -445,7 +445,7 @@ export default function CallPage() {
                   className="input text-xs mt-1.5 w-full"
                 >
                   <option value="">業種を選択</option>
-                  {['飲食', '製造', '小売', 'IT', '建設', '不動産', '医療', 'サービス', '運輸', '教育', '人材', '広告', '金融', '物流'].map(ind => (
+                  {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
                     <option key={ind} value={ind}>{ind}</option>
                   ))}
                 </select>

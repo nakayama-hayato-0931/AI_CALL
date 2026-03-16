@@ -621,17 +621,10 @@ export default function CallListPage() {
                         <option value="飲食">飲食</option>
                         <option value="製造">製造</option>
                         <option value="小売">小売</option>
-                        <option value="IT">IT</option>
                         <option value="建設">建設</option>
-                        <option value="不動産">不動産</option>
-                        <option value="医療">医療</option>
-                        <option value="サービス">サービス</option>
-                        <option value="運輸">運輸</option>
-                        <option value="教育">教育</option>
-                        <option value="人材">人材</option>
-                        <option value="広告">広告</option>
-                        <option value="金融">金融</option>
-                        <option value="物流">物流</option>
+                        <option value="宿泊">宿泊</option>
+                        <option value="農業">農業</option>
+                        <option value="介護">介護</option>
                       </select>
                     </div>
                     <div>
@@ -721,16 +714,13 @@ export default function CallListPage() {
           className="input !w-auto min-w-[130px]"
         >
           <option value="">業種</option>
-          <option value="IT">IT</option>
-          <option value="製造業">製造業</option>
-          <option value="小売業">小売業</option>
-          <option value="サービス業">サービス業</option>
-          <option value="金融">金融</option>
-          <option value="不動産">不動産</option>
-          <option value="建設">建設</option>
-          <option value="医療">医療</option>
-          <option value="教育">教育</option>
           <option value="飲食">飲食</option>
+          <option value="製造">製造</option>
+          <option value="小売">小売</option>
+          <option value="建設">建設</option>
+          <option value="宿泊">宿泊</option>
+          <option value="農業">農業</option>
+          <option value="介護">介護</option>
         </select>
         <select
           value={region}
