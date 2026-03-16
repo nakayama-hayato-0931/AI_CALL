@@ -99,12 +99,11 @@ const getHourlyCalls = async (req, res, next) => {
 
 /**
  * GET /api/dashboard/industry-conversion
- * 業種別案件化率 (グラフ用)
+ * 業種別案件化率 (累計・全期間)
  */
 const getIndustryConversion = async (req, res, next) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
-
+    const userId = req.query.user_id || req.user.id;
     const [rows] = await pool.execute(
       `SELECT
          co.industry,
@@ -115,10 +114,10 @@ const getIndustryConversion = async (req, res, next) => {
          ) as conversion_rate
        FROM calls c
        JOIN companies co ON c.company_id = co.id
-       WHERE DATE(c.call_started_at) = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
+       WHERE c.user_id = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
        GROUP BY co.industry
        ORDER BY conversion_rate DESC`,
-      [date]
+      [userId]
     );
 
     return ApiResponse.success(res, rows);
@@ -129,46 +128,66 @@ const getIndustryConversion = async (req, res, next) => {
 
 /**
  * GET /api/dashboard/hourly-industry-connections
- * 時間帯×業種別 接続数クロス集計 (result_code != 'NO_ANSWER')
+ * 時間帯×業種別 接続数/接続率クロス集計 (累計・全期間)
  */
 const getHourlyIndustryConnections = async (req, res, next) => {
   try {
     const userId = req.query.user_id || req.user.id;
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
-
+    // 接続数（NO_ANSWER, SKIP除外）
     const [rows] = await pool.execute(
       `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as connections
        FROM calls c
        JOIN companies co ON c.company_id = co.id
-       WHERE c.user_id = ? AND DATE(c.call_started_at) = ?
-         AND c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
+       WHERE c.user_id = ? AND c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
          AND co.industry IS NOT NULL
        GROUP BY HOUR(c.call_started_at), co.industry
        ORDER BY hour, co.industry`,
-      [userId, date]
+      [userId]
+    );
+
+    // 総コール数（接続率計算用、SKIP除外）
+    const [totalRows] = await pool.execute(
+      `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
+       FROM calls c
+       JOIN companies co ON c.company_id = co.id
+       WHERE c.user_id = ? AND c.result_code != 'SKIP'
+         AND co.industry IS NOT NULL
+       GROUP BY HOUR(c.call_started_at), co.industry`,
+      [userId]
     );
 
     // ユニーク業種リスト
-    const industries = [...new Set(rows.map(r => r.industry))].sort();
+    const allIndustries = new Set([...rows.map(r => r.industry), ...totalRows.map(r => r.industry)]);
+    const industries = [...allIndustries].sort();
 
     // 9〜19時のクロス集計テーブル整形
     const tableRows = [];
     const totals = {};
-    industries.forEach(ind => { totals[ind] = 0; });
+    const totalCalls = {};
+    industries.forEach(ind => { totals[ind] = 0; totalCalls[ind] = 0; });
     let grandTotal = 0;
+    let grandTotalCalls = 0;
 
     for (let h = 9; h <= 19; h++) {
       const row = { hour: h };
       let rowTotal = 0;
+      let rowTotalCalls = 0;
       for (const ind of industries) {
         const found = rows.find(r => r.hour === h && r.industry === ind);
+        const foundTotal = totalRows.find(r => r.hour === h && r.industry === ind);
         const val = found ? found.connections : 0;
+        const calls = foundTotal ? foundTotal.total_calls : 0;
         row[ind] = val;
+        row[`${ind}_total`] = calls;
         totals[ind] += val;
+        totalCalls[ind] += calls;
         rowTotal += val;
+        rowTotalCalls += calls;
       }
       row.total = rowTotal;
+      row.totalCalls = rowTotalCalls;
       grandTotal += rowTotal;
+      grandTotalCalls += rowTotalCalls;
       tableRows.push(row);
     }
 
@@ -176,6 +195,7 @@ const getHourlyIndustryConnections = async (req, res, next) => {
       industries,
       rows: tableRows,
       totals: { ...totals, total: grandTotal },
+      totalCalls: { ...totalCalls, total: grandTotalCalls },
     });
   } catch (err) {
     next(err);

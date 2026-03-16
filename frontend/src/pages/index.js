@@ -569,7 +569,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="card p-5">
-          <h2 className="text-sm font-bold text-gray-800 mb-4">業種別案件化率</h2>
+          <h2 className="text-sm font-bold text-gray-800 mb-4">業種別案件化率 <span className="text-[11px] font-normal text-gray-400">(累計)</span></h2>
           {industryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
@@ -590,8 +590,8 @@ export default function DashboardPage() {
       {/* 時間帯×業種別 接続数テーブル */}
       <div className="card mt-5 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数</h2>
-          <p className="text-[11px] text-gray-400 mt-0.5">不通を除く接続数のクロス集計</p>
+          <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数/接続率 <span className="text-[11px] font-normal text-gray-400">(累計)</span></h2>
+          <p className="text-[11px] text-gray-400 mt-0.5">不通を除く接続数と接続率のクロス集計</p>
         </div>
         {connectionTable && connectionTable.industries.length > 0 ? (
           <div className="overflow-x-auto">
@@ -609,25 +609,41 @@ export default function DashboardPage() {
                 {connectionTable.rows.map((row) => (
                   <tr key={row.hour} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                     <td className="px-3 py-1.5 text-gray-500 font-medium">{row.hour}時</td>
-                    {connectionTable.industries.map((ind) => (
-                      <td key={ind} className={`px-3 py-1.5 text-center ${row[ind] > 0 ? 'text-gray-900 font-bold' : 'text-gray-300'}`}>
-                        {row[ind] || 0}
-                      </td>
-                    ))}
-                    <td className={`px-3 py-1.5 text-center font-bold ${row.total > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-                      {row.total}
+                    {connectionTable.industries.map((ind) => {
+                      const conn = row[ind] || 0;
+                      const total = row[`${ind}_total`] || 0;
+                      const rate = total > 0 ? Math.round(conn / total * 100) : 0;
+                      return (
+                        <td key={ind} className={`px-3 py-1.5 text-center ${conn > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                          <span className="font-bold">{conn}</span>
+                          {total > 0 && <span className="text-[10px] text-gray-400 ml-0.5">({rate}%)</span>}
+                        </td>
+                      );
+                    })}
+                    <td className={`px-3 py-1.5 text-center ${row.total > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+                      <span className="font-bold">{row.total}</span>
+                      {row.totalCalls > 0 && <span className="text-[10px] text-blue-400 ml-0.5">({Math.round(row.total / row.totalCalls * 100)}%)</span>}
                     </td>
                   </tr>
                 ))}
                 {/* 合計行 */}
                 <tr className="bg-gray-50 border-t border-gray-200">
                   <td className="px-3 py-2 text-gray-700 font-bold">合計</td>
-                  {connectionTable.industries.map((ind, i) => (
-                    <td key={ind} className="px-3 py-2 text-center font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
-                      {connectionTable.totals[ind] || 0}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-center font-bold text-blue-700">{connectionTable.totals.total || 0}</td>
+                  {connectionTable.industries.map((ind, i) => {
+                    const conn = connectionTable.totals[ind] || 0;
+                    const total = connectionTable.totalCalls[ind] || 0;
+                    const rate = total > 0 ? Math.round(conn / total * 100) : 0;
+                    return (
+                      <td key={ind} className="px-3 py-2 text-center font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
+                        {conn}
+                        {total > 0 && <span className="text-[10px] font-normal text-gray-400 ml-0.5">({rate}%)</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-center font-bold text-blue-700">
+                    {connectionTable.totals.total || 0}
+                    {connectionTable.totalCalls?.total > 0 && <span className="text-[10px] font-normal text-blue-400 ml-0.5">({Math.round(connectionTable.totals.total / connectionTable.totalCalls.total * 100)}%)</span>}
+                  </td>
                 </tr>
               </tbody>
             </table>
