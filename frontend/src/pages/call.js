@@ -6,8 +6,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
+import ProjectModal from '../components/ProjectModal';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+
+const GMAIL_URL = 'https://mail.google.com/mail/u/0/?authuser=hitokiwa.recruit@gmail.com';
+const DASHBOARD_URL = 'https://hitokiwa-dashboard.vercel.app/';
 
 const RESULT_CODES = [
   { code: 'NO_ANSWER', label: '不通', bg: 'bg-gray-100', text: 'text-gray-700', activeBg: 'bg-gray-600', activeText: 'text-white' },
@@ -57,6 +61,8 @@ export default function CallPage() {
   const [recallAt, setRecallAt] = useState('');
   const [isEffective, setIsEffective] = useState(false);
   const [isPerson, setIsPerson] = useState(false);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [savedProjectId, setSavedProjectId] = useState(null);
 
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selectedTargetId;
@@ -300,7 +306,7 @@ export default function CallPage() {
       return;
     }
     try {
-      await api.put(`/api/calls/${callId}/end`, {
+      const response = await api.put(`/api/calls/${callId}/end`, {
         result_code: resultCode,
         memo,
         recall_at: recallAt || null,
@@ -310,6 +316,30 @@ export default function CallPage() {
       toast.success('通話結果を保存しました');
       const prevId = selectedTargetId;
       const wasAutoMode = autoMode;
+
+      // 興味あり: Gmail開く + 自動架電停止
+      if (resultCode === 'INTERESTED') {
+        setAutoMode(false);
+        setCalling(false);
+        setCallId(null);
+        window.open(GMAIL_URL, '_blank');
+        await autoAdvanceToNext(prevId);
+        return;
+      }
+
+      // 案件化: ダッシュボード+Gmail開く + モーダル表示 + 自動架電停止
+      if (resultCode === 'PROJECT') {
+        setAutoMode(false);
+        setCalling(false);
+        setCallId(null);
+        window.open(DASHBOARD_URL, '_blank');
+        window.open(GMAIL_URL, '_blank');
+        setSavedProjectId(response.data.data.projectId);
+        setShowProjectModal(true);
+        await autoAdvanceToNext(prevId);
+        return;
+      }
+
       // 通話状態リセット
       setCalling(false);
       setCallId(null);
@@ -634,6 +664,13 @@ export default function CallPage() {
           )}
         </div>
       </div>
+
+      {showProjectModal && savedProjectId && (
+        <ProjectModal
+          projectId={savedProjectId}
+          onClose={() => { setShowProjectModal(false); setSavedProjectId(null); }}
+        />
+      )}
     </Layout>
   );
 }

@@ -8,8 +8,8 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function RecallsPage() {
-  const [recalls, setRecalls] = useState({ today: [], tomorrow: [], overdue: [] });
-  const [counts, setCounts] = useState({ today: 0, tomorrow: 0, overdue: 0 });
+  const [recalls, setRecalls] = useState({ today: [], tomorrow: [], overdue: [], other: [] });
+  const [counts, setCounts] = useState({ today: 0, tomorrow: 0, overdue: 0, other: 0 });
   const [activeTab, setActiveTab] = useState('today');
   const [loading, setLoading] = useState(true);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
@@ -17,7 +17,7 @@ export default function RecallsPage() {
   const fetchRecalls = async () => {
     try {
       const { data } = await api.get('/api/recalls');
-      setRecalls({ today: data.data.today, tomorrow: data.data.tomorrow, overdue: data.data.overdue });
+      setRecalls({ today: data.data.today, tomorrow: data.data.tomorrow, overdue: data.data.overdue, other: data.data.other || [] });
       setCounts(data.data.counts);
     } catch (err) {
       toast.error('リコールの取得に失敗しました');
@@ -54,6 +54,7 @@ export default function RecallsPage() {
     { key: 'today', label: '今日', count: counts.today, color: 'blue' },
     { key: 'tomorrow', label: '明日', count: counts.tomorrow, color: 'gray' },
     { key: 'overdue', label: '期限超過', count: counts.overdue, color: 'red' },
+    { key: 'other', label: 'その他', count: counts.other, color: 'purple' },
   ];
 
   const activeRecalls = recalls[activeTab] || [];
@@ -128,8 +129,10 @@ export default function RecallsPage() {
               </tr>
             </thead>
             <tbody>
-              {activeRecalls.map((recall) => (
-                <React.Fragment key={recall.id}>
+              {activeRecalls.map((recall) => {
+                const rowKey = recall.source_type === 'interested' ? `int_${recall.id}` : recall.id;
+                return (
+                <React.Fragment key={rowKey}>
                 <tr className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                   <td className="table-cell text-gray-500">
                     {new Date(recall.recall_at).toLocaleString('ja-JP')}
@@ -142,7 +145,7 @@ export default function RecallsPage() {
                     {recall.call_transcript ? (
                       <div>
                         <button
-                          onClick={() => setExpandedTranscript(expandedTranscript === recall.id ? null : recall.id)}
+                          onClick={() => setExpandedTranscript(expandedTranscript === rowKey ? null : rowKey)}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
                         >
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -150,7 +153,7 @@ export default function RecallsPage() {
                             <polyline points="14 2 14 8 20 8" />
                             <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
                           </svg>
-                          {expandedTranscript === recall.id ? '閉じる' : '表示'}
+                          {expandedTranscript === rowKey ? '閉じる' : '表示'}
                         </button>
                       </div>
                     ) : (
@@ -158,23 +161,37 @@ export default function RecallsPage() {
                     )}
                   </td>
                   <td className="table-cell text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleComplete(recall.id)}
-                        className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-md hover:bg-emerald-100 transition-colors"
-                      >
-                        完了
-                      </button>
-                      <button
-                        onClick={() => handleCancel(recall.id)}
-                        className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors"
-                      >
-                        取消
-                      </button>
-                    </div>
+                    {recall.source_type === 'interested' ? (
+                      <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-medium rounded-full">興味あり</span>
+                    ) : recall.source_type === 'future_recall' ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="px-2.5 py-1 bg-purple-50 text-purple-600 text-xs font-medium rounded-full">予定</span>
+                        <button
+                          onClick={() => handleCancel(recall.id)}
+                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleComplete(recall.id)}
+                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-md hover:bg-emerald-100 transition-colors"
+                        >
+                          完了
+                        </button>
+                        <button
+                          onClick={() => handleCancel(recall.id)}
+                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
-                {expandedTranscript === recall.id && recall.call_transcript && (
+                {expandedTranscript === rowKey && recall.call_transcript && (
                   <tr className="bg-gray-50/50">
                     <td colSpan="7" className="px-4 pb-4 pt-2">
                       <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto">
@@ -184,7 +201,8 @@ export default function RecallsPage() {
                   </tr>
                 )}
                 </React.Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

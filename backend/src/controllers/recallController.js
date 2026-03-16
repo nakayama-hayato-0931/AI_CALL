@@ -51,14 +51,42 @@ const getRecalls = async (req, res, next) => {
       [userId, today]
     );
 
+    // 将来のリコール (明後日以降)
+    const [futureRows] = await pool.execute(
+      `SELECT rt.*, c.company_name, c.phone_number, c.industry,
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as call_memo,
+              (SELECT cl.transcript FROM calls cl WHERE cl.id = rt.call_id) as call_transcript,
+              'future_recall' as source_type
+       FROM recall_tasks rt
+       JOIN companies c ON rt.company_id = c.id
+       WHERE rt.user_id = ? AND DATE(rt.recall_at) > ? AND rt.status = 'pending'
+       ORDER BY rt.recall_at ASC`,
+      [userId, tomorrow]
+    );
+
+    // 興味あり通話
+    const [interestedRows] = await pool.execute(
+      `SELECT cl.id, cl.company_id, cl.call_started_at as recall_at,
+              cl.memo as call_memo, cl.transcript as call_transcript,
+              c.company_name, c.phone_number, c.industry,
+              'interested' as source_type
+       FROM calls cl
+       JOIN companies c ON cl.company_id = c.id
+       WHERE cl.user_id = ? AND cl.result_code = 'INTERESTED'
+       ORDER BY cl.call_started_at DESC`,
+      [userId]
+    );
+
     return ApiResponse.success(res, {
       today: todayRows,
       tomorrow: tomorrowRows,
       overdue: overdueRows,
+      other: [...futureRows, ...interestedRows],
       counts: {
         today: todayRows.length,
         tomorrow: tomorrowRows.length,
         overdue: overdueRows.length,
+        other: futureRows.length + interestedRows.length,
       },
     });
   } catch (err) {
