@@ -222,7 +222,7 @@ export default function AdminProjects() {
           <div className="flex items-center gap-2">
             <input type="date" className="input text-sm" value={dateFrom}
               onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
-            <span className="text-gray-400">\u301C</span>
+            <span className="text-gray-400">〜</span>
             <input type="date" className="input text-sm" value={dateTo}
               onChange={e => { setDateTo(e.target.value); setPage(1); }} />
           </div>
