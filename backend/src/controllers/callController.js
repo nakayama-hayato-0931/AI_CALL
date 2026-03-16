@@ -238,7 +238,9 @@ const getCalls = async (req, res, next) => {
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     const [countRows] = await pool.execute(
-      `SELECT COUNT(*) as total FROM calls c ${whereStr}`,
+      `SELECT COUNT(*) as total FROM calls c
+       LEFT JOIN companies co ON c.company_id = co.id
+       ${whereStr}`,
       params
     );
 
@@ -250,7 +252,7 @@ const getCalls = async (req, res, next) => {
        ${whereStr}
        ORDER BY c.call_started_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, String(limit), String(offset)]
     );
 
     return ApiResponse.success(res, {

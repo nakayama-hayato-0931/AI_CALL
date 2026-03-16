@@ -88,7 +88,7 @@ const getDailyCalls = async (req, res, next) => {
        LEFT JOIN companies co ON c.company_id = co.id
        LEFT JOIN users u ON c.user_id = u.id
        LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-       WHERE c.user_id = ? AND ${dateCondition}
+       WHERE c.user_id = ? AND ${dateCondition} AND c.result_code != 'SKIP'
        ORDER BY c.call_started_at ASC`,
       queryParams
     );
