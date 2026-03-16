@@ -474,13 +474,13 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
-                <input type="time" value={workStartTime} onChange={(e) => setWorkStartTime(e.target.value)}
-                  className="input text-sm" />
+                <input type="time" value={workStartTime} min="08:00" max="21:00"
+                  onChange={(e) => setWorkStartTime(e.target.value)} className="input text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
-                <input type="time" value={workEndTime} onChange={(e) => setWorkEndTime(e.target.value)}
-                  className="input text-sm" />
+                <input type="time" value={workEndTime} min="08:00" max="21:00"
+                  onChange={(e) => setWorkEndTime(e.target.value)} className="input text-sm" />
               </div>
               {workStartTime && workEndTime && (
                 <p className="text-center text-lg font-bold text-blue-600">
