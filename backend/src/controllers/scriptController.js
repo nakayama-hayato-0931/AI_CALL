@@ -30,7 +30,7 @@ const getApprovedScripts = async (req, res, next) => {
     }
 
     sql += ' ORDER BY type, sort_order, id';
-    const [rows] = await pool.execute(sql, params);
+    const [rows] = await pool.query(sql, params);
     return ApiResponse.success(res, rows);
   } catch (err) {
     next(err);
@@ -59,13 +59,13 @@ const getScripts = async (req, res, next) => {
       params.push(status);
     }
 
-    const [countRows] = await pool.execute(countSql, params);
+    const [countRows] = await pool.query(countSql, params);
     const total = countRows[0].total;
 
     sql += ' ORDER BY status = "pending" DESC, type, sort_order, id';
     const offset = (Number(page) - 1) * Number(limit);
     sql += ' LIMIT ? OFFSET ?';
-    const [rows] = await pool.execute(sql, [...params, Number(limit), offset]);
+    const [rows] = await pool.query(sql, [...params, Number(limit), offset]);
 
     return ApiResponse.success(res, { items: rows, total, page: Number(page), limit: Number(limit) });
   } catch (err) {
