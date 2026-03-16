@@ -7,8 +7,11 @@ import toast from 'react-hot-toast';
 
 const TABS = [
   { value: 'list', label: '架電リスト' },
+  { value: 'time', label: '架電時間' },
   { value: 'area', label: 'ルール設定' },
 ];
+
+const INDUSTRIES = ['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'];
 
 // 都道府県の地方グループ（北から順）
 const REGION_GROUPS = [
@@ -55,6 +58,12 @@ export default function AdminCompanies() {
   const [excludeWords, setExcludeWords] = useState([]);
   const [ngKeywordInput, setNgKeywordInput] = useState('');
 
+  // === 架電時間 タブ ===
+  const [timeRules, setTimeRules] = useState([]);
+  const [newTimeRule, setNewTimeRule] = useState({
+    industry_name: '飲食', start_time: '09:00', end_time: '11:00', priority_weight: 20
+  });
+
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
     if (user) fetchOperators();
@@ -66,6 +75,7 @@ export default function AdminCompanies() {
 
   useEffect(() => {
     if (user && activeTab === 'area') fetchRules();
+    if (user && activeTab === 'time') fetchTimeRules();
   }, [user, activeTab]);
 
   // === 架電リスト 関数 ===
@@ -265,6 +275,50 @@ export default function AdminCompanies() {
     } catch (err) { toast.error('NGワード削除に失敗しました'); }
   };
 
+  // === 架電時間 関数 ===
+  const fetchTimeRules = async () => {
+    try {
+      const { data } = await api.get('/api/admin/time-rules');
+      if (data.success) setTimeRules(data.data);
+    } catch (err) { toast.error('架電時間ルール取得に失敗しました'); }
+  };
+
+  const handleAddTimeRule = async () => {
+    try {
+      const { data } = await api.post('/api/admin/time-rules', newTimeRule);
+      if (data.success) { toast.success('架電時間ルールを追加しました'); fetchTimeRules(); }
+    } catch (err) { toast.error('追加に失敗しました'); }
+  };
+
+  const handleDeleteTimeRule = async (id) => {
+    try {
+      const { data } = await api.delete(`/api/admin/time-rules/${id}`);
+      if (data.success) { toast.success('削除しました'); fetchTimeRules(); }
+    } catch (err) { toast.error('削除に失敗しました'); }
+  };
+
+  // 時間帯×業種マトリクス用: ルールからセルデータを生成
+  const buildTimeMatrix = () => {
+    const hours = [];
+    for (let h = 8; h <= 20; h++) hours.push(h);
+    const matrix = {};
+    for (const h of hours) {
+      matrix[h] = {};
+      for (const ind of INDUSTRIES) {
+        // この時間にマッチするルールを検索
+        const matching = timeRules.filter(r => {
+          if (r.industry_name !== ind) return false;
+          const startH = parseInt(r.start_time.split(':')[0]);
+          const endH = parseInt(r.end_time.split(':')[0]);
+          const endM = parseInt(r.start_time.split(':')[1] || '0');
+          return h >= startH && h < endH;
+        });
+        matrix[h][ind] = matching.length > 0 ? Math.max(...matching.map(m => m.priority_weight)) : null;
+      }
+    }
+    return { hours, matrix };
+  };
+
   // ルールを業種でグループ化
   const groupedRules = rules.reduce((acc, rule) => {
     if (!acc[rule.industry_name]) acc[rule.industry_name] = [];
@@ -416,6 +470,147 @@ export default function AdminCompanies() {
           )}
         </>
       )}
+
+      {/* ============ 架電時間タブ ============ */}
+      {activeTab === 'time' && (() => {
+        const { hours, matrix } = buildTimeMatrix();
+        const currentHour = new Date().getHours();
+        const WEIGHT_COLORS = {
+          20: 'bg-rose-100 text-rose-700 font-bold',
+          15: 'bg-amber-100 text-amber-700 font-semibold',
+          10: 'bg-blue-50 text-blue-600',
+        };
+        const getWeightStyle = (w) => {
+          if (w >= 20) return WEIGHT_COLORS[20];
+          if (w >= 15) return WEIGHT_COLORS[15];
+          return WEIGHT_COLORS[10];
+        };
+
+        // 業種別にグループ化
+        const groupedTimeRules = timeRules.reduce((acc, r) => {
+          if (!acc[r.industry_name]) acc[r.industry_name] = [];
+          acc[r.industry_name].push(r);
+          return acc;
+        }, {});
+
+        return (
+          <>
+            <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
+              <p className="text-sm text-blue-800">
+                自動ピックアップのゴールデンタイムを設定します。設定された時間帯では、該当業種の企業が優先的にピックアップされます。
+                優先度の数値が高いほど優先されます。
+              </p>
+            </div>
+
+            {/* 時間帯×業種マトリクス */}
+            <div className="card mb-6 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <h3 className="text-sm font-bold text-gray-700">時間帯別 優先業種マトリクス</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">現在時刻の行がハイライトされます</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">時間</th>
+                      {INDUSTRIES.map(ind => (
+                        <th key={ind} className="px-3 py-2 text-center text-gray-600 font-semibold">{ind}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hours.map(h => (
+                      <tr key={h} className={`border-b border-gray-50 transition-colors ${
+                        h === currentHour ? 'bg-yellow-50 ring-1 ring-yellow-300 ring-inset' : 'hover:bg-gray-50/50'
+                      }`}>
+                        <td className={`px-3 py-1.5 font-medium ${h === currentHour ? 'text-yellow-700 font-bold' : 'text-gray-500'}`}>
+                          {h}:00{h === currentHour && ' ★'}
+                        </td>
+                        {INDUSTRIES.map(ind => {
+                          const w = matrix[h][ind];
+                          return (
+                            <td key={ind} className="px-3 py-1.5 text-center">
+                              {w ? (
+                                <span className={`inline-block px-2 py-0.5 rounded text-[11px] ${getWeightStyle(w)}`}>
+                                  {w}
+                                </span>
+                              ) : (
+                                <span className="text-gray-200">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ルール追加フォーム */}
+            <div className="card p-5 mb-6">
+              <h3 className="text-sm font-bold text-gray-700 mb-4">ルール追加</h3>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">業種</label>
+                  <select value={newTimeRule.industry_name}
+                    onChange={e => setNewTimeRule(p => ({ ...p, industry_name: e.target.value }))}
+                    className="input text-sm">
+                    {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
+                  <input type="time" value={newTimeRule.start_time} min="08:00" max="21:00"
+                    onChange={e => setNewTimeRule(p => ({ ...p, start_time: e.target.value }))}
+                    className="input text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
+                  <input type="time" value={newTimeRule.end_time} min="08:00" max="21:00"
+                    onChange={e => setNewTimeRule(p => ({ ...p, end_time: e.target.value }))}
+                    className="input text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">優先度</label>
+                  <input type="number" value={newTimeRule.priority_weight} min="1" max="100"
+                    onChange={e => setNewTimeRule(p => ({ ...p, priority_weight: parseInt(e.target.value) || 10 }))}
+                    className="input text-sm w-20" />
+                </div>
+                <button onClick={handleAddTimeRule} className="btn-primary text-sm !py-2 px-5">追加</button>
+              </div>
+            </div>
+
+            {/* ルール一覧 */}
+            <div className="card p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-4">設定済みルール</h3>
+              {Object.keys(groupedTimeRules).length > 0 ? (
+                <div className="space-y-4">
+                  {Object.entries(groupedTimeRules).map(([industry, rules]) => (
+                    <div key={industry}>
+                      <p className="text-xs font-bold text-gray-600 mb-2">{industry}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {rules.map(r => (
+                          <span key={r.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+                            <span className="text-gray-700">{r.start_time.slice(0,5)} 〜 {r.end_time.slice(0,5)}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${getWeightStyle(r.priority_weight)}`}>
+                              {r.priority_weight}
+                            </span>
+                            <button onClick={() => handleDeleteTimeRule(r.id)}
+                              className="text-red-400 hover:text-red-600 transition-colors">&times;</button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-4">ルールが設定されていません</p>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ============ ルール設定タブ ============ */}
       {activeTab === 'area' && (

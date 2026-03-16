@@ -475,6 +475,62 @@ const deleteExcludeWord = async (req, res, next) => {
   }
 };
 
+// ==================== 架電時間ルール ====================
+
+/**
+ * GET /api/admin/time-rules
+ * 業種別ゴールデンタイムルール一覧
+ */
+const getTimeRules = async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM industry_time_rules ORDER BY industry_name, start_time'
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/admin/time-rules
+ * ゴールデンタイムルール追加
+ */
+const addTimeRule = async (req, res, next) => {
+  try {
+    const { industry_name, start_time, end_time, priority_weight } = req.body;
+    if (!industry_name || !start_time || !end_time) {
+      return ApiResponse.badRequest(res, '業種・開始時間・終了時間は必須です');
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO industry_time_rules (industry_name, start_time, end_time, priority_weight) VALUES (?, ?, ?, ?)',
+      [industry_name, start_time, end_time, priority_weight || 10]
+    );
+    logger.info(`架電時間ルール追加: ${industry_name} ${start_time}-${end_time} (weight:${priority_weight})`);
+    return ApiResponse.success(res, { id: result.insertId }, '架電時間ルールを追加しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/admin/time-rules/:id
+ * ゴールデンタイムルール削除
+ */
+const deleteTimeRule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute('DELETE FROM industry_time_rules WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, 'ルールが見つかりません');
+    }
+    logger.info(`架電時間ルール削除: ID ${id}`);
+    return ApiResponse.success(res, null, '架電時間ルールを削除しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
@@ -490,4 +546,7 @@ module.exports = {
   getExcludeWords,
   addExcludeWord,
   deleteExcludeWord,
+  getTimeRules,
+  addTimeRule,
+  deleteTimeRule,
 };
