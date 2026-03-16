@@ -336,11 +336,16 @@ export default function CallPage() {
       setCallId(data.data.callId);
       setCalling(true);
       setAutoMode(true);
-      // ZoomPhone起動: 国内番号(0始まり)を+81形式に変換
+      // ZoomPhone起動: 国内番号(0始まり)を+81形式に変換、隠しiframeで起動（ページ遷移を防ぐ）
       const phoneForZoom = company.phone_number.startsWith('0')
         ? '+81' + company.phone_number.slice(1)
         : company.phone_number;
-      window.location.href = `zoomphone://call?number=${encodeURIComponent(phoneForZoom)}`;
+      const zoomUrl = `zoomphone://call?number=${encodeURIComponent(phoneForZoom)}`;
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = zoomUrl;
+      document.body.appendChild(iframe);
+      setTimeout(() => iframe.remove(), 3000);
       toast.success('自動架電モードを開始しました');
     } catch (err) {
       if (err.response?.status === 409) {
