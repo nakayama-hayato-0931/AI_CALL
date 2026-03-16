@@ -92,7 +92,7 @@ const ADMIN_NAV = [
   { href: '/admin/users', label: 'ユーザー管理', icon: 'users', adminOnly: true },
   { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
   { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
-  { href: '/call-results', label: '架電結果', icon: 'log' },
+  { href: '/admin/call-logs', label: '架電結果ログ', icon: 'log' },
   { href: '/admin/projects', label: '案件管理', icon: 'project' },
   { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
   { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
