@@ -53,7 +53,7 @@ export default function CallResultsPage() {
 
   // 編集
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ result_code: '', memo: '' });
+  const [editForm, setEditForm] = useState({ result_code: '', memo: '', is_effective_connection: false, is_person_in_charge: false });
 
   // 展開
   const [expandedId, setExpandedId] = useState(null);
@@ -110,7 +110,7 @@ export default function CallResultsPage() {
 
   const startEdit = (call) => {
     setEditingId(call.id);
-    setEditForm({ result_code: call.result_code || '', memo: call.memo || '' });
+    setEditForm({ result_code: call.result_code || '', memo: call.memo || '', is_effective_connection: !!call.is_effective_connection, is_person_in_charge: !!call.is_person_in_charge });
   };
 
   const saveEdit = async (callId) => {
@@ -295,10 +295,22 @@ export default function CallResultsPage() {
                       </td>
                       <td className="table-cell text-gray-500 text-xs">{calcDuration(call.call_started_at, call.call_ended_at)}</td>
                       <td className="table-cell text-center">
-                        {call.is_effective_connection ? <span className="text-emerald-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
+                        {isEditing ? (
+                          <input type="checkbox" checked={editForm.is_effective_connection}
+                            onChange={e => setEditForm({...editForm, is_effective_connection: e.target.checked})}
+                            className="w-4 h-4 rounded border-gray-300 text-emerald-600 cursor-pointer" />
+                        ) : (
+                          call.is_effective_connection ? <span className="text-emerald-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>
+                        )}
                       </td>
                       <td className="table-cell text-center">
-                        {call.is_person_in_charge ? <span className="text-blue-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
+                        {isEditing ? (
+                          <input type="checkbox" checked={editForm.is_person_in_charge}
+                            onChange={e => setEditForm({...editForm, is_person_in_charge: e.target.checked})}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
+                        ) : (
+                          call.is_person_in_charge ? <span className="text-blue-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>
+                        )}
                       </td>
                       <td className="table-cell text-gray-400 text-xs max-w-xs">
                         {isEditing ? (

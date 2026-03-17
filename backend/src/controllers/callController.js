@@ -291,7 +291,7 @@ const getCalls = async (req, res, next) => {
 const updateCall = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { result_code, memo } = req.body;
+    const { result_code, memo, is_effective_connection, is_person_in_charge } = req.body;
     const userId = req.user.id;
 
     // 自分の通話のみ編集可能
@@ -316,6 +316,14 @@ const updateCall = async (req, res, next) => {
     if (memo !== undefined) {
       updates.push('memo = ?');
       params.push(memo || null);
+    }
+    if (is_effective_connection !== undefined) {
+      updates.push('is_effective_connection = ?');
+      params.push(is_effective_connection ? 1 : 0);
+    }
+    if (is_person_in_charge !== undefined) {
+      updates.push('is_person_in_charge = ?');
+      params.push(is_person_in_charge ? 1 : 0);
     }
 
     if (updates.length === 0) {

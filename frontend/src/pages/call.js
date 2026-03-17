@@ -374,6 +374,9 @@ export default function CallPage() {
       const prevId = selectedTargetId;
       const wasAutoMode = autoMode;
 
+      // フォームを即座にリセット（次の架電先に引き継がないようにする）
+      resetForm();
+
       // 興味あり: Gmail開く + 自動架電停止
       if (resultCode === 'INTERESTED') {
         setAutoMode(false);
