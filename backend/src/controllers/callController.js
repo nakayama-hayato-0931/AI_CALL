@@ -170,6 +170,32 @@ const endCall = async (req, res, next) => {
 };
 
 /**
+ * DELETE /api/calls/:id/cancel
+ * 結果未入力のまま架電終了 → callsレコードを削除
+ */
+const cancelCall = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // 自分の通話 & result_code が NULL のもののみ削除可能
+    const [result] = await pool.execute(
+      'DELETE FROM calls WHERE id = ? AND user_id = ? AND result_code IS NULL',
+      [id, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return ApiResponse.badRequest(res, '削除対象の通話が見つかりません');
+    }
+
+    logger.info(`架電取消: user=${userId}, call=${id}`);
+    return ApiResponse.success(res, null, '通話記録を取り消しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/calls/skip
  * 架電スキップ（通話せずに記録、ロック解除）
  */
@@ -373,4 +399,4 @@ const getOperators = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, skipCall, getCalls, updateCall, getOperators };
+module.exports = { startCall, endCall, cancelCall, skipCall, getCalls, updateCall, getOperators };

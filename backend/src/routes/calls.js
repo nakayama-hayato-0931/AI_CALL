@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { startCall, endCall, skipCall, getCalls, updateCall, getOperators } = require('../controllers/callController');
+const { startCall, endCall, cancelCall, skipCall, getCalls, updateCall, getOperators } = require('../controllers/callController');
 const { authenticate } = require('../middlewares/auth');
 
 router.use(authenticate);
@@ -25,5 +25,8 @@ router.post('/skip', skipCall);
 
 // PUT /api/calls/:id/end - 通話結果登録
 router.put('/:id/end', endCall);
+
+// DELETE /api/calls/:id/cancel - 結果未入力の通話を取消
+router.delete('/:id/cancel', cancelCall);
 
 module.exports = router;

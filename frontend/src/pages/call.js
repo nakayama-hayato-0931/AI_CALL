@@ -655,7 +655,18 @@ export default function CallPage() {
                   <div className="relative">
                     <div className="absolute inset-0 w-36 h-36 rounded-full bg-red-400/30 pulse-ring" />
                     <button
-                      onClick={() => { setCalling(false); }}
+                      onClick={async () => {
+                        // 結果未入力のcallsレコードを削除
+                        if (callId) {
+                          try {
+                            await api.delete(`/api/calls/${callId}/cancel`);
+                          } catch (e) {
+                            // 既に結果保存済みの場合はエラーを無視
+                          }
+                        }
+                        setCalling(false);
+                        setCallId(null);
+                      }}
                       className="relative w-36 h-36 rounded-full bg-gradient-to-br from-red-400 to-red-600 text-white text-lg font-bold shadow-lg shadow-red-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-red-500/30 active:scale-95 flex items-center justify-center"
                     >
                       <div className="text-center">

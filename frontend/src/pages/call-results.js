@@ -305,7 +305,7 @@ export default function CallResultsPage() {
                             onChange={e => setEditForm({...editForm, is_effective_connection: e.target.checked})}
                             className="w-4 h-4 rounded border-gray-300 text-emerald-600 cursor-pointer" />
                         ) : (
-                          call.is_effective_connection ? <span className="text-emerald-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>
+                          call.is_effective_connection ? <span className="text-emerald-600 font-bold text-lg">●</span> : <span className="text-gray-300 text-xs">-</span>
                         )}
                       </td>
                       <td className="table-cell text-center">
@@ -314,7 +314,7 @@ export default function CallResultsPage() {
                             onChange={e => setEditForm({...editForm, is_person_in_charge: e.target.checked})}
                             className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
                         ) : (
-                          call.is_person_in_charge ? <span className="text-blue-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>
+                          call.is_person_in_charge ? <span className="text-blue-600 font-bold text-lg">●</span> : <span className="text-gray-300 text-xs">-</span>
                         )}
                       </td>
                       <td className="table-cell text-gray-400 text-xs max-w-xs">
