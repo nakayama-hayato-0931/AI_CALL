@@ -22,8 +22,8 @@ export default function useAuth() {
   }, []);
 
   // ログイン
-  const login = useCallback(async (email, password) => {
-    const { data } = await api.post('/api/auth/login', { email, password });
+  const login = useCallback(async (credentials) => {
+    const { data } = await api.post('/api/auth/login', credentials);
     if (data.success) {
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));

@@ -14,20 +14,29 @@ const logger = require('../utils/logger');
  */
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, user_id, password } = req.body;
 
-    if (!email || !password) {
-      return ApiResponse.badRequest(res, 'メールアドレスとパスワードを入力してください');
+    if (!password || (!email && !user_id)) {
+      return ApiResponse.badRequest(res, '認証情報とパスワードを入力してください');
     }
 
-    // プリペアドステートメントでSQLインジェクション対策
-    const [rows] = await pool.execute(
-      'SELECT id, name, email, password_hash, role FROM users WHERE email = ? AND is_active = 1',
-      [email]
-    );
+    let rows;
+    if (user_id) {
+      // オペレーター: user_id + password でログイン
+      [rows] = await pool.execute(
+        'SELECT id, name, email, password_hash, role FROM users WHERE id = ? AND is_active = 1',
+        [user_id]
+      );
+    } else {
+      // その他: email + password でログイン
+      [rows] = await pool.execute(
+        'SELECT id, name, email, password_hash, role FROM users WHERE email = ? AND is_active = 1',
+        [email]
+      );
+    }
 
     if (rows.length === 0) {
-      return ApiResponse.unauthorized(res, 'メールアドレスまたはパスワードが正しくありません');
+      return ApiResponse.unauthorized(res, '認証情報またはパスワードが正しくありません');
     }
 
     const user = rows[0];
@@ -35,7 +44,7 @@ const login = async (req, res, next) => {
     // パスワード検証
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return ApiResponse.unauthorized(res, 'メールアドレスまたはパスワードが正しくありません');
+      return ApiResponse.unauthorized(res, '認証情報またはパスワードが正しくありません');
     }
 
     // JWTトークン発行
@@ -82,4 +91,19 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { login, getMe };
+/**
+ * GET /api/auth/operators
+ * オペレーター一覧取得（ログイン画面用、認証不要）
+ */
+const getOperators = async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 ORDER BY name ASC"
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { login, getMe, getOperators };
