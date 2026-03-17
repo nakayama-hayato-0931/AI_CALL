@@ -51,24 +51,27 @@ const getTeamAnalysis = async (req, res, next) => {
       [dateFrom, dateTo]
     );
 
+    // 架電数0のオペレーター（未出勤）を除外
+    const activeOperators = rows.filter(op => op.total_calls > 0);
+
     // 全体統計
-    const totalStats = rows.reduce((acc, op) => ({
+    const totalStats = activeOperators.reduce((acc, op) => ({
       totalCalls: acc.totalCalls + (op.total_calls || 0),
       effectiveConnections: acc.effectiveConnections + (op.effective_connections || 0),
       personConnections: acc.personConnections + (op.person_connections || 0),
       projects: acc.projects + (op.projects || 0),
     }), { totalCalls: 0, effectiveConnections: 0, personConnections: 0, projects: 0 });
 
-    if (totalStats.totalCalls === 0 && rows.length === 0) {
+    if (totalStats.totalCalls === 0 && activeOperators.length === 0) {
       return ApiResponse.success(res, { analysis: null, message: 'この期間のデータがありません' });
     }
 
-    // Claude API で分析
+    // Claude API で分析（出勤者のみ）
     const analysis = await evaluateTeamAnalysis({
       period,
       dateFrom,
       dateTo,
-      operators: rows,
+      operators: activeOperators,
       totalStats,
     });
 
