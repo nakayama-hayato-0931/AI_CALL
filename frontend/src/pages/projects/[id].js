@@ -240,10 +240,11 @@ export default function ProjectDetailPage() {
                 <div>
                   <label className="input-label">ステータス</label>
                   <select
-                    value={form.status}
+                    value={form.status || ''}
                     onChange={(e) => setForm({ ...form, status: e.target.value })}
                     className="input"
                   >
+                    <option value="">未選択</option>
                     {STATUS_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}

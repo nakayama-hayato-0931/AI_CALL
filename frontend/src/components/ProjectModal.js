@@ -66,7 +66,8 @@ export default function ProjectModal({ projectId, onClose }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="input-label">ステータス</label>
-                <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="input">
+                <select value={form.status || ''} onChange={e => setForm({...form, status: e.target.value})} className="input">
+                  <option value="">未選択</option>
                   {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
