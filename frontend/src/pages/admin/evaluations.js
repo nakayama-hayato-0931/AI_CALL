@@ -99,6 +99,7 @@ export default function AdminEvaluations() {
   const [expandedTranscript, setExpandedTranscript] = useState(null);
   const [page, setPage] = useState(1);
   const [summaryStats, setSummaryStats] = useState(null);
+  const [evaluating, setEvaluating] = useState(false);
 
   // スクリプト提案
   const [suggestingId, setSuggestingId] = useState(null);
@@ -153,14 +154,26 @@ export default function AdminEvaluations() {
 
   const handleRunEvaluation = async (targetUserId, targetDate) => {
     if (!confirm('このオペレーターのAI評価を実行しますか？')) return;
+    setEvaluating(true);
+    const loadingToast = toast.loading('AI評価を実行中...');
     try {
       const { data } = await api.post('/api/ai/evaluate-daily', {
         date: targetDate,
         target_user_id: targetUserId,
       }, { timeout: 120000 });
-      toast.success(`${data.data.evaluatedCount}件の評価を実行しました`);
+      toast.dismiss(loadingToast);
+      if (data.data.evaluatedCount > 0) {
+        toast.success(`${data.data.evaluatedCount}件の評価を実行しました`);
+      } else {
+        toast('この日の未評価の通話はありません', { icon: 'ℹ️' });
+      }
       fetchEvaluations();
-    } catch (err) { toast.error(err.response?.data?.message || '評価に失敗しました'); }
+    } catch (err) {
+      toast.dismiss(loadingToast);
+      toast.error(err.response?.data?.message || '評価に失敗しました');
+    } finally {
+      setEvaluating(false);
+    }
   };
 
   // スクリプト提案生成
@@ -273,9 +286,18 @@ export default function AdminEvaluations() {
             {operators.map(op => <option key={op.id} value={op.id}>{op.name}</option>)}
           </select>
         </div>
-        {filters.user_id && (period === 'daily') && (
+        {filters.user_id && (
           <button onClick={() => handleRunEvaluation(filters.user_id, dailyDate)}
-            className="btn-primary text-sm">AI評価実行</button>
+            disabled={evaluating}
+            className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            {evaluating && (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {evaluating ? 'AI評価実行中...' : 'AI評価実行'}
+          </button>
         )}
       </div>
 

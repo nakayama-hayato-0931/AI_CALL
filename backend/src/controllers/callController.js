@@ -308,10 +308,16 @@ const getCalls = async (req, res, next) => {
     );
 
     const [rows] = await pool.execute(
-      `SELECT c.*, u.name as operator_name, co.company_name, co.phone_number
+      `SELECT c.*, u.name as operator_name, co.company_name, co.phone_number,
+       ae.overall_score as ai_overall, ae.opening_score as ai_opening,
+       ae.clarity_score as ai_clarity, ae.hearing_score as ai_hearing,
+       ae.rebuttal_score as ai_rebuttal, ae.closing_score as ai_closing,
+       ae.summary as ai_summary, ae.good_points as ai_good_points,
+       ae.improvement_points as ai_improvement_points
        FROM calls c
        LEFT JOIN users u ON c.user_id = u.id
        LEFT JOIN companies co ON c.company_id = co.id
+       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
        ${whereStr}
        ORDER BY c.call_started_at DESC
        LIMIT ? OFFSET ?`,

@@ -236,12 +236,13 @@ const evaluateDailyBatch = async (req, res, next) => {
     }
 
     // 1日の評価回数チェック (admin/managerはスキップ)
+    let todayCount = 0;
     if (!isAdminOrManager) {
       const [batchLogs] = await pool.query(
         'SELECT COUNT(*) as cnt FROM evaluation_batch_logs WHERE user_id = ? AND evaluated_date = CURDATE()',
         [userId]
       );
-      const todayCount = batchLogs[0].cnt;
+      todayCount = batchLogs[0].cnt;
       if (todayCount >= DAILY_EVAL_LIMIT) {
         return ApiResponse.badRequest(res,
           `本日のAI評価回数が上限(${DAILY_EVAL_LIMIT}回)に達しました。明日再度お試しください。`
