@@ -95,4 +95,113 @@ const searchCallLogs = async (phoneNumber) => {
   }
 };
 
-module.exports = { searchCallLogs };
+/**
+ * 文字起こしスプレッドシートから電話番号+開始時刻でtranscriptを検索
+ * @param {string} phoneNumber - 電話番号 (0XXX形式)
+ * @param {string} callStartedAt - 通話開始日時 (YYYY-MM-DD HH:mm:ss)
+ * @returns {string|null} transcript text or null
+ */
+const findTranscript = async (phoneNumber, callStartedAt) => {
+  try {
+    const sheets = await getClient();
+    const transcriptSheetId = process.env.GOOGLE_TRANSCRIPT_SPREADSHEET_ID;
+    if (!transcriptSheetId) return null;
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: transcriptSheetId,
+      range: 'シート1!A:C',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) return null;
+
+    const normalize = (num) => {
+      let n = (num || '').replace(/[-\s()+]/g, '');
+      if (n.startsWith('81') && n.length >= 11) n = '0' + n.slice(2);
+      return n;
+    };
+    const normalizedPhone = normalize(phoneNumber);
+    const callTime = new Date(callStartedAt).getTime();
+
+    // ヘッダーをスキップしてマッチ検索
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const sheetPhone = normalize(row[0] || '');
+      const sheetTranscript = row[1] || '';
+      const sheetTime = row[2] || '';
+
+      if (sheetPhone !== normalizedPhone || !sheetTranscript) continue;
+
+      // 開始時刻が5分以内なら同一通話とみなす
+      if (sheetTime) {
+        const sheetTimeMs = new Date(sheetTime).getTime();
+        if (Math.abs(callTime - sheetTimeMs) <= 5 * 60 * 1000) {
+          return sheetTranscript;
+        }
+      }
+    }
+    return null;
+  } catch (err) {
+    logger.error('Transcript検索エラー:', err);
+    return null;
+  }
+};
+
+/**
+ * 複数通話のtranscriptを一括取得
+ * @param {Array} calls - [{phone_number, call_started_at}]
+ * @returns {Map} phone+time -> transcript
+ */
+const findTranscriptsBatch = async (calls) => {
+  try {
+    const sheets = await getClient();
+    const transcriptSheetId = process.env.GOOGLE_TRANSCRIPT_SPREADSHEET_ID;
+    if (!transcriptSheetId) return new Map();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: transcriptSheetId,
+      range: 'シート1!A:C',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) return new Map();
+
+    const normalize = (num) => {
+      let n = (num || '').replace(/[-\s()+]/g, '');
+      if (n.startsWith('81') && n.length >= 11) n = '0' + n.slice(2);
+      return n;
+    };
+
+    // シートデータをインデックス化 (電話番号 -> [{transcript, time}])
+    const sheetIndex = new Map();
+    for (let i = 1; i < rows.length; i++) {
+      const phone = normalize(rows[i][0] || '');
+      const transcript = rows[i][1] || '';
+      const time = rows[i][2] || '';
+      if (!phone || !transcript) continue;
+      if (!sheetIndex.has(phone)) sheetIndex.set(phone, []);
+      sheetIndex.get(phone).push({ transcript, time: time ? new Date(time).getTime() : 0 });
+    }
+
+    // 各通話にマッチするtranscriptを検索
+    const results = new Map();
+    for (const call of calls) {
+      const phone = normalize(call.phone_number);
+      const entries = sheetIndex.get(phone);
+      if (!entries) continue;
+      const callTime = new Date(call.call_started_at).getTime();
+      for (const entry of entries) {
+        if (entry.time && Math.abs(callTime - entry.time) <= 5 * 60 * 1000) {
+          results.set(call.id, entry.transcript);
+          break;
+        }
+      }
+    }
+    return results;
+  } catch (err) {
+    logger.error('Transcript一括検索エラー:', err);
+    return new Map();
+  }
+};
+
+module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch };

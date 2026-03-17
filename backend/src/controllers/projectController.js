@@ -5,6 +5,7 @@
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { findTranscriptsBatch } = require('../services/googleSheetsService');
 
 /**
  * GET /api/projects
@@ -258,10 +259,9 @@ const getCallLogs = async (req, res, next) => {
     const { company_id, phone_number } = projRows[0];
 
     // 同じ電話番号を持つ全企業への通話を取得
-    // phone_number は +81 形式の場合があるので、同じ company_id + 同じ phone_number の企業をまとめて検索
     const [calls] = await pool.query(
       `SELECT cl.id, cl.call_started_at, cl.call_ended_at, cl.result_code, cl.memo, cl.transcript,
-              u.name as operator_name
+              u.name as operator_name, co.phone_number
        FROM calls cl
        LEFT JOIN users u ON cl.user_id = u.id
        LEFT JOIN companies co ON cl.company_id = co.id
@@ -269,6 +269,24 @@ const getCallLogs = async (req, res, next) => {
        ORDER BY cl.call_started_at DESC`,
       [phone_number, company_id]
     );
+
+    // transcriptがnullの通話をGoogle Sheetsから自動取得
+    const missingTranscripts = calls.filter(c => !c.transcript && c.phone_number && c.call_started_at);
+    if (missingTranscripts.length > 0) {
+      try {
+        const transcriptMap = await findTranscriptsBatch(missingTranscripts);
+        for (const [callId, transcript] of transcriptMap) {
+          await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
+          const call = calls.find(c => c.id === callId);
+          if (call) call.transcript = transcript;
+        }
+        if (transcriptMap.size > 0) {
+          logger.info(`案件通話ログ: Transcript ${transcriptMap.size}件取得・保存`);
+        }
+      } catch (e) {
+        logger.error('Transcript取得エラー:', e);
+      }
+    }
 
     return ApiResponse.success(res, calls);
   } catch (err) {
