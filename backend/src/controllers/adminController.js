@@ -189,9 +189,9 @@ const getAllOperatorPerformance = async (req, res, next) => {
       `SELECT
         u.id as user_id, u.name,
         COUNT(DISTINCT c.id) as total_calls,
-        SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_connections,
-        SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_connections,
-        SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) as projects,
+        CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
+        CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
+        CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects,
         COALESCE(ROUND(AVG(ae.overall_score), 1), 0) as avg_ai_score,
         COALESCE(ROUND(AVG(ae.opening_score), 1), 0) as avg_opening,
         COALESCE(ROUND(AVG(ae.clarity_score), 1), 0) as avg_clarity,

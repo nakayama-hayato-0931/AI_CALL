@@ -100,9 +100,7 @@ export default function DashboardPage() {
 
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
-  const [kpiScope, setKpiScope] = useState(() =>
-    (user?.role === 'admin' || user?.role === 'manager') ? 'team' : 'self'
-  );
+  const [kpiScope, setKpiScope] = useState('team');
   const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
   const [operators, setOperators] = useState([]);
 

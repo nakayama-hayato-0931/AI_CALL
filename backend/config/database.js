@@ -23,14 +23,20 @@ const pool = mysql.createPool({
   timezone: '+09:00',
 });
 
-// 接続テスト
+// 接続テスト + セッションタイムゾーンをJSTに設定
 pool.getConnection()
-  .then((conn) => {
-    console.log('[DB] MySQL接続成功');
+  .then(async (conn) => {
+    await conn.query("SET time_zone = '+09:00'");
+    console.log('[DB] MySQL接続成功 (timezone: JST)');
     conn.release();
   })
   .catch((err) => {
     console.error('[DB] MySQL接続失敗:', err.message);
   });
+
+// 全接続でセッションタイムゾーンをJSTに設定
+pool.on('connection', (conn) => {
+  conn.query("SET time_zone = '+09:00'");
+});
 
 module.exports = pool;

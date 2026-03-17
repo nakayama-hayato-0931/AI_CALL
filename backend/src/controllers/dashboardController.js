@@ -48,10 +48,10 @@ const getDailyStats = async (req, res, next) => {
          MIN(call_started_at) as first_call,
          MAX(COALESCE(call_ended_at, call_started_at)) as last_call,
          COUNT(*) as call_count,
-         SUM(CASE WHEN result_code = 'RECALL' THEN 1 ELSE 0 END) as recall_gained,
-         SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END) as effective_count,
-         SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) as person_count,
-         SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) as project_count
+         CAST(SUM(CASE WHEN result_code = 'RECALL' THEN 1 ELSE 0 END) AS SIGNED) as recall_gained,
+         CAST(SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_count,
+         CAST(SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_count,
+         CAST(SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as project_count
        FROM calls c
        WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
          ${userCondition}`,
@@ -197,9 +197,9 @@ const getIndustryConversion = async (req, res, next) => {
       `SELECT
          co.industry,
          COUNT(c.id) as total_calls,
-         SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) as projects,
+         CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as projects,
          ROUND(
-           SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) / COUNT(c.id) * 100, 1
+           CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) / COUNT(c.id) * 100, 1
          ) as conversion_rate
        FROM calls c
        JOIN companies co ON c.company_id = co.id
