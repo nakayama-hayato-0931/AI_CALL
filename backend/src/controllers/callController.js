@@ -324,22 +324,19 @@ const getCalls = async (req, res, next) => {
       [...params, String(limit), String(offset)]
     );
 
-    // transcriptがnullの通話をGoogle Sheetsから自動取得
+    // transcriptがnullの通話をGoogle Sheetsからバックグラウンドで取得（レスポンスをブロックしない）
     const missingTranscripts = rows.filter(r => !r.transcript && r.phone_number && r.call_started_at);
     if (missingTranscripts.length > 0) {
-      try {
-        const transcriptMap = await findTranscriptsBatch(missingTranscripts);
+      findTranscriptsBatch(missingTranscripts).then(async (transcriptMap) => {
         for (const [callId, transcript] of transcriptMap) {
           await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
-          const row = rows.find(r => r.id === callId);
-          if (row) row.transcript = transcript;
         }
         if (transcriptMap.size > 0) {
           logger.info(`Transcript自動取得: ${transcriptMap.size}件保存`);
         }
-      } catch (e) {
-        logger.error('Transcript一括取得エラー:', e);
-      }
+      }).catch(e => {
+        logger.error('Transcript一括取得エラー:', e.message);
+      });
     }
 
     return ApiResponse.success(res, {
