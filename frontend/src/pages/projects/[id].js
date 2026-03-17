@@ -35,7 +35,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '',
-    document_screening: '', mail_sent: false, phone_confirmed: false, memo: '',
+    document_screening: '', mail_sent: false, phone_confirmed: false, job_number: '', memo: '',
   });
   const [companyForm, setCompanyForm] = useState({
     company_name: '', industry: '', address: '',
@@ -60,6 +60,7 @@ export default function ProjectDetailPage() {
         document_screening: p.document_screening || '',
         mail_sent: !!p.mail_sent,
         phone_confirmed: !!p.phone_confirmed,
+        job_number: p.job_number || '',
         memo: p.memo || '',
       });
       setCompanyForm({
@@ -81,6 +82,7 @@ export default function ProjectDetailPage() {
         interview_date: form.interview_date || null,
         interview_type: form.interview_type || null,
         document_screening: form.document_screening || null,
+        job_number: form.job_number || null,
       });
       toast.success('案件を更新しました');
       fetchProject();
@@ -249,6 +251,17 @@ export default function ProjectDetailPage() {
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="input-label">求人番号</label>
+                  <input
+                    type="text"
+                    value={form.job_number}
+                    onChange={(e) => setForm({ ...form, job_number: e.target.value })}
+                    className="input"
+                    placeholder="求人番号を入力"
+                  />
                 </div>
 
                 <div>
