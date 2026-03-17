@@ -272,54 +272,63 @@ const evaluateDailyBatch = async (req, res, next) => {
     let evaluatedCount = 0;
     const evaluatedResults = [];
 
-    // 各通話を順にAI評価（バッチ制限あり）
-    for (const callData of batch) {
-      try {
-        // Google Sheetsから関連ログを検索
-        let sheetLogs = [];
-        if (callData.phone_number) {
-          try {
-            sheetLogs = await searchCallLogs(callData.phone_number);
-          } catch (err) {
-            logger.warn('Google Sheets検索スキップ:', err.message);
-          }
+    // 各通話を並列にAI評価（バッチ内同時実行で高速化）
+    const evalPromises = batch.map(async (callData) => {
+      // Google Sheetsから関連ログを検索
+      let sheetLogs = [];
+      if (callData.phone_number) {
+        try {
+          sheetLogs = await searchCallLogs(callData.phone_number);
+        } catch (err) {
+          logger.warn('Google Sheets検索スキップ:', err.message);
         }
+      }
 
-        const evaluation = await evaluateCallFromData(callData, sheetLogs);
+      const evaluation = await evaluateCallFromData(callData, sheetLogs);
+      return { callData, evaluation };
+    });
 
-        // 保存
-        await pool.query(
-          `INSERT INTO ai_evaluations
-            (user_id, call_id, overall_score, opening_score, clarity_score,
-             hearing_score, rebuttal_score, closing_score,
-             summary, good_points, improvement_points, next_improvement)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            callData.user_id,
-            callData.id,
-            evaluation.overall_score,
-            evaluation.opening_score,
-            evaluation.clarity_score,
-            evaluation.hearing_score,
-            evaluation.rebuttal_score,
-            evaluation.closing_score,
-            evaluation.summary || null,
-            evaluation.good_points || null,
-            evaluation.improvement_points || null,
-            evaluation.next_improvement || null,
-          ]
-        );
+    const results = await Promise.allSettled(evalPromises);
 
-        evaluatedResults.push({
-          call_id: callData.id,
-          company_name: callData.company_name,
-          result_code: callData.result_code,
-          overall_score: evaluation.overall_score,
-          summary: evaluation.summary,
-        });
-        evaluatedCount++;
-      } catch (err) {
-        logger.error(`通話 ${callData.id} の評価失敗:`, err.message);
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { callData, evaluation } = result.value;
+        try {
+          await pool.query(
+            `INSERT INTO ai_evaluations
+              (user_id, call_id, overall_score, opening_score, clarity_score,
+               hearing_score, rebuttal_score, closing_score,
+               summary, good_points, improvement_points, next_improvement)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              callData.user_id,
+              callData.id,
+              evaluation.overall_score,
+              evaluation.opening_score,
+              evaluation.clarity_score,
+              evaluation.hearing_score,
+              evaluation.rebuttal_score,
+              evaluation.closing_score,
+              evaluation.summary || null,
+              evaluation.good_points || null,
+              evaluation.improvement_points || null,
+              evaluation.next_improvement || null,
+            ]
+          );
+
+          evaluatedResults.push({
+            call_id: callData.id,
+            company_name: callData.company_name,
+            result_code: callData.result_code,
+            overall_score: evaluation.overall_score,
+            summary: evaluation.summary,
+          });
+          evaluatedCount++;
+        } catch (err) {
+          logger.error(`通話 ${callData.id} のDB保存失敗:`, err.message);
+        }
+      } else {
+        logger.error(`通話の評価失敗:`, result.reason?.message);
       }
     }
 
