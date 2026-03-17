@@ -159,22 +159,6 @@ const updateProject = async (req, res, next) => {
       address,
     } = req.body;
 
-    // 営業ロールは sales_user_id のみ更新可能
-    if (req.user.role === 'sales') {
-      if (sales_user_id === undefined) {
-        return ApiResponse.forbidden(res, '営業担当者は担当営業の割り当てのみ変更できます');
-      }
-      const [result] = await pool.execute(
-        'UPDATE projects SET sales_user_id = ? WHERE id = ?',
-        [sales_user_id || null, id]
-      );
-      if (result.affectedRows === 0) {
-        return ApiResponse.notFound(res, '案件が見つかりません');
-      }
-      logger.info(`担当営業割り当て: project=${id}, sales_user_id=${sales_user_id}`);
-      return ApiResponse.success(res, null, '担当営業を更新しました');
-    }
-
     // ステータスバリデーション
     const validStatuses = [
       'NAITEI', 'FUGOKAKU', 'KEKKA_MACHI', 'MENSETSU_KAKUTEI',

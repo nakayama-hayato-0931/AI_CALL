@@ -234,8 +234,7 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          {!isSales && (
-            <div className="card p-5">
+          <div className="card p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-4">案件編集</h2>
               <div className="space-y-4">
                 <div>
@@ -334,7 +333,6 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             </div>
-          )}
         </div>
 
         {/* 右: 通話履歴 */}

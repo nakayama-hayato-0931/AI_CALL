@@ -1,6 +1,6 @@
 /**
  * 案件管理ページ (一覧)
- * 案件一覧・ステータスフィルター
+ * 管理者と同じ表示項目
  */
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -35,26 +35,44 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLES = {
-  NAITEI: 'bg-emerald-50 text-emerald-700',
-  FUGOKAKU: 'bg-red-50 text-red-600',
-  KEKKA_MACHI: 'bg-orange-50 text-orange-700',
-  MENSETSU_KAKUTEI: 'bg-violet-50 text-violet-700',
-  BOSHUCHU: 'bg-blue-50 text-blue-700',
-  SHORUI_CHU: 'bg-amber-50 text-amber-700',
-  LOST: 'bg-gray-100 text-gray-500',
-  BARASHI: 'bg-red-50 text-red-500',
-  HORYU: 'bg-yellow-50 text-yellow-700',
-  SHORUI_OCHI: 'bg-red-50 text-red-400',
-  KISON_NASHI: 'bg-gray-50 text-gray-500',
-  MODOSHI: 'bg-indigo-50 text-indigo-600',
-  MODORI: 'bg-indigo-50 text-indigo-700',
+  NAITEI:           'bg-blue-600 text-white',
+  FUGOKAKU:         'bg-red-600 text-white',
+  KEKKA_MACHI:      'bg-pink-500 text-white',
+  MENSETSU_KAKUTEI: 'bg-pink-500 text-white',
+  BOSHUCHU:         'bg-teal-100 text-teal-700',
+  SHORUI_CHU:       'bg-pink-200 text-pink-800',
+  LOST:             'bg-gray-800 text-white',
+  BARASHI:          'bg-gray-800 text-white',
+  HORYU:            'bg-amber-100 text-amber-700',
+  SHORUI_OCHI:      'bg-gray-800 text-white',
+  KISON_NASHI:      'bg-gray-800 text-white',
+  MODOSHI:          'bg-yellow-400 text-yellow-900',
+  MODORI:           'bg-emerald-500 text-white',
+};
+
+const getStatusLabel = (statusValue) => {
+  const opt = STATUS_OPTIONS.find(s => s.value === statusValue);
+  return opt ? opt.label : (statusValue || '-');
+};
+
+const formatPhone = (phone) => {
+  if (!phone) return '-';
+  return phone
+    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[ー－—―‐‑⁃₋−\-–\s　()（）.．+＋]/g, '');
 };
 
 export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('');
   const [pagination, setPagination] = useState({});
+  const [statusFilter, setStatusFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [myOnly, setMyOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   // 通話ログモーダル
@@ -62,6 +80,53 @@ export default function ProjectsPage() {
   const [callLogs, setCallLogs] = useState([]);
   const [callLogsLoading, setCallLogsLoading] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [statusFilter, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
+
+  const fetchProjects = async () => {
+    try {
+      const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
+      if (statusFilter) params.append('status', statusFilter);
+      if (myOnly) params.append('my_only', '1');
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      const { data } = await api.get(`/api/projects?${params}`);
+      if (data.success) {
+        setProjects(data.data.projects);
+        setPagination(data.data.pagination);
+      }
+    } catch (err) {
+      toast.error('案件の取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSort = (col) => {
+    if (sortBy === col) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(col);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
+
+  const SortIcon = ({ col }) => {
+    if (sortBy !== col) return <span className="text-gray-300 ml-0.5">&#x25B4;&#x25BE;</span>;
+    return <span className="text-blue-600 ml-0.5">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>;
+  };
+
+  const isUrgentUnconfirmed = (p) => {
+    if (p.mail_replied || p.phone_confirmed) return false;
+    if (!p.interview_date) return false;
+    const interview = new Date(p.interview_date);
+    const now = new Date();
+    const diffDays = (interview - now) / (1000 * 60 * 60 * 24);
+    return diffDays >= 0 && diffDays <= 4;
+  };
 
   const openCallLogs = async (e, project) => {
     e.stopPropagation();
@@ -86,42 +151,48 @@ export default function ProjectsPage() {
     return `${Math.floor(sec / 60)}分${sec % 60}秒`;
   };
 
-  const fetchProjects = async (page = 1) => {
-    try {
-      const params = { page, limit: 20 };
-      if (statusFilter) params.status = statusFilter;
-      const { data } = await api.get('/api/projects', { params });
-      setProjects(data.data.projects);
-      setPagination(data.data.pagination);
-    } catch (err) {
-      toast.error('案件の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, [statusFilter]);
-
   return (
     <Layout>
-      <div className="flex items-end justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">案件管理</h1>
           <p className="text-sm text-gray-400 mt-0.5">案件の一覧と進捗管理</p>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input !w-auto min-w-[160px]"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            myOnly ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>
+          {myOnly ? '自分の案件のみ' : '全員の案件'}
+        </button>
       </div>
 
+      {/* フィルター */}
+      <div className="card p-4 mb-6 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="input-label">ステータス</label>
+          <select className="input text-sm" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="input-label">期間（獲得日）</label>
+          <div className="flex items-center gap-2">
+            <input type="date" className="input text-sm" value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+            <span className="text-gray-400">〜</span>
+            <input type="date" className="input text-sm" value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+          </div>
+        </div>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+            className="text-xs text-gray-500 hover:text-red-500 underline pb-2">
+            期間クリア
+          </button>
+        )}
+      </div>
+
+      {/* テーブル */}
       <div className="card overflow-hidden">
         {loading ? (
           <div className="p-12 text-center">
@@ -144,85 +215,89 @@ export default function ProjectsPage() {
           </div>
         ) : (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="table-header">企業名</th>
-                  <th className="table-header">電話番号</th>
-                  <th className="table-header">担当OP</th>
-                  <th className="table-header">担当営業</th>
-                  <th className="table-header">面接日</th>
-                  <th className="table-header">メール</th>
-                  <th className="table-header">面接形式</th>
-                  <th className="table-header">書類選考</th>
-                  <th className="table-header">ステータス</th>
-                  <th className="table-header text-center">通話ログ</th>
-                  <th className="table-header text-center">詳細</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projects.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors cursor-pointer" onClick={() => router.push(`/projects/${p.id}`)}>
-                    <td className="table-cell font-medium text-gray-900">{p.company_name}</td>
-                    <td className="table-cell text-gray-600">{p.phone_number}</td>
-                    <td className="table-cell text-gray-500">{p.owner_name || '-'}</td>
-                    <td className="table-cell text-gray-500">{p.sales_name || '-'}</td>
-                    <td className="table-cell text-gray-500">
-                      {p.interview_date ? new Date(p.interview_date).toLocaleString('ja-JP') : '-'}
-                    </td>
-                    <td className="table-cell">
-                      {p.mail_sent ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600">
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                          送信済
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">未送信</span>
-                      )}
-                    </td>
-                    <td className="table-cell text-gray-500">
-                      {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
-                    </td>
-                    <td className="table-cell text-gray-500">
-                      {p.document_screening === 'required' ? 'あり' : p.document_screening === 'not_required' ? 'なし' : '-'}
-                    </td>
-                    <td className="table-cell">
-                      <span className={`badge ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}>
-                        {STATUS_OPTIONS.find((s) => s.value === p.status)?.label || p.status}
-                      </span>
-                    </td>
-                    <td className="table-cell text-center">
-                      <button
-                        onClick={e => openCallLogs(e, p)}
-                        className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded font-medium transition-colors"
-                      >
-                        表示
-                      </button>
-                    </td>
-                    <td className="table-cell text-center">
-                      <svg className="w-4 h-4 text-gray-400 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm table-fixed">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('created_at')}>
+                      獲得日<SortIcon col="created_at" />
+                    </th>
+                    <th className="table-header" style={{width:'80px'}}>担当OP</th>
+                    <th className="table-header" style={{width:'90px'}}>求人番号</th>
+                    <th className="table-header" style={{width:'160px'}}>企業名</th>
+                    <th className="table-header" style={{width:'80px'}}>担当営業</th>
+                    <th className="table-header" style={{width:'100px'}}>ステータス</th>
+                    <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('interview_date')}>
+                      面接日<SortIcon col="interview_date" />
+                    </th>
+                    <th className="table-header" style={{width:'70px'}}>面接方法</th>
+                    <th className="table-header" style={{width:'60px'}}>メール送信</th>
+                    <th className="table-header" style={{width:'60px'}}>メール返信</th>
+                    <th className="table-header" style={{width:'60px'}}>電話確認</th>
+                    <th className="table-header" style={{width:'110px'}}>電話番号</th>
+                    <th className="table-header" style={{width:'70px'}}>通話ログ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {projects.map(p => {
+                    const urgent = isUrgentUnconfirmed(p);
+                    return (
+                      <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer"
+                        onClick={() => router.push(`/projects/${p.id}`)}>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">
+                          {new Date(p.created_at).toLocaleDateString('ja-JP')}
+                        </td>
+                        <td className="table-cell truncate" title={p.owner_name}>{p.owner_name || '-'}</td>
+                        <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
+                        <td className="table-cell font-medium truncate" title={p.company_name}>{p.company_name}</td>
+                        <td className="table-cell truncate" title={p.sales_name}>{p.sales_name || '-'}</td>
+                        <td className="table-cell">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}>
+                            {getStatusLabel(p.status)}
+                          </span>
+                        </td>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">
+                          {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
+                        </td>
+                        <td className="table-cell whitespace-nowrap">
+                          {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
+                        </td>
+                        <td className="table-cell text-center">
+                          <span className={p.mail_sent ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
+                            {p.mail_sent ? '済' : '未'}
+                          </span>
+                        </td>
+                        <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
+                          <span className={p.mail_replied ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
+                            {p.mail_replied ? '済' : '未'}
+                          </span>
+                        </td>
+                        <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
+                          <span className={p.phone_confirmed ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
+                            {p.phone_confirmed ? '済' : '未'}
+                          </span>
+                        </td>
+                        <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>
+                        <td className="table-cell text-center">
+                          <button
+                            onClick={e => openCallLogs(e, p)}
+                            className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded font-medium transition-colors"
+                          >
+                            表示
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             {pagination.totalPages > 1 && (
-              <div className="flex justify-center gap-1.5 py-4 border-t border-gray-100">
-                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={(e) => { e.stopPropagation(); fetchProjects(page); }}
-                    className={`w-8 h-8 text-sm rounded-lg transition-all ${
-                      page === pagination.page
-                        ? 'bg-blue-600 text-white font-medium shadow-sm'
-                        : 'text-gray-500 hover:bg-gray-100'
-                    }`}
-                  >
-                    {page}
-                  </button>
+              <div className="flex justify-center gap-2 mt-4 py-4 border-t border-gray-100">
+                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(p => (
+                  <button key={p} onClick={() => setPage(p)}
+                    className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{p}</button>
                 ))}
               </div>
             )}
