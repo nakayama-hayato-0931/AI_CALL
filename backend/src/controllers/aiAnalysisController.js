@@ -206,12 +206,19 @@ const getOperatorDetail = async (req, res, next) => {
 const getOperatorCoaching = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { period = 'daily', date } = req.body;
-    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
-    if (!range) {
-      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    const { period = 'daily', date, date_from, date_to } = req.body;
+    let dateFrom, dateTo;
+    if (date_from && date_to) {
+      dateFrom = date_from;
+      dateTo = date_to;
+    } else {
+      const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+      if (!range) {
+        return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+      }
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
     }
-    const { dateFrom, dateTo } = range;
 
     // ユーザー情報
     const [userRows] = await pool.execute('SELECT id, name FROM users WHERE id = ?', [userId]);

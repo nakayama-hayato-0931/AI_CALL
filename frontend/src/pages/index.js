@@ -295,10 +295,25 @@ export default function DashboardPage() {
         });
         if (data.success) setAnalysis(data.data);
       } else if (analysisTargetUserId) {
+        // データ取得
         const { data } = await api.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
           params: { period: analysisPeriod, ...range },
         });
-        if (data.success) setAnalysis(data.data);
+        if (data.success) {
+          setAnalysis(data.data);
+          // AIコーチングも同時に取得
+          try {
+            const { data: coachData } = await api.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
+              period: analysisPeriod,
+              ...range,
+            });
+            if (coachData.success) {
+              setAnalysis(prev => ({ ...prev, coaching: coachData.data }));
+            }
+          } catch (coachErr) {
+            console.warn('AIコーチング取得スキップ:', coachErr.response?.data?.message || coachErr.message);
+          }
+        }
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || '分析に失敗しました';
@@ -808,6 +823,69 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* AIコーチング結果 */}
+              {analysis.coaching ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4">
+                    <ScoreCircle score={analysis.coaching.coaching_score} size={64} />
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-purple-700 mb-1">AIコーチング</p>
+                      <p className="text-xs text-gray-600">{analysis.coaching.summary}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                      <p className="text-xs font-bold text-emerald-700 mb-2">強み</p>
+                      <ul className="text-xs text-emerald-800 space-y-1">
+                        {analysis.coaching.strengths?.map((s, i) => <li key={i}>・{s}</li>)}
+                      </ul>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-4 border border-red-100">
+                      <p className="text-xs font-bold text-red-700 mb-2">課題</p>
+                      <ul className="text-xs text-red-800 space-y-1">
+                        {analysis.coaching.weaknesses?.map((w, i) => <li key={i}>・{w}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <p className="text-xs font-bold text-blue-700 mb-2">アクションプラン</p>
+                    <ul className="text-xs text-blue-800 space-y-1">
+                      {analysis.coaching.action_items?.map((a, i) => <li key={i}>✓ {a}</li>)}
+                    </ul>
+                  </div>
+
+                  {analysis.coaching.skill_advice && (
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                      <p className="text-xs font-bold text-gray-700 mb-3">スキル別アドバイス</p>
+                      <div className="space-y-2">
+                        {[
+                          { key: 'opening', label: '第一声' },
+                          { key: 'clarity', label: '明瞭さ' },
+                          { key: 'hearing', label: 'ヒアリング' },
+                          { key: 'rebuttal', label: '切り返し' },
+                          { key: 'closing', label: 'クロージング' },
+                        ].map(({ key, label }) => (
+                          <div key={key} className="bg-white rounded-lg p-3">
+                            <span className="text-[10px] font-bold text-gray-500">{label}</span>
+                            <p className="text-xs text-gray-600 mt-0.5">{analysis.coaching.skill_advice[key]}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-4 gap-2">
+                  <svg className="animate-spin w-4 h-4 text-purple-500" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-xs text-gray-400">AIコーチング生成中...</span>
                 </div>
               )}
             </div>
