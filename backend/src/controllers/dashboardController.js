@@ -53,7 +53,7 @@ const getDailyStats = async (req, res, next) => {
          CAST(SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_count,
          CAST(SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as project_count
        FROM calls c
-       WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+       WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
          ${userCondition}`,
       [dateFrom, dateTo, ...userParams]
     );
@@ -171,7 +171,7 @@ const getHourlyCalls = async (req, res, next) => {
       [rows] = await pool.query(
         `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
          FROM calls
-         WHERE DATE(call_started_at) = ? AND result_code != 'SKIP'
+         WHERE DATE(call_started_at) = ? AND result_code IS NOT NULL AND result_code != 'SKIP'
          GROUP BY HOUR(call_started_at)
          ORDER BY hour`,
         [date]
@@ -180,7 +180,7 @@ const getHourlyCalls = async (req, res, next) => {
       [rows] = await pool.execute(
         `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
          FROM calls
-         WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'
+         WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code IS NOT NULL AND result_code != 'SKIP'
          GROUP BY HOUR(call_started_at)
          ORDER BY hour`,
         [userId, date]
@@ -222,7 +222,7 @@ const getIndustryConversion = async (req, res, next) => {
            ) as conversion_rate
          FROM calls c
          JOIN companies co ON c.company_id = co.id
-         WHERE co.industry IS NOT NULL AND c.result_code != 'SKIP'
+         WHERE co.industry IS NOT NULL AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
          GROUP BY co.industry
          ORDER BY conversion_rate DESC`
       );
@@ -237,7 +237,7 @@ const getIndustryConversion = async (req, res, next) => {
            ) as conversion_rate
          FROM calls c
          JOIN companies co ON c.company_id = co.id
-         WHERE c.user_id = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
+         WHERE c.user_id = ? AND co.industry IS NOT NULL AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
          GROUP BY co.industry
          ORDER BY conversion_rate DESC`,
         [userId]
@@ -277,7 +277,7 @@ const getHourlyIndustryConnections = async (req, res, next) => {
         `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
          FROM calls c
          JOIN companies co ON c.company_id = co.id
-         WHERE c.result_code != 'SKIP'
+         WHERE c.result_code IS NOT NULL AND c.result_code != 'SKIP'
            AND co.industry IS NOT NULL
          GROUP BY HOUR(c.call_started_at), co.industry`
       );
@@ -298,7 +298,7 @@ const getHourlyIndustryConnections = async (req, res, next) => {
         `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
          FROM calls c
          JOIN companies co ON c.company_id = co.id
-         WHERE c.user_id = ? AND c.result_code != 'SKIP'
+         WHERE c.user_id = ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
            AND co.industry IS NOT NULL
          GROUP BY HOUR(c.call_started_at), co.industry`,
         [userId]

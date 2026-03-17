@@ -613,7 +613,7 @@ const manualAddExclusion = async (req, res, next) => {
     if (phoneNumber) { matchWhere.push('phone_number = ?'); matchParams.push(phoneNumber); }
     if (companyName) { matchWhere.push('company_name = ?'); matchParams.push(companyName); }
     const [matchedCompanies] = await conn.execute(
-      `SELECT c.id, (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id) as call_count
+      `SELECT c.id, (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) as call_count
        FROM companies c WHERE ${matchWhere.join(' OR ')}`,
       matchParams
     );

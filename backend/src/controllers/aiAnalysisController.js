@@ -43,7 +43,7 @@ const getTeamAnalysis = async (req, res, next) => {
         COALESCE(ROUND(AVG(ae.rebuttal_score), 1), 0) as avg_rebuttal,
         COALESCE(ROUND(AVG(ae.closing_score), 1), 0) as avg_closing
       FROM users u
-      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role = 'operator' AND u.is_active = 1
       GROUP BY u.id, u.name
@@ -144,7 +144,7 @@ const getOperatorDetail = async (req, res, next) => {
         CAST(SUM(CASE WHEN c.result_code = 'NG' THEN 1 ELSE 0 END) AS SIGNED) as ng_count,
         CAST(SUM(CASE WHEN c.result_code = 'NO_ANSWER' THEN 1 ELSE 0 END) AS SIGNED) as no_answer
       FROM calls c
-      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'`,
+      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
       [userId, dateFrom, dateTo]
     );
 
@@ -160,7 +160,7 @@ const getOperatorDetail = async (req, res, next) => {
         COUNT(ae.id) as eval_count
       FROM ai_evaluations ae
       JOIN calls c ON ae.call_id = c.id
-      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL`,
       [userId, dateFrom, dateTo]
     );
 
@@ -177,7 +177,7 @@ const getOperatorDetail = async (req, res, next) => {
         COUNT(ae.id) as eval_count
       FROM ai_evaluations ae
       JOIN calls c ON ae.call_id = c.id
-      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+      WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL
       GROUP BY DATE(c.call_started_at)
       ORDER BY date ASC`,
       [userId, dateFrom, dateTo]
@@ -250,7 +250,7 @@ const getOperatorCoaching = async (req, res, next) => {
         CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
         CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects
       FROM calls c
-      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'`,
+      WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
       [userId, dateFrom, dateTo]
     );
 

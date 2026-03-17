@@ -351,7 +351,8 @@ const evaluateDailyBatch = async (req, res, next) => {
 
       const [allDayCalls] = await pool.query(
         `SELECT c.is_effective_connection, c.result_code
-         FROM calls c WHERE c.user_id = ? AND DATE(c.call_started_at) = ?`,
+         FROM calls c WHERE c.user_id = ? AND DATE(c.call_started_at) = ?
+           AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
         [userId, date]
       );
 
@@ -426,10 +427,11 @@ const getDailySummary = async (req, res, next) => {
       queryParams
     );
 
-    // 全架電の集計
+    // 全架電の集計（result_code入力済みのみ、SKIP除外）
     const [allCalls] = await pool.query(
       `SELECT c.result_code, c.is_effective_connection, c.is_person_in_charge
-       FROM calls c WHERE c.user_id = ? AND ${dateCondition}`,
+       FROM calls c WHERE c.user_id = ? AND ${dateCondition}
+         AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
       queryParams
     );
 

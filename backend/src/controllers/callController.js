@@ -278,7 +278,7 @@ const getCalls = async (req, res, next) => {
     const offset = (page - 1) * limit;
     const { user_id, company_id, result_code, date_from, date_to, search } = req.query;
 
-    let whereClauses = [];
+    let whereClauses = ['c.result_code IS NOT NULL'];
     let params = [];
 
     if (user_id) {
