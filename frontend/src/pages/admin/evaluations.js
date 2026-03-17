@@ -157,7 +157,7 @@ export default function AdminEvaluations() {
       const { data } = await api.post('/api/ai/evaluate-daily', {
         date: targetDate,
         target_user_id: targetUserId,
-      });
+      }, { timeout: 120000 });
       toast.success(`${data.data.evaluatedCount}件の評価を実行しました`);
       fetchEvaluations();
     } catch (err) { toast.error(err.response?.data?.message || '評価に失敗しました'); }
@@ -167,7 +167,7 @@ export default function AdminEvaluations() {
   const handleSuggestScripts = async (evalId) => {
     setSuggestingId(evalId);
     try {
-      const { data } = await api.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`);
+      const { data } = await api.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`, {}, { timeout: 120000 });
       const sug = data.data.suggestions || [];
       if (sug.length === 0) {
         toast('この通話からはスクリプト提案がありませんでした', { icon: 'ℹ️' });

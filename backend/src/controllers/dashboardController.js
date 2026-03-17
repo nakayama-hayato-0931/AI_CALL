@@ -161,17 +161,31 @@ const getDailyStats = async (req, res, next) => {
  */
 const getHourlyCalls = async (req, res, next) => {
   try {
+    const userRole = req.user.role;
     const userId = req.query.user_id || req.user.id;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const isManagerView = (userRole === 'admin' || userRole === 'manager') && !req.query.user_id;
 
-    const [rows] = await pool.execute(
-      `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
-       FROM calls
-       WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'
-       GROUP BY HOUR(call_started_at)
-       ORDER BY hour`,
-      [userId, date]
-    );
+    let rows;
+    if (isManagerView) {
+      [rows] = await pool.query(
+        `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
+         FROM calls
+         WHERE DATE(call_started_at) = ? AND result_code != 'SKIP'
+         GROUP BY HOUR(call_started_at)
+         ORDER BY hour`,
+        [date]
+      );
+    } else {
+      [rows] = await pool.execute(
+        `SELECT HOUR(call_started_at) as hour, COUNT(*) as count
+         FROM calls
+         WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP'
+         GROUP BY HOUR(call_started_at)
+         ORDER BY hour`,
+        [userId, date]
+      );
+    }
 
     // 9時~19時の配列に整形
     const hourlyData = [];
@@ -192,22 +206,43 @@ const getHourlyCalls = async (req, res, next) => {
  */
 const getIndustryConversion = async (req, res, next) => {
   try {
+    const userRole = req.user.role;
     const userId = req.query.user_id || req.user.id;
-    const [rows] = await pool.execute(
-      `SELECT
-         co.industry,
-         COUNT(c.id) as total_calls,
-         CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as projects,
-         ROUND(
-           CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) / COUNT(c.id) * 100, 1
-         ) as conversion_rate
-       FROM calls c
-       JOIN companies co ON c.company_id = co.id
-       WHERE c.user_id = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
-       GROUP BY co.industry
-       ORDER BY conversion_rate DESC`,
-      [userId]
-    );
+    const isManagerView = (userRole === 'admin' || userRole === 'manager') && !req.query.user_id;
+
+    let rows;
+    if (isManagerView) {
+      [rows] = await pool.query(
+        `SELECT
+           co.industry,
+           COUNT(c.id) as total_calls,
+           CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as projects,
+           ROUND(
+             CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) / COUNT(c.id) * 100, 1
+           ) as conversion_rate
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE co.industry IS NOT NULL AND c.result_code != 'SKIP'
+         GROUP BY co.industry
+         ORDER BY conversion_rate DESC`
+      );
+    } else {
+      [rows] = await pool.execute(
+        `SELECT
+           co.industry,
+           COUNT(c.id) as total_calls,
+           CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as projects,
+           ROUND(
+             CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) / COUNT(c.id) * 100, 1
+           ) as conversion_rate
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE c.user_id = ? AND co.industry IS NOT NULL AND c.result_code != 'SKIP'
+         GROUP BY co.industry
+         ORDER BY conversion_rate DESC`,
+        [userId]
+      );
+    }
 
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -221,29 +256,54 @@ const getIndustryConversion = async (req, res, next) => {
  */
 const getHourlyIndustryConnections = async (req, res, next) => {
   try {
+    const userRole = req.user.role;
     const userId = req.query.user_id || req.user.id;
-    // 接続数（NO_ANSWER, SKIP除外）
-    const [rows] = await pool.execute(
-      `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as connections
-       FROM calls c
-       JOIN companies co ON c.company_id = co.id
-       WHERE c.user_id = ? AND c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
-         AND co.industry IS NOT NULL
-       GROUP BY HOUR(c.call_started_at), co.industry
-       ORDER BY hour, co.industry`,
-      [userId]
-    );
+    const isManagerView = (userRole === 'admin' || userRole === 'manager') && !req.query.user_id;
 
-    // 総コール数（接続率計算用、SKIP除外）
-    const [totalRows] = await pool.execute(
-      `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
-       FROM calls c
-       JOIN companies co ON c.company_id = co.id
-       WHERE c.user_id = ? AND c.result_code != 'SKIP'
-         AND co.industry IS NOT NULL
-       GROUP BY HOUR(c.call_started_at), co.industry`,
-      [userId]
-    );
+    let rows, totalRows;
+    if (isManagerView) {
+      // 接続数（NO_ANSWER, SKIP除外）- チーム全体
+      [rows] = await pool.query(
+        `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as connections
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
+           AND co.industry IS NOT NULL
+         GROUP BY HOUR(c.call_started_at), co.industry
+         ORDER BY hour, co.industry`
+      );
+      // 総コール数（接続率計算用、SKIP除外）- チーム全体
+      [totalRows] = await pool.query(
+        `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE c.result_code != 'SKIP'
+           AND co.industry IS NOT NULL
+         GROUP BY HOUR(c.call_started_at), co.industry`
+      );
+    } else {
+      // 接続数（NO_ANSWER, SKIP除外）
+      [rows] = await pool.execute(
+        `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as connections
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE c.user_id = ? AND c.result_code NOT IN ('NO_ANSWER', 'SKIP') AND c.result_code IS NOT NULL
+           AND co.industry IS NOT NULL
+         GROUP BY HOUR(c.call_started_at), co.industry
+         ORDER BY hour, co.industry`,
+        [userId]
+      );
+      // 総コール数（接続率計算用、SKIP除外）
+      [totalRows] = await pool.execute(
+        `SELECT HOUR(c.call_started_at) as hour, co.industry, COUNT(*) as total_calls
+         FROM calls c
+         JOIN companies co ON c.company_id = co.id
+         WHERE c.user_id = ? AND c.result_code != 'SKIP'
+           AND co.industry IS NOT NULL
+         GROUP BY HOUR(c.call_started_at), co.industry`,
+        [userId]
+      );
+    }
 
     // ユニーク業種リスト
     const allIndustries = new Set([...rows.map(r => r.industry), ...totalRows.map(r => r.industry)]);

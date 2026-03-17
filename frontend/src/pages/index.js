@@ -288,11 +288,12 @@ export default function DashboardPage() {
       setAnalysis(null);
       const range = calcAnalysisRange();
 
+      const aiTimeout = { timeout: 120000 }; // AI分析は最大120秒
       if (analysisScope === 'team') {
         const { data } = await api.post('/api/ai/analysis/team', {
           period: analysisPeriod,
           ...range,
-        });
+        }, aiTimeout);
         if (data.success) setAnalysis(data.data);
       } else if (analysisTargetUserId) {
         // データ取得
@@ -306,7 +307,7 @@ export default function DashboardPage() {
             const { data: coachData } = await api.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
               period: analysisPeriod,
               ...range,
-            });
+            }, aiTimeout);
             if (coachData.success) {
               setAnalysis(prev => ({ ...prev, coaching: coachData.data }));
             }
