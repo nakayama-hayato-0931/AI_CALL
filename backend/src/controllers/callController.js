@@ -37,6 +37,15 @@ const startCall = async (req, res, next) => {
       });
     }
 
+    // 前回の未完了通話（result_code=NULL）を削除（すぐ切った通話）
+    const [stale] = await pool.execute(
+      'DELETE FROM calls WHERE user_id = ? AND result_code IS NULL',
+      [userId]
+    );
+    if (stale.affectedRows > 0) {
+      logger.info(`未完了通話を削除: user=${userId}, count=${stale.affectedRows}`);
+    }
+
     const [result] = await pool.execute(
       `INSERT INTO calls (user_id, company_id, call_started_at)
        VALUES (?, ?, NOW())`,
