@@ -80,8 +80,11 @@ const getTeamAnalysis = async (req, res, next) => {
       analysis,
     });
   } catch (err) {
-    logger.error('チーム分析エラー:', err);
-    next(err);
+    logger.error('チーム分析エラー:', err.message, err.stack);
+    return res.status(500).json({
+      success: false,
+      message: `AI分析エラー: ${err.message}`,
+    });
   }
 };
 

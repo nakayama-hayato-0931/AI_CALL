@@ -301,7 +301,9 @@ export default function DashboardPage() {
         if (data.success) setAnalysis(data.data);
       }
     } catch (err) {
-      console.error('AI分析エラー:', err);
+      const errMsg = err.response?.data?.message || err.message || '分析に失敗しました';
+      console.error('AI分析エラー:', errMsg);
+      toast.error(errMsg);
     } finally {
       setAnalysisLoading(false);
     }
