@@ -109,6 +109,7 @@ export default function DashboardPage() {
   const [showWorkHoursModal, setShowWorkHoursModal] = useState(false);
   const [workStartTime, setWorkStartTime] = useState('09:30');
   const [workEndTime, setWorkEndTime] = useState('18:00');
+  const [breakMinutes, setBreakMinutes] = useState(0);
   const [savingWorkHours, setSavingWorkHours] = useState(false);
 
   // 時間文字列を分に変換するヘルパー
@@ -117,9 +118,9 @@ export default function DashboardPage() {
     return h * 60 + m;
   };
 
-  // 稼働時間を計算（時間単位）
-  const calcWorkHours = (start, end) => {
-    const diff = parseTimeToMinutes(end) - parseTimeToMinutes(start);
+  // 稼働時間を計算（時間単位、休憩差し引き）
+  const calcWorkHours = (start, end, breakMin = 0) => {
+    const diff = parseTimeToMinutes(end) - parseTimeToMinutes(start) - (parseInt(breakMin) || 0);
     return diff > 0 ? (diff / 60) : 0;
   };
 
@@ -129,11 +130,11 @@ export default function DashboardPage() {
     try {
       const today = new Date().toISOString().slice(0, 10);
       await api.post('/api/dashboard/work-hours', {
-        date: today, start_time: workStartTime, end_time: workEndTime,
+        date: today, start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0,
       });
       setStats(prev => ({
         ...prev,
-        manualWorkHours: { start_time: workStartTime, end_time: workEndTime },
+        manualWorkHours: { start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0 },
       }));
       setShowWorkHoursModal(false);
       toast.success('稼働時間を保存しました');
@@ -148,7 +149,7 @@ export default function DashboardPage() {
   const handleCopyCallData = () => {
     if (!stats) return;
     const wh = stats.manualWorkHours;
-    const workValue = wh ? calcWorkHours(wh.start_time, wh.end_time) : (stats.workMinutes || 0);
+    const workValue = wh ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes) : (stats.workMinutes || 0);
     const lines = [workValue, stats.callCount || 0, stats.recallGained || 0,
       stats.recallDone || 0, stats.effectiveCount || 0, stats.personCount || 0, stats.projectCount || 0];
     navigator.clipboard.writeText(lines.join('\n'));
@@ -159,7 +160,8 @@ export default function DashboardPage() {
   const handleCopyDailyReport = () => {
     if (!stats) return;
     const wh = stats.manualWorkHours;
-    const workTimeStr = wh ? `${wh.start_time}〜${wh.end_time}` : `${stats.workMinutes || 0}分`;
+    const breakStr = wh?.break_minutes ? `（休憩${wh.break_minutes}分）` : '';
+    const workTimeStr = wh ? `${wh.start_time}〜${wh.end_time}${breakStr}` : `${stats.workMinutes || 0}分`;
     const lines = [
       `コール時間：${workTimeStr}`,
       `コール数：${stats.callCount || 0}`,
@@ -267,6 +269,7 @@ export default function DashboardPage() {
       if (statsData.manualWorkHours?.start_time) {
         setWorkStartTime(statsData.manualWorkHours.start_time);
         setWorkEndTime(statsData.manualWorkHours.end_time);
+        setBreakMinutes(statsData.manualWorkHours.break_minutes || 0);
       }
     } catch (err) {
       console.error('KPIデータ取得失敗:', err);
@@ -419,7 +422,7 @@ export default function DashboardPage() {
         if (wh?.totalMinutes) {
           totalWorkHours = wh.totalMinutes / 60;
         } else if (wh?.start_time && wh?.end_time) {
-          totalWorkHours = calcWorkHours(wh.start_time, wh.end_time);
+          totalWorkHours = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes);
         } else {
           totalWorkHours = (stats?.workMinutes || 0) / 60;
         }
@@ -439,7 +442,7 @@ export default function DashboardPage() {
                     avgDaily = (wh.totalMinutes / 60 / wh.entryCount).toFixed(1);
                   }
                 } else if (wh?.start_time && wh?.end_time) {
-                  displayValue = calcWorkHours(wh.start_time, wh.end_time).toFixed(1);
+                  displayValue = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes).toFixed(1);
                   displaySuffix = '時間';
                 } else {
                   displayValue = stats?.workMinutes ?? 0;
@@ -530,9 +533,15 @@ export default function DashboardPage() {
                 <input type="time" value={workEndTime} min="08:00" max="21:00"
                   onChange={(e) => setWorkEndTime(e.target.value)} className="input text-sm" />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">休憩時間（分）</label>
+                <input type="number" value={breakMinutes} min="0" max="180" step="5"
+                  onChange={(e) => setBreakMinutes(e.target.value)} className="input text-sm" placeholder="0" />
+              </div>
               {workStartTime && workEndTime && (
                 <p className="text-center text-lg font-bold text-blue-600">
-                  {calcWorkHours(workStartTime, workEndTime).toFixed(1)} <span className="text-sm font-medium text-gray-400">時間</span>
+                  {calcWorkHours(workStartTime, workEndTime, breakMinutes).toFixed(1)} <span className="text-sm font-medium text-gray-400">時間</span>
+                  {parseInt(breakMinutes) > 0 && <span className="text-xs font-medium text-gray-400 ml-1">（休憩{breakMinutes}分含む）</span>}
                 </p>
               )}
             </div>

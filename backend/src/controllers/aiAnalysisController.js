@@ -59,6 +59,7 @@ const getTeamAnalysis = async (req, res, next) => {
       const [whRows] = await pool.query(
         `SELECT SUM(
            TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+           - COALESCE(break_minutes, 0)
          ) as total_minutes
          FROM work_hours
          WHERE user_id = ? AND date BETWEEN ? AND ?`,
@@ -294,6 +295,7 @@ const getOperatorCoaching = async (req, res, next) => {
     const [whRows] = await pool.query(
       `SELECT SUM(
          TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+         - COALESCE(break_minutes, 0)
        ) as total_minutes
        FROM work_hours
        WHERE user_id = ? AND date BETWEEN ? AND ?`,

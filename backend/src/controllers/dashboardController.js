@@ -96,7 +96,7 @@ const getDailyStats = async (req, res, next) => {
              TIMESTAMPDIFF(MINUTE,
                STR_TO_DATE(start_time, '%H:%i'),
                STR_TO_DATE(end_time, '%H:%i')
-             )
+             ) - COALESCE(break_minutes, 0)
            ) as total_minutes,
            COUNT(*) as entry_count
          FROM work_hours
@@ -110,7 +110,7 @@ const getDailyStats = async (req, res, next) => {
       const whUserId = (scope === 'operator' && targetUserId) ? targetUserId : req.user.id;
       if (period === 'daily') {
         const [whRows] = await pool.execute(
-          'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
+          'SELECT start_time, end_time, break_minutes FROM work_hours WHERE user_id = ? AND date = ?',
           [whUserId, date]
         );
         manualWorkHours = whRows[0] || null;
@@ -122,7 +122,7 @@ const getDailyStats = async (req, res, next) => {
                TIMESTAMPDIFF(MINUTE,
                  STR_TO_DATE(start_time, '%H:%i'),
                  STR_TO_DATE(end_time, '%H:%i')
-               )
+               ) - COALESCE(break_minutes, 0)
              ) as total_minutes,
              COUNT(*) as entry_count
            FROM work_hours
@@ -359,7 +359,7 @@ const getWorkHours = async (req, res, next) => {
   try {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
     const [rows] = await pool.execute(
-      'SELECT start_time, end_time FROM work_hours WHERE user_id = ? AND date = ?',
+      'SELECT start_time, end_time, break_minutes FROM work_hours WHERE user_id = ? AND date = ?',
       [req.user.id, date]
     );
     return ApiResponse.success(res, rows[0] || null);
@@ -374,17 +374,18 @@ const getWorkHours = async (req, res, next) => {
  */
 const saveWorkHours = async (req, res, next) => {
   try {
-    const { date, start_time, end_time } = req.body;
+    const { date, start_time, end_time, break_minutes } = req.body;
     if (!date || !start_time || !end_time) {
       return ApiResponse.badRequest(res, '日付・開始時間・終了時間は必須です');
     }
+    const breakMin = parseInt(break_minutes) || 0;
     await pool.execute(
-      `INSERT INTO work_hours (user_id, date, start_time, end_time)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time)`,
-      [req.user.id, date, start_time, end_time]
+      `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
+      [req.user.id, date, start_time, end_time, breakMin]
     );
-    return ApiResponse.success(res, { date, start_time, end_time }, '稼働時間を保存しました');
+    return ApiResponse.success(res, { date, start_time, end_time, break_minutes: breakMin }, '稼働時間を保存しました');
   } catch (err) {
     next(err);
   }
