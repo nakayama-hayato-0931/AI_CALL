@@ -6,6 +6,9 @@ const router = express.Router();
 const { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators } = require('../controllers/callController');
 const { authenticate } = require('../middlewares/auth');
 
+// POST /api/calls/:id/cancel-beacon - ページ離脱時のbeacon用（認証不要）
+router.post('/:id/cancel-beacon', cancelCallBeacon);
+
 router.use(authenticate);
 
 // GET /api/calls - 通話履歴一覧
@@ -28,8 +31,5 @@ router.put('/:id/end', endCall);
 
 // DELETE /api/calls/:id/cancel - 結果未入力の通話を取消
 router.delete('/:id/cancel', cancelCall);
-
-// POST /api/calls/:id/cancel-beacon - ページ離脱時のbeacon用（認証不要）
-router.post('/:id/cancel-beacon', cancelCallBeacon);
 
 module.exports = router;

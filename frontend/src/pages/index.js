@@ -228,13 +228,17 @@ export default function DashboardPage() {
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
 
-  // 初回: オペレーター一覧取得 + ダッシュボードデータ
+  // オペレーター一覧取得（user確定後）
   useEffect(() => {
     if (isManager) {
       api.get('/api/calls/operators').then(res => {
         setOperators(res.data.data || []);
       }).catch(() => {});
     }
+  }, [isManager]);
+
+  // 初回: チャートデータ取得
+  useEffect(() => {
     fetchChartData();
   }, []);
 
