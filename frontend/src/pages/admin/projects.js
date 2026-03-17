@@ -252,6 +252,7 @@ export default function AdminProjects() {
                 <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('interview_date')}>
                   面接日<SortIcon col="interview_date" />
                 </th>
+                <th className="table-header" style={{width:'60px'}}>書類選考</th>
                 <th className="table-header" style={{width:'70px'}}>面接方法</th>
                 <th className="table-header" style={{width:'60px'}}>メール送信</th>
                 <th className="table-header" style={{width:'60px'}}>メール返信</th>
@@ -291,6 +292,9 @@ export default function AdminProjects() {
                     </td>
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
+                    </td>
+                    <td className="table-cell text-center whitespace-nowrap">
+                      {p.document_screening === 'required' ? 'あり' : p.document_screening === 'not_required' ? 'なし' : '-'}
                     </td>
                     <td className="table-cell whitespace-nowrap">
                       {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
