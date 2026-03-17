@@ -260,6 +260,7 @@ const evaluateDailyBatch = async (req, res, next) => {
        LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
        WHERE c.user_id = ? AND DATE(c.call_started_at) = ?
          AND ae.id IS NULL AND c.result_code != 'SKIP' AND c.result_code IS NOT NULL
+         AND c.transcript IS NOT NULL AND c.transcript != ''
        ORDER BY c.call_started_at ASC`,
       [userId, date]
     );

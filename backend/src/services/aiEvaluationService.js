@@ -121,7 +121,9 @@ const evaluateCallFromData = async (callData, sheetLogs = []) => {
     }
 
     const systemPrompt = `あなたは法人営業のコール品質評価AIです。
-以下の架電データ（メタデータ・メモ・通話ログ）から、オペレーターの架電品質を評価してください。
+以下の架電データ（文字起こし・メタデータ・メモ）から、オペレーターの架電品質を評価してください。
+
+評価は文字起こしの内容を最重要視してください。文字起こしから実際の会話内容を分析し、各スキルを具体的に評価してください。
 
 評価観点:
 1. 第一声 (opening_score): 挨拶、名乗り、用件提示の適切さ
@@ -130,16 +132,11 @@ const evaluateCallFromData = async (callData, sheetLogs = []) => {
 4. 切り返し (rebuttal_score): 反論・断りへの対応力
 5. クロージング (closing_score): 次のアクション設定の適切さ
 
-結果コードからの推定ガイドライン:
+結果コードも参考にしてください:
 - PROJECT(案件化) → 高品質な架電 (80-100点)
 - INTERESTED(興味あり) → 良好 (70-85点)
 - RECALL(リコール) → 中程度、アポ獲得の可能性 (60-75点)
-- NG → メモ内容次第で判定 (40-65点)
-- NO_ANSWER(不通) → オペレーター責任外、中立評価 (~50点)
-- SKIP → 評価対象外
-
-メモや通話ログの詳細がある場合は、それに基づいてより正確に評価してください。
-メモが空の場合は結果コードと通話時間から推定してください。
+- NG → 文字起こし内容で具体的に判定 (40-65点)
 
 出力は必ず以下のJSON形式のみで返してください（余計なテキストは不要）:
 {
@@ -155,6 +152,9 @@ const evaluateCallFromData = async (callData, sheetLogs = []) => {
   "next_improvement": "次回の具体的な改善アクション（1つ）"
 }`;
 
+    // 文字起こしデータ
+    const transcriptText = callData.transcript ? `\n\n【文字起こし】\n${callData.transcript}` : '';
+
     const userContent = `【架電データ】
 企業名: ${callData.company_name || '不明'}
 業種: ${callData.industry || '不明'}
@@ -163,7 +163,7 @@ const evaluateCallFromData = async (callData, sheetLogs = []) => {
 通話時間: ${durationSec !== null ? `${durationSec}秒` : '不明'}
 有効接続: ${callData.is_effective_connection ? 'あり' : 'なし'}
 担当者接続: ${callData.is_person_in_charge ? 'あり' : 'なし'}
-メモ: ${callData.memo || '（なし）'}${sheetContext}`;
+メモ: ${callData.memo || '（なし）'}${sheetContext}${transcriptText}`;
 
     const evaluation = await callClaude(systemPrompt, userContent);
 
