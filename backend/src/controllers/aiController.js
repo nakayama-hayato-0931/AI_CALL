@@ -251,6 +251,7 @@ const evaluateDailyBatch = async (req, res, next) => {
     }
 
     // 未評価の通話を取得
+    const BATCH_LIMIT = 5; // 1回あたりの最大評価件数（タイムアウト防止）
     const [unevaluatedCalls] = await pool.query(
       `SELECT c.*, co.company_name, co.industry, co.region, co.phone_number,
               u.name as operator_name
@@ -265,11 +266,14 @@ const evaluateDailyBatch = async (req, res, next) => {
       [userId, date]
     );
 
+    const totalUnevaluated = unevaluatedCalls.length;
+    const batch = unevaluatedCalls.slice(0, BATCH_LIMIT);
+
     let evaluatedCount = 0;
     const evaluatedResults = [];
 
-    // 各通話を順にAI評価
-    for (const callData of unevaluatedCalls) {
+    // 各通話を順にAI評価（バッチ制限あり）
+    for (const callData of batch) {
       try {
         // Google Sheetsから関連ログを検索
         let sheetLogs = [];
@@ -365,6 +369,7 @@ const evaluateDailyBatch = async (req, res, next) => {
     }
 
     const remainingEvals = DAILY_EVAL_LIMIT - todayCount - (evaluatedCount > 0 ? 1 : 0);
+    const remainingUnevaluated = totalUnevaluated - evaluatedCount;
 
     return ApiResponse.success(res, {
       evaluatedCount,
@@ -372,7 +377,8 @@ const evaluateDailyBatch = async (req, res, next) => {
       dailySummary,
       dailyLimit: DAILY_EVAL_LIMIT,
       remainingEvals: Math.max(0, remainingEvals),
-    }, `${evaluatedCount}件の通話を評価しました`);
+      remainingUnevaluated,
+    }, `${evaluatedCount}件の通話を評価しました${remainingUnevaluated > 0 ? `（残り${remainingUnevaluated}件）` : ''}`);
   } catch (err) {
     next(err);
   }

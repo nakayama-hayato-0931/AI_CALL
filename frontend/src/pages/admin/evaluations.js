@@ -155,22 +155,40 @@ export default function AdminEvaluations() {
   const handleRunEvaluation = async (targetUserId, targetDate) => {
     if (!confirm('このオペレーターのAI評価を実行しますか？')) return;
     setEvaluating(true);
-    const loadingToast = toast.loading('AI評価を実行中...');
+    let totalEvaluated = 0;
+    let loadingToast = toast.loading('AI評価を実行中...');
     try {
-      const { data } = await api.post('/api/ai/evaluate-daily', {
-        date: targetDate,
-        target_user_id: targetUserId,
-      }, { timeout: 120000 });
+      // バッチ制限があるため、未評価がなくなるまで繰り返す
+      let hasMore = true;
+      while (hasMore) {
+        const { data } = await api.post('/api/ai/evaluate-daily', {
+          date: targetDate,
+          target_user_id: targetUserId,
+        }, { timeout: 120000 });
+        totalEvaluated += data.data.evaluatedCount;
+        const remaining = data.data.remainingUnevaluated || 0;
+        if (remaining > 0 && data.data.evaluatedCount > 0) {
+          toast.dismiss(loadingToast);
+          loadingToast = toast.loading(`AI評価を実行中... (${totalEvaluated}件完了、残り${remaining}件)`);
+        } else {
+          hasMore = false;
+        }
+      }
       toast.dismiss(loadingToast);
-      if (data.data.evaluatedCount > 0) {
-        toast.success(`${data.data.evaluatedCount}件の評価を実行しました`);
+      if (totalEvaluated > 0) {
+        toast.success(`${totalEvaluated}件の評価を実行しました`);
       } else {
         toast('この日の未評価の通話はありません', { icon: 'ℹ️' });
       }
       fetchEvaluations();
     } catch (err) {
       toast.dismiss(loadingToast);
-      toast.error(err.response?.data?.message || '評価に失敗しました');
+      if (totalEvaluated > 0) {
+        toast.success(`${totalEvaluated}件の評価を実行しました（一部エラーあり）`);
+        fetchEvaluations();
+      } else {
+        toast.error(err.response?.data?.message || '評価に失敗しました');
+      }
     } finally {
       setEvaluating(false);
     }
