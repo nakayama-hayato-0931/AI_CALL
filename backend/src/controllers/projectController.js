@@ -185,33 +185,34 @@ const updateProject = async (req, res, next) => {
       return ApiResponse.badRequest(res, '無効なステータスです');
     }
 
-    const [result] = await pool.execute(
-      `UPDATE projects SET
-        interview_date = COALESCE(?, interview_date),
-        interview_type = COALESCE(?, interview_type),
-        document_screening = COALESCE(?, document_screening),
-        mail_sent = COALESCE(?, mail_sent),
-        mail_replied = COALESCE(?, mail_replied),
-        phone_confirmed = COALESCE(?, phone_confirmed),
-        job_number = COALESCE(?, job_number),
-        status = COALESCE(?, status),
-        memo = COALESCE(?, memo),
-        sales_user_id = COALESCE(?, sales_user_id)
-       WHERE id = ?`,
-      [
-        interview_date || null,
-        interview_type || null,
-        document_screening || null,
-        mail_sent !== undefined ? (mail_sent ? 1 : 0) : null,
-        mail_replied !== undefined ? (mail_replied ? 1 : 0) : null,
-        phone_confirmed !== undefined ? (phone_confirmed ? 1 : 0) : null,
-        job_number || null,
-        status || null,
-        memo || null,
-        sales_user_id !== undefined ? (sales_user_id || null) : null,
-        id,
-      ]
-    );
+    // 更新フィールドを動的に構築（undefinedでない項目のみ更新）
+    const updates = [];
+    const updateParams = [];
+
+    if (interview_date !== undefined) { updates.push('interview_date = ?'); updateParams.push(interview_date || null); }
+    if (interview_type !== undefined) { updates.push('interview_type = ?'); updateParams.push(interview_type || null); }
+    if (document_screening !== undefined) { updates.push('document_screening = ?'); updateParams.push(document_screening || null); }
+    if (mail_sent !== undefined) { updates.push('mail_sent = ?'); updateParams.push(mail_sent ? 1 : 0); }
+    if (mail_replied !== undefined) { updates.push('mail_replied = ?'); updateParams.push(mail_replied ? 1 : 0); }
+    if (phone_confirmed !== undefined) { updates.push('phone_confirmed = ?'); updateParams.push(phone_confirmed ? 1 : 0); }
+    if (job_number !== undefined) { updates.push('job_number = ?'); updateParams.push(job_number || null); }
+    if (status !== undefined) { updates.push('status = ?'); updateParams.push(status || null); }
+    if (memo !== undefined) { updates.push('memo = ?'); updateParams.push(memo || null); }
+    if (sales_user_id !== undefined) { updates.push('sales_user_id = ?'); updateParams.push(sales_user_id || null); }
+
+    if (updates.length === 0 && !company_name && industry === undefined && region === undefined && address === undefined) {
+      return ApiResponse.badRequest(res, '更新項目がありません');
+    }
+
+    let result = { affectedRows: 1 };
+    if (updates.length > 0) {
+      updateParams.push(id);
+      const [dbResult] = await pool.execute(
+        `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`,
+        updateParams
+      );
+      result = dbResult;
+    }
 
     if (result.affectedRows === 0) {
       return ApiResponse.notFound(res, '案件が見つかりません');

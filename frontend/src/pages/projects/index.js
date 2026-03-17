@@ -19,23 +19,35 @@ const RESULT_BADGES = {
 
 const STATUS_OPTIONS = [
   { value: '', label: 'すべて' },
-  { value: 'NEW', label: '新規' },
-  { value: 'MAIL_SENT', label: 'メール送信済' },
-  { value: 'INTERVIEW_SET', label: '面接設定済' },
-  { value: 'INTERVIEW_DONE', label: '面接完了' },
-  { value: 'WAITING_RESULT', label: '結果待ち' },
-  { value: 'HIRED', label: '採用' },
+  { value: 'NAITEI', label: '内定' },
+  { value: 'FUGOKAKU', label: '不合格' },
+  { value: 'KEKKA_MACHI', label: '結果待ち' },
+  { value: 'MENSETSU_KAKUTEI', label: '面接確定' },
+  { value: 'BOSHUCHU', label: '募集中' },
+  { value: 'SHORUI_CHU', label: '書類選考中' },
   { value: 'LOST', label: '失注' },
+  { value: 'BARASHI', label: 'バラシ' },
+  { value: 'HORYU', label: '保留' },
+  { value: 'SHORUI_OCHI', label: '書類選考落ち' },
+  { value: 'KISON_NASHI', label: '既存対応なし' },
+  { value: 'MODOSHI', label: '戻し' },
+  { value: 'MODORI', label: '戻し戻り' },
 ];
 
 const STATUS_STYLES = {
-  NEW: 'bg-blue-50 text-blue-700',
-  MAIL_SENT: 'bg-amber-50 text-amber-700',
-  INTERVIEW_SET: 'bg-violet-50 text-violet-700',
-  INTERVIEW_DONE: 'bg-indigo-50 text-indigo-700',
-  WAITING_RESULT: 'bg-orange-50 text-orange-700',
-  HIRED: 'bg-emerald-50 text-emerald-700',
+  NAITEI: 'bg-emerald-50 text-emerald-700',
+  FUGOKAKU: 'bg-red-50 text-red-600',
+  KEKKA_MACHI: 'bg-orange-50 text-orange-700',
+  MENSETSU_KAKUTEI: 'bg-violet-50 text-violet-700',
+  BOSHUCHU: 'bg-blue-50 text-blue-700',
+  SHORUI_CHU: 'bg-amber-50 text-amber-700',
   LOST: 'bg-gray-100 text-gray-500',
+  BARASHI: 'bg-red-50 text-red-500',
+  HORYU: 'bg-yellow-50 text-yellow-700',
+  SHORUI_OCHI: 'bg-red-50 text-red-400',
+  KISON_NASHI: 'bg-gray-50 text-gray-500',
+  MODOSHI: 'bg-indigo-50 text-indigo-600',
+  MODORI: 'bg-indigo-50 text-indigo-700',
 };
 
 export default function ProjectsPage() {
