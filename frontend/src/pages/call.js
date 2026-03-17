@@ -585,6 +585,7 @@ export default function CallPage() {
                     { label: '業種', value: company.industry },
                     { label: '職種', value: company.job_type },
                     { label: '住所', value: company.address },
+                    { label: 'データ元', value: company.data_source },
                   ].map((item) => (
                     <div key={item.label} className="flex items-baseline justify-between text-sm">
                       <span className="text-gray-400 text-xs">{item.label}</span>

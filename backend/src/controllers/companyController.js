@@ -432,7 +432,7 @@ const getCallList = async (req, res, next) => {
     // 自作リストモード: シンプルに全件返す（フィルタなし）
     if (isMyList) {
       const [mylistRows] = await pool.query(
-        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
                 'mylist' as reason,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
@@ -449,7 +449,7 @@ const getCallList = async (req, res, next) => {
 
     // 1. リコール期限（自分のリコールのみ）
     const [recallRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'recall_due' as reason, rt.recall_at
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
@@ -472,7 +472,7 @@ const getCallList = async (req, res, next) => {
     // 2. ゴールデンタイム（割り当て優先）
     const remaining2 = LIST_SIZE - targets.length;
     const [goldenRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
@@ -501,7 +501,7 @@ const getCallList = async (req, res, next) => {
     // 3. 未接触（割り当て優先）
     const remaining3 = LIST_SIZE - targets.length;
     const [untouchedRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
@@ -527,7 +527,7 @@ const getCallList = async (req, res, next) => {
     // 4. 前回不通 → 2日後以降に再ピックアップ
     const remaining4 = LIST_SIZE - targets.length;
     const [retryRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
@@ -555,7 +555,7 @@ const getCallList = async (req, res, next) => {
     // 5. 前回NG → 3ヶ月後以降に別OPのみ再ピックアップ
     const remaining5 = LIST_SIZE - targets.length;
     const [ngRetryRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c

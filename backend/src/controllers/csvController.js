@@ -22,6 +22,7 @@ const COLUMN_MAP = {
   'コメント': 'comment',
   '住所': 'address',
   '地域': 'region',
+  'データ元': 'data_source',
 };
 
 const normalizeColumnName = (name) => {
@@ -236,6 +237,7 @@ const importCompanies = async (req, res, next) => {
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
         const jobType = (row.job_type || '').trim() || null;
         const comment = (row.comment || '').trim() || null;
+        const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
         // 地域: 明示カラムがあればそれを使う、なければ住所から自動抽出
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
@@ -271,9 +273,9 @@ const importCompanies = async (req, res, next) => {
         // インサート（オペレーターの場合はimported_by_user_idを設定）
         const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
         const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, imported_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [companyName, phoneNumber, industry, jobType, comment, region, address, importedByUserId]
+          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId]
         );
 
         // オペレーター: 自動割り当て
@@ -503,7 +505,7 @@ const getExclusionStats = async (req, res, next) => {
  */
 const manualAddCompany = async (req, res, next) => {
   try {
-    const { company_name, phone_number, industry, job_type, comment, address, region } = req.body;
+    const { company_name, phone_number, industry, job_type, comment, data_source, address, region } = req.body;
 
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
@@ -539,9 +541,9 @@ const manualAddCompany = async (req, res, next) => {
     const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
 
     const [insertResult] = await pool.execute(
-      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, imported_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyName, phoneNumber, industry || null, job_type || null, comment || null, derivedRegion, address || null, importedByUserId]
+      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyName, phoneNumber, industry || null, job_type || null, comment || null, data_source || null, derivedRegion, address || null, importedByUserId]
     );
 
     // オペレーター: 自動割り当て
