@@ -100,6 +100,7 @@ export default function AdminEvaluations() {
   const [page, setPage] = useState(1);
   const [summaryStats, setSummaryStats] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
+  const [evalProgress, setEvalProgress] = useState(null); // { done, total, current }
 
   // スクリプト提案
   const [suggestingId, setSuggestingId] = useState(null);
@@ -155,11 +156,11 @@ export default function AdminEvaluations() {
   const handleRunEvaluation = async (targetUserId, targetDate) => {
     if (!confirm('このオペレーターのAI評価を実行しますか？')) return;
     setEvaluating(true);
+    setEvalProgress({ done: 0, total: 0, current: '準備中...' });
     let totalEvaluated = 0;
-    let loadingToast = toast.loading('AI評価を実行中...');
     try {
-      // バッチ制限があるため、未評価がなくなるまで繰り返す
       let hasMore = true;
+      let isFirst = true;
       while (hasMore) {
         const { data } = await api.post('/api/ai/evaluate-daily', {
           date: targetDate,
@@ -167,22 +168,22 @@ export default function AdminEvaluations() {
         }, { timeout: 120000 });
         totalEvaluated += data.data.evaluatedCount;
         const remaining = data.data.remainingUnevaluated || 0;
+        const total = isFirst ? (totalEvaluated + remaining) : (evalProgress?.total || totalEvaluated + remaining);
         if (remaining > 0 && data.data.evaluatedCount > 0) {
-          toast.dismiss(loadingToast);
-          loadingToast = toast.loading(`AI評価を実行中... (${totalEvaluated}件完了、残り${remaining}件)`);
+          setEvalProgress({ done: totalEvaluated, total, current: `${totalEvaluated}件完了...次のバッチを処理中` });
+          isFirst = false;
         } else {
           hasMore = false;
         }
       }
-      toast.dismiss(loadingToast);
       if (totalEvaluated > 0) {
+        setEvalProgress({ done: totalEvaluated, total: totalEvaluated, current: '完了!' });
         toast.success(`${totalEvaluated}件の評価を実行しました`);
       } else {
         toast('この日の未評価の通話はありません', { icon: 'ℹ️' });
       }
       fetchEvaluations();
     } catch (err) {
-      toast.dismiss(loadingToast);
       if (totalEvaluated > 0) {
         toast.success(`${totalEvaluated}件の評価を実行しました（一部エラーあり）`);
         fetchEvaluations();
@@ -190,7 +191,7 @@ export default function AdminEvaluations() {
         toast.error(err.response?.data?.message || '評価に失敗しました');
       }
     } finally {
-      setEvaluating(false);
+      setTimeout(() => { setEvaluating(false); setEvalProgress(null); }, 2000);
     }
   };
 
@@ -318,6 +319,31 @@ export default function AdminEvaluations() {
           </button>
         )}
       </div>
+
+      {/* AI評価進捗バー */}
+      {evaluating && evalProgress && (
+        <div className="card p-4 mb-4 border-blue-200 bg-blue-50/50">
+          <div className="flex items-center gap-3 mb-2">
+            <svg className="animate-spin w-5 h-5 text-blue-600 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <div className="flex-1">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-semibold text-blue-800">AI評価を実行中</span>
+                <span className="text-sm font-bold text-blue-700">
+                  {evalProgress.total > 0 ? `${evalProgress.done} / ${evalProgress.total}件` : '確認中...'}
+                </span>
+              </div>
+              <div className="w-full bg-blue-100 rounded-full h-3 overflow-hidden">
+                <div className="h-3 rounded-full bg-blue-600 transition-all duration-700 ease-out"
+                  style={{ width: evalProgress.total > 0 ? `${Math.round((evalProgress.done / evalProgress.total) * 100)}%` : '10%' }} />
+              </div>
+              <p className="text-xs text-blue-600 mt-1">{evalProgress.current}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 評価リスト */}
       <div className="card overflow-hidden">
