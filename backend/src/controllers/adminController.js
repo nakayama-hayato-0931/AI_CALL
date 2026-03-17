@@ -33,8 +33,14 @@ const createUser = async (req, res, next) => {
   try {
     const { name, email, password, role } = req.body;
 
-    if (!name || !email || !password) {
-      return ApiResponse.badRequest(res, '名前・メールアドレス・パスワードは必須です');
+    const userRole = role || 'operator';
+    const isOperator = userRole === 'operator';
+
+    if (!name || !password) {
+      return ApiResponse.badRequest(res, '名前・パスワードは必須です');
+    }
+    if (!isOperator && !email) {
+      return ApiResponse.badRequest(res, 'オペレーター以外はメールアドレスが必須です');
     }
 
     const validRoles = ['admin', 'manager', 'operator', 'sales'];
@@ -42,28 +48,30 @@ const createUser = async (req, res, next) => {
       return ApiResponse.badRequest(res, `ロールは ${validRoles.join(', ')} のいずれかを指定してください`);
     }
 
-    // メール重複チェック
-    const [existing] = await pool.execute(
-      'SELECT id FROM users WHERE email = ?',
-      [email]
-    );
-    if (existing.length > 0) {
-      return ApiResponse.badRequest(res, 'このメールアドレスは既に登録されています');
+    // メール重複チェック（メールが入力されている場合のみ）
+    if (email) {
+      const [existing] = await pool.execute(
+        'SELECT id FROM users WHERE email = ?',
+        [email]
+      );
+      if (existing.length > 0) {
+        return ApiResponse.badRequest(res, 'このメールアドレスは既に登録されています');
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const [result] = await pool.execute(
       'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [name, email, passwordHash, role || 'operator']
+      [name, email || null, passwordHash, userRole]
     );
 
-    logger.info(`ユーザー作成: ${email} (role: ${role || 'operator'})`);
+    logger.info(`ユーザー作成: ${name} (role: ${userRole})`);
 
     return ApiResponse.created(res, {
       id: result.insertId,
       name,
-      email,
-      role: role || 'operator',
+      email: email || null,
+      role: userRole,
       is_active: 1,
     }, 'ユーザーを作成しました');
   } catch (err) {
@@ -85,7 +93,7 @@ const updateUser = async (req, res, next) => {
       return ApiResponse.notFound(res, 'ユーザーが見つかりません');
     }
 
-    // メール重複チェック（自分以外）
+    // メール重複チェック（自分以外、空でない場合のみ）
     if (email) {
       const [dup] = await pool.execute(
         'SELECT id FROM users WHERE email = ? AND id != ?',
@@ -96,11 +104,19 @@ const updateUser = async (req, res, next) => {
       }
     }
 
+    // email空文字の場合はNULLに変換
+    if (email !== undefined && !email) {
+      const [userRow] = await pool.execute('SELECT role FROM users WHERE id = ?', [id]);
+      if (userRow.length > 0 && userRow[0].role !== 'operator') {
+        return ApiResponse.badRequest(res, 'オペレーター以外はメールアドレスが必須です');
+      }
+    }
+
     const updates = [];
     const params = [];
 
     if (name !== undefined) { updates.push('name = ?'); params.push(name); }
-    if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+    if (email !== undefined) { updates.push('email = ?'); params.push(email || null); }
     if (role !== undefined) { updates.push('role = ?'); params.push(role); }
     if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active); }
 

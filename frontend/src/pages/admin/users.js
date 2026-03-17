@@ -62,7 +62,7 @@ export default function AdminUsers() {
 
   const handleEdit = (u) => {
     setEditingUser(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role });
+    setForm({ name: u.name, email: u.email || '', password: '', role: u.role });
     setShowForm(true);
   };
 
@@ -106,8 +106,8 @@ export default function AdminUsers() {
               <input className="input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
             </div>
             <div>
-              <label className="input-label">メール *</label>
-              <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required />
+              <label className="input-label">メール {form.role !== 'operator' ? '*' : ''}</label>
+              <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required={form.role !== 'operator'} placeholder={form.role === 'operator' ? '省略可' : ''} />
             </div>
             <div>
               <label className="input-label">パスワード {editingUser ? '(変更する場合のみ)' : '*'}</label>
@@ -143,7 +143,7 @@ export default function AdminUsers() {
             {users.map(u => (
               <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                 <td className="table-cell font-medium">{u.name}</td>
-                <td className="table-cell text-gray-500">{u.email}</td>
+                <td className="table-cell text-gray-500">{u.email || <span className="text-gray-300">-</span>}</td>
                 <td className="table-cell">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_STYLES[u.role] || 'bg-gray-100 text-gray-700'}`}>
                     {ROLE_OPTIONS.find(r => r.value === u.role)?.label || u.role}
