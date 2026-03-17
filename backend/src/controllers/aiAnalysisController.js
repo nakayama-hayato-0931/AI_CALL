@@ -54,6 +54,19 @@ const getTeamAnalysis = async (req, res, next) => {
     // 架電数0のオペレーター（未出勤）を除外
     const activeOperators = rows.filter(op => op.total_calls > 0);
 
+    // 各オペレーターの稼働時間を取得
+    for (const op of activeOperators) {
+      const [whRows] = await pool.query(
+        `SELECT SUM(
+           TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+         ) as total_minutes
+         FROM work_hours
+         WHERE user_id = ? AND date BETWEEN ? AND ?`,
+        [op.user_id, dateFrom, dateTo]
+      );
+      op.work_hours = whRows[0]?.total_minutes ? whRows[0].total_minutes / 60 : 0;
+    }
+
     // 全体統計
     const totalStats = activeOperators.reduce((acc, op) => ({
       totalCalls: acc.totalCalls + (op.total_calls || 0),
@@ -277,11 +290,23 @@ const getOperatorCoaching = async (req, res, next) => {
       return ApiResponse.success(res, { coaching: null, message: 'この期間のデータがありません' });
     }
 
+    // 稼働時間取得
+    const [whRows] = await pool.query(
+      `SELECT SUM(
+         TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+       ) as total_minutes
+       FROM work_hours
+       WHERE user_id = ? AND date BETWEEN ? AND ?`,
+      [userId, dateFrom, dateTo]
+    );
+    const workHours = whRows[0]?.total_minutes ? whRows[0].total_minutes / 60 : 0;
+
     // Claude API でコーチング生成
     const coaching = await evaluateOperatorCoaching({
       name: userRows[0].name,
       dateFrom,
       dateTo,
+      workHours,
       stats: {
         totalCalls: stats.total_calls || 0,
         effectiveConnections: stats.effective_connections || 0,
