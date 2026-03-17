@@ -100,7 +100,8 @@ export default function DashboardPage() {
 
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
-  const [kpiScope, setKpiScope] = useState('team');
+  const isManagerRole = user?.role === 'admin' || user?.role === 'manager';
+  const [kpiScope, setKpiScope] = useState(isManagerRole ? 'team' : 'self');
   const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
   const [operators, setOperators] = useState([]);
 
@@ -227,6 +228,13 @@ export default function DashboardPage() {
   };
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
+
+  // user確定後にscopeを適切に設定
+  useEffect(() => {
+    if (user) {
+      setKpiScope(isManager ? 'team' : 'self');
+    }
+  }, [user?.id]);
 
   // オペレーター一覧取得（user確定後）
   useEffect(() => {
