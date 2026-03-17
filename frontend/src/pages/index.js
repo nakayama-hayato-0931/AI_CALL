@@ -646,14 +646,12 @@ export default function DashboardPage() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* 強み */}
                 <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
                   <p className="text-xs font-bold text-emerald-700 mb-2">チームの強み</p>
                   <ul className="text-xs text-emerald-800 space-y-1">
                     {analysis.analysis.strengths?.map((s, i) => <li key={i}>・{s}</li>)}
                   </ul>
                 </div>
-                {/* 課題 */}
                 <div className="bg-red-50 rounded-lg p-4 border border-red-100">
                   <p className="text-xs font-bold text-red-700 mb-2">チームの課題</p>
                   <ul className="text-xs text-red-800 space-y-1">
@@ -662,7 +660,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* トレンド */}
               {analysis.analysis.trends && (
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
                   <p className="text-xs font-bold text-gray-700 mb-1">トレンド</p>
@@ -670,7 +667,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* 改善アクション */}
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
                 <p className="text-xs font-bold text-blue-700 mb-2">改善アクション</p>
                 <ul className="text-xs text-blue-800 space-y-1">
@@ -678,7 +674,6 @@ export default function DashboardPage() {
                 </ul>
               </div>
 
-              {/* 活躍者 / サポート必要 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {analysis.analysis.top_performers?.length > 0 && (
                   <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
@@ -698,7 +693,6 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              {/* スキル内訳 */}
               {analysis.analysis.skill_breakdown && (
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
                   <p className="text-xs font-bold text-gray-700 mb-3">スキル別分析</p>
@@ -728,7 +722,94 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-          ) : analysis && !analysis.analysis ? (
+          ) : analysis?.stats ? (
+            /* オペレーター別データ表示 */
+            <div className="space-y-4">
+              <div className="grid grid-cols-4 gap-2">
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-blue-700">{analysis.stats.total_calls || 0}</p>
+                  <p className="text-[10px] text-blue-500">総架電数</p>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-emerald-700">{analysis.stats.effective_connections || 0}</p>
+                  <p className="text-[10px] text-emerald-500">有効接続</p>
+                </div>
+                <div className="bg-violet-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-violet-700">{analysis.stats.person_connections || 0}</p>
+                  <p className="text-[10px] text-violet-500">担当者接続</p>
+                </div>
+                <div className="bg-rose-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-rose-700">{analysis.stats.projects || 0}</p>
+                  <p className="text-[10px] text-rose-500">案件獲得</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-amber-700">{analysis.stats.interested || 0}</p>
+                  <p className="text-[10px] text-amber-500">興味あり</p>
+                </div>
+                <div className="bg-cyan-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-cyan-700">{analysis.stats.recalls || 0}</p>
+                  <p className="text-[10px] text-cyan-500">リコール</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-gray-700">{analysis.stats.no_answer || 0}</p>
+                  <p className="text-[10px] text-gray-500">不通</p>
+                </div>
+              </div>
+
+              {/* スコア平均 */}
+              {analysis.scoreAvgs?.overall && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-xs font-bold text-gray-700 mb-3">AIスコア平均 ({analysis.scoreAvgs.eval_count || 0}件)</p>
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                    {[
+                      { key: 'overall', label: '総合' },
+                      { key: 'opening', label: '第一声' },
+                      { key: 'clarity', label: '明瞭さ' },
+                      { key: 'hearing', label: 'ヒアリング' },
+                      { key: 'rebuttal', label: '切り返し' },
+                      { key: 'closing', label: 'クロージング' },
+                    ].map(({ key, label }) => {
+                      const val = analysis.scoreAvgs[key];
+                      return (
+                        <div key={key} className="bg-white rounded-lg p-2 text-center">
+                          <span className="text-[10px] text-gray-500">{label}</span>
+                          <p className={`text-sm font-bold ${val >= 70 ? 'text-emerald-600' : val >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                            {val || '-'}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 直近の評価一覧 */}
+              {analysis.evaluations?.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-xs font-bold text-gray-700 mb-3">直近の評価 ({analysis.evaluations.length}件)</p>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {analysis.evaluations.map((ev, i) => (
+                      <div key={i} className="bg-white rounded-lg p-3 text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-gray-700">{ev.company_name || '企業'}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">{ev.result_code}</span>
+                            <span className={`font-bold ${ev.overall_score >= 70 ? 'text-emerald-600' : ev.overall_score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                              {ev.overall_score}点
+                            </span>
+                          </div>
+                        </div>
+                        {ev.summary && <p className="text-gray-500 text-[10px]">{ev.summary}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : analysis && !analysis.analysis && !analysis.stats ? (
             <p className="text-sm text-gray-400 text-center py-4">{analysis.message || 'データがありません'}</p>
           ) : (
             <p className="text-sm text-gray-400 text-center py-4">期間を選択して「分析実行」を押してください</p>
