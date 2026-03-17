@@ -35,10 +35,10 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '',
-    document_screening: '', mail_sent: false, memo: '',
+    document_screening: '', mail_sent: false, phone_confirmed: false, memo: '',
   });
   const [companyForm, setCompanyForm] = useState({
-    company_name: '', industry: '', region: '',
+    company_name: '', industry: '', address: '',
   });
   const [companyEditing, setCompanyEditing] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
@@ -59,12 +59,13 @@ export default function ProjectDetailPage() {
         interview_type: p.interview_type || '',
         document_screening: p.document_screening || '',
         mail_sent: !!p.mail_sent,
+        phone_confirmed: !!p.phone_confirmed,
         memo: p.memo || '',
       });
       setCompanyForm({
         company_name: p.company_name || '',
         industry: p.industry || '',
-        region: p.region || '',
+        address: p.address || '',
       });
     } catch (err) {
       toast.error('案件の取得に失敗しました');
@@ -93,7 +94,7 @@ export default function ProjectDetailPage() {
       await api.put(`/api/projects/${id}`, {
         company_name: companyForm.company_name || null,
         industry: companyForm.industry || null,
-        region: companyForm.region || null,
+        address: companyForm.address || null,
       });
       toast.success('企業情報を更新しました');
       setCompanyEditing(false);
@@ -180,9 +181,9 @@ export default function ProjectDetailPage() {
                       className="input" />
                   </div>
                   <div>
-                    <label className="input-label">地域</label>
-                    <input type="text" value={companyForm.region}
-                      onChange={e => setCompanyForm({...companyForm, region: e.target.value})}
+                    <label className="input-label">住所</label>
+                    <input type="text" value={companyForm.address}
+                      onChange={e => setCompanyForm({...companyForm, address: e.target.value})}
                       className="input" />
                   </div>
                 </div>
@@ -204,7 +205,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button onClick={handleCompanyUpdate} className="btn-primary text-sm !py-1.5 flex-1">保存</button>
-                  <button onClick={() => { setCompanyEditing(false); setCompanyForm({ company_name: project.company_name || '', industry: project.industry || '', region: project.region || '' }); }}
+                  <button onClick={() => { setCompanyEditing(false); setCompanyForm({ company_name: project.company_name || '', industry: project.industry || '', address: project.address || '' }); }}
                     className="btn-secondary text-sm !py-1.5 flex-1">キャンセル</button>
                 </div>
               </div>
@@ -214,7 +215,7 @@ export default function ProjectDetailPage() {
                 { label: '企業名', value: project.company_name },
                 { label: '電話番号', value: project.phone_number },
                 { label: '業種', value: project.industry },
-                { label: '地域', value: project.region },
+                { label: '住所', value: project.address || project.region },
                 { label: '担当OP', value: project.owner_name },
                 { label: '担当営業', value: project.sales_name },
               ].map((item) => (
@@ -288,19 +289,35 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
-                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                    form.mail_sent ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
-                  }`}>
-                    {form.mail_sent && (
-                      <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </div>
-                  <input type="checkbox" checked={form.mail_sent} onChange={(e) => setForm({ ...form, mail_sent: e.target.checked })} className="sr-only" />
-                  <span className="text-gray-700">メール送信済み</span>
-                </label>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      form.mail_sent ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
+                    }`}>
+                      {form.mail_sent && (
+                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                    <input type="checkbox" checked={form.mail_sent} onChange={(e) => setForm({ ...form, mail_sent: e.target.checked })} className="sr-only" />
+                    <span className="text-gray-700">メール送信済み</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      form.phone_confirmed ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
+                    }`}>
+                      {form.phone_confirmed && (
+                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                    <input type="checkbox" checked={form.phone_confirmed} onChange={(e) => setForm({ ...form, phone_confirmed: e.target.checked })} className="sr-only" />
+                    <span className="text-gray-700">電話確認済み</span>
+                  </label>
+                </div>
 
                 <div>
                   <label className="input-label">メモ</label>

@@ -156,6 +156,7 @@ const updateProject = async (req, res, next) => {
       company_name,
       industry,
       region,
+      address,
     } = req.body;
 
     // 営業ロールは sales_user_id のみ更新可能
@@ -216,17 +217,18 @@ const updateProject = async (req, res, next) => {
       return ApiResponse.notFound(res, '案件が見つかりません');
     }
 
-    // 企業情報の更新（company_name, industry, region）
-    if (company_name || industry !== undefined || region !== undefined) {
+    // 企業情報の更新（company_name, industry, region, address）
+    if (company_name || industry !== undefined || region !== undefined || address !== undefined) {
       const [proj] = await pool.execute('SELECT company_id FROM projects WHERE id = ?', [id]);
       if (proj.length > 0) {
         await pool.execute(
           `UPDATE companies SET
             company_name = COALESCE(?, company_name),
             industry = COALESCE(?, industry),
-            region = COALESCE(?, region)
+            region = COALESCE(?, region),
+            address = COALESCE(?, address)
            WHERE id = ?`,
-          [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, proj[0].company_id]
+          [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, address !== undefined ? (address || null) : null, proj[0].company_id]
         );
       }
     }
