@@ -77,6 +77,12 @@ export default function CallPage() {
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selectedTargetId;
 
+  // モードの最新値をrefで保持（async関数内のクロージャ問題を回避）
+  const pickupModeRef = useRef(pickupMode);
+  const selectedIndustryRef = useRef(selectedIndustry);
+  pickupModeRef.current = pickupMode;
+  selectedIndustryRef.current = selectedIndustry;
+
   // モードパラメータ構築ヘルパー
   const getModeParams = useCallback(() => {
     const params = {};
@@ -98,15 +104,10 @@ export default function CallPage() {
     }
   }, [getModeParams]);
 
-  // 初回読み込み + モード変更時
+  // 初回読み込み + モード変更時（fetchCallList は getModeParams に依存し、getModeParams は pickupMode/selectedIndustry に依存）
   useEffect(() => {
     fetchCallList();
   }, [fetchCallList]);
-
-  // ピックアップモード/業種変更時にリスト再取得
-  useEffect(() => {
-    fetchCallList();
-  }, [pickupMode, selectedIndustry]);
 
   // ピックアップ: 架電リストページからのロック済み企業を自動読み込み
   useEffect(() => {
@@ -222,8 +223,10 @@ export default function CallPage() {
   // 自動で次の架電先へ進む（ロック取得まで。架電開始は手動）
   const autoAdvanceToNext = async (excludeId = null) => {
     try {
-      // 最新リストを取得
-      const params = { ...getModeParams() };
+      // 最新リストを取得（refから最新モード値を取得）
+      const params = {};
+      if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
+      if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
       if (excludeId) params.exclude = excludeId;
       const { data } = await api.get('/api/companies/call-list', { params });
       const targets = data.data.targets || [];
@@ -272,8 +275,10 @@ export default function CallPage() {
   // 自動架電モード: 次の架電先に進み、自動で架電開始
   const autoAdvanceAndCall = async (excludeId = null) => {
     try {
-      // 最新リストを取得
-      const params = { ...getModeParams() };
+      // 最新リストを取得（refから最新モード値を取得）
+      const params = {};
+      if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
+      if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
       if (excludeId) params.exclude = excludeId;
       const { data } = await api.get('/api/companies/call-list', { params });
       const targets = data.data.targets || [];
@@ -307,7 +312,10 @@ export default function CallPage() {
       const callRes = await api.post('/api/calls/start', { company_id: nextCompany.id });
       setCallId(callRes.data.data.callId);
       setCalling(true);
-      window.open(`zoomphone://call?number=${encodeURIComponent(nextCompany.phone_number)}`, '_self');
+      const phoneForZoom = nextCompany.phone_number.startsWith('0')
+        ? '+81' + nextCompany.phone_number.slice(1)
+        : nextCompany.phone_number;
+      window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success(`自動架電: ${nextCompany.company_name}`);
     } catch (err) {
       if (err.response?.status === 409) {
@@ -647,7 +655,7 @@ export default function CallPage() {
                   <div className="relative">
                     <div className="absolute inset-0 w-36 h-36 rounded-full bg-red-400/30 pulse-ring" />
                     <button
-                      onClick={() => { setAutoMode(false); setCalling(false); }}
+                      onClick={() => { setCalling(false); }}
                       className="relative w-36 h-36 rounded-full bg-gradient-to-br from-red-400 to-red-600 text-white text-lg font-bold shadow-lg shadow-red-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-red-500/30 active:scale-95 flex items-center justify-center"
                     >
                       <div className="text-center">
@@ -667,8 +675,13 @@ export default function CallPage() {
                   </div>
                 )}
                 {autoMode && (
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-center gap-2">
                     <span className="text-[11px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded-full">🔄 自動架電モード</span>
+                    <button
+                      onClick={() => setAutoMode(false)}
+                      className="text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-colors"
+                      title="自動架電を停止"
+                    >✕ 停止</button>
                   </div>
                 )}
               </div>
