@@ -2,7 +2,7 @@
  * 管理者用 架電結果ログ
  * 全オペレーターの架電結果を一覧表示・文字起こし閲覧
  */
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
@@ -257,74 +257,74 @@ export default function AdminCallLogsPage() {
                   const hasTranscript = call.transcript && call.transcript.trim().length > 0;
 
                   return (
-                    <tr key={call.id} className="group">
-                      <td colSpan="10" className="p-0">
-                        {/* メイン行 */}
-                        <div className={`flex items-center border-b border-gray-50 transition-colors ${
-                          isExpanded ? 'bg-blue-50/50' : 'hover:bg-blue-50/30'
-                        }`}>
-                          <span className="table-cell text-gray-500 text-xs whitespace-nowrap" style={{width:'100px'}}>
-                            {formatDateTime(call.call_started_at)}
-                          </span>
-                          <span className="table-cell font-medium text-gray-700 text-xs" style={{width:'80px'}}>
-                            {call.operator_name || '-'}
-                          </span>
-                          <span className="table-cell font-medium text-gray-900" style={{flex:1, minWidth:'120px'}}>
-                            {call.company_name || '-'}
-                          </span>
-                          <span className="table-cell text-xs text-gray-500" style={{width:'110px'}}>
-                            {call.phone_number || '-'}
-                          </span>
-                          <span className="table-cell" style={{width:'70px'}}>
-                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>{badge.label}</span>
-                          </span>
-                          <span className="table-cell text-gray-500 text-xs" style={{width:'70px'}}>
-                            {calcDuration(call.call_started_at, call.call_ended_at)}
-                          </span>
-                          <span className="table-cell text-center" style={{width:'60px'}}>
-                            {call.is_effective_connection ? <span className="text-emerald-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
-                          </span>
-                          <span className="table-cell text-center" style={{width:'60px'}}>
-                            {call.is_person_in_charge ? <span className="text-blue-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
-                          </span>
-                          <span className="table-cell text-gray-400 text-xs truncate" style={{width:'150px', maxWidth:'150px'}}>
-                            {call.memo || '-'}
-                          </span>
-                          <span className="table-cell text-center" style={{width:'70px'}}>
-                            {hasTranscript ? (
-                              <button
-                                onClick={() => setExpandedId(isExpanded ? null : call.id)}
-                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                              >
-                                <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                                表示
-                              </button>
-                            ) : (
-                              <span className="text-gray-300 text-xs">-</span>
-                            )}
-                          </span>
-                        </div>
-
-                        {/* 展開: 文字起こし */}
-                        {isExpanded && hasTranscript && (
-                          <div className="px-5 py-4 bg-gray-50/80 border-b border-gray-100">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                    <React.Fragment key={call.id}>
+                      <tr className={`border-b border-gray-50 transition-colors ${
+                        isExpanded ? 'bg-blue-50/50' : 'hover:bg-blue-50/30'
+                      }`}>
+                        <td className="table-cell text-gray-500 text-xs whitespace-nowrap">
+                          {formatDateTime(call.call_started_at)}
+                        </td>
+                        <td className="table-cell font-medium text-gray-700 text-xs">
+                          {call.operator_name || '-'}
+                        </td>
+                        <td className="table-cell font-medium text-gray-900">
+                          {call.company_name || '-'}
+                        </td>
+                        <td className="table-cell text-xs text-gray-500">
+                          {call.phone_number || '-'}
+                        </td>
+                        <td className="table-cell">
+                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>{badge.label}</span>
+                        </td>
+                        <td className="table-cell text-gray-500 text-xs">
+                          {calcDuration(call.call_started_at, call.call_ended_at)}
+                        </td>
+                        <td className="table-cell text-center">
+                          {call.is_effective_connection ? <span className="text-emerald-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
+                        </td>
+                        <td className="table-cell text-center">
+                          {call.is_person_in_charge ? <span className="text-blue-600 font-bold text-xs">●</span> : <span className="text-gray-300 text-xs">-</span>}
+                        </td>
+                        <td className="table-cell text-gray-400 text-xs max-w-[200px]">
+                          <span className="truncate block">{call.memo || '-'}</span>
+                        </td>
+                        <td className="table-cell text-center">
+                          {hasTranscript ? (
+                            <button
+                              onClick={() => setExpandedId(isExpanded ? null : call.id)}
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                            >
+                              <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="6 9 12 15 18 9" />
                               </svg>
-                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">文字起こし</h4>
+                              表示
+                            </button>
+                          ) : (
+                            <span className="text-gray-300 text-xs">-</span>
+                          )}
+                        </td>
+                      </tr>
+                      {/* 展開: 文字起こし */}
+                      {isExpanded && hasTranscript && (
+                        <tr>
+                          <td colSpan="10" className="p-0">
+                            <div className="px-5 py-4 bg-gray-50/80 border-b border-gray-100">
+                              <div className="flex items-center gap-2 mb-2">
+                                <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">文字起こし</h4>
+                              </div>
+                              <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-80 overflow-y-auto">
+                                <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                                  {call.transcript}
+                                </pre>
+                              </div>
                             </div>
-                            <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-80 overflow-y-auto">
-                              <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                                {call.transcript}
-                              </pre>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
