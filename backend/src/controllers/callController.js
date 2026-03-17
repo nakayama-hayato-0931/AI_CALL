@@ -196,6 +196,27 @@ const cancelCall = async (req, res, next) => {
 };
 
 /**
+ * POST /api/calls/:id/cancel-beacon
+ * ページ離脱時にsendBeaconで呼ばれる（認証ヘッダーなし）
+ * result_code IS NULL のレコードのみ削除するため安全
+ */
+const cancelCallBeacon = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute(
+      'DELETE FROM calls WHERE id = ? AND result_code IS NULL',
+      [id]
+    );
+    if (result.affectedRows > 0) {
+      logger.info(`架電取消(beacon): call=${id}`);
+    }
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/calls/skip
  * 架電スキップ（通話せずに記録、ロック解除）
  */
@@ -399,4 +420,4 @@ const getOperators = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, skipCall, getCalls, updateCall, getOperators };
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators };

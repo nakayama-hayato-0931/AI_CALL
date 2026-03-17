@@ -77,6 +77,9 @@ export default function CallPage() {
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selectedTargetId;
 
+  const callIdRef = useRef(null);
+  callIdRef.current = callId;
+
   // モードの最新値をrefで保持（async関数内のクロージャ問題を回避）
   const pickupModeRef = useRef(pickupMode);
   const selectedIndustryRef = useRef(selectedIndustry);
@@ -138,9 +141,18 @@ export default function CallPage() {
   // ページ離脱時にロック解除（ベストエフォート）
   useEffect(() => {
     const handleBeforeUnload = () => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      // 未保存のcallをキャンセル
+      const cId = callIdRef.current;
+      if (cId) {
+        navigator.sendBeacon(
+          `${apiUrl}/api/calls/${cId}/cancel-beacon`,
+          new Blob([JSON.stringify({})], { type: 'application/json' })
+        );
+      }
+      // ロック解除
       const id = selectedIdRef.current;
       if (id) {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         navigator.sendBeacon(
           `${apiUrl}/api/companies/${id}/unlock`,
           new Blob([JSON.stringify({})], { type: 'application/json' })
@@ -185,6 +197,8 @@ export default function CallPage() {
   const handleSelectTarget = async (target) => {
     if (calling) return;
     try {
+      // 前回の未保存callがあればキャンセル
+      await cancelUnsavedCall();
       // 前のロックを解除
       if (selectedTargetId && selectedTargetId !== target.id) {
         await api.post(`/api/companies/${selectedTargetId}/unlock`).catch(() => {});
@@ -337,9 +351,23 @@ export default function CallPage() {
   };
 
   // 架電開始（手動）
+  // 未保存の通話レコードをキャンセル
+  const cancelUnsavedCall = async () => {
+    if (callId) {
+      try {
+        await api.delete(`/api/calls/${callId}/cancel`);
+      } catch (e) {
+        // 既に結果保存済みの場合は無視
+      }
+      setCallId(null);
+    }
+  };
+
   const handleStartCall = async () => {
     if (!company) return;
     try {
+      // 前回の未保存callがあればキャンセル
+      await cancelUnsavedCall();
       const { data } = await api.post('/api/calls/start', { company_id: company.id });
       setCallId(data.data.callId);
       setCalling(true);
@@ -655,17 +683,9 @@ export default function CallPage() {
                   <div className="relative">
                     <div className="absolute inset-0 w-36 h-36 rounded-full bg-red-400/30 pulse-ring" />
                     <button
-                      onClick={async () => {
-                        // 結果未入力のcallsレコードを削除
-                        if (callId) {
-                          try {
-                            await api.delete(`/api/calls/${callId}/cancel`);
-                          } catch (e) {
-                            // 既に結果保存済みの場合はエラーを無視
-                          }
-                        }
+                      onClick={() => {
+                        // 通話中状態を解除（callIdは保持 → 結果入力可能）
                         setCalling(false);
-                        setCallId(null);
                       }}
                       className="relative w-36 h-36 rounded-full bg-gradient-to-br from-red-400 to-red-600 text-white text-lg font-bold shadow-lg shadow-red-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-red-500/30 active:scale-95 flex items-center justify-center"
                     >
