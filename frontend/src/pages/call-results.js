@@ -2,7 +2,7 @@
  * 架電結果ページ
  * 過去の架電結果を表示・編集（営業以外）
  */
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
@@ -254,6 +254,7 @@ export default function CallResultsPage() {
                   <th className="table-header text-center">有効接続</th>
                   <th className="table-header text-center">担当者</th>
                   <th className="table-header">メモ</th>
+                  <th className="table-header text-center">文字起こし</th>
                   <th className="table-header text-center">操作</th>
                 </tr>
               </thead>
@@ -263,9 +264,13 @@ export default function CallResultsPage() {
                   const isOwn = user && call.user_id === user.id;
                   const isEditing = editingId === call.id;
                   const isExpanded = expandedId === call.id;
+                  const hasTranscript = call.transcript && call.transcript.trim().length > 0;
 
                   return (
-                    <tr key={call.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                    <React.Fragment key={call.id}>
+                    <tr className={`border-b border-gray-50 transition-colors ${
+                      isExpanded ? 'bg-blue-50/50' : 'hover:bg-blue-50/30'
+                    }`}>
                       <td className="table-cell text-gray-500 text-xs whitespace-nowrap">
                         {new Date(call.call_started_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </td>
@@ -321,6 +326,21 @@ export default function CallResultsPage() {
                         )}
                       </td>
                       <td className="table-cell text-center">
+                        {hasTranscript ? (
+                          <button
+                            onClick={() => setExpandedId(isExpanded ? null : call.id)}
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                            表示
+                          </button>
+                        ) : (
+                          <span className="text-gray-300 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="table-cell text-center">
                         {isOwn && !isEditing && (
                           <button onClick={() => startEdit(call)}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium">編集</button>
@@ -335,6 +355,27 @@ export default function CallResultsPage() {
                         )}
                       </td>
                     </tr>
+                    {/* 展開: 文字起こし */}
+                    {isExpanded && hasTranscript && (
+                      <tr>
+                        <td colSpan="11" className="p-0">
+                          <div className="px-5 py-4 bg-gray-50/80 border-b border-gray-100">
+                            <div className="flex items-center gap-2 mb-2">
+                              <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                              </svg>
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">文字起こし</h4>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-80 overflow-y-auto">
+                              <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                                {call.transcript}
+                              </pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
