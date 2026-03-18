@@ -648,4 +648,166 @@ const manualAddExclusion = async (req, res, next) => {
   }
 };
 
-module.exports = { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion };
+/**
+ * POST /api/csv/import-special
+ * 特別リストインポート（NG/既存案件リストを無視して追加、is_special=1）
+ */
+const importSpecialList = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return ApiResponse.badRequest(res, 'ファイルをアップロードしてください');
+    }
+
+    const filePath = req.file.path;
+    const records = await parseFile(filePath, req.file.originalname);
+
+    if (records.length === 0) {
+      cleanupFile(filePath);
+      return ApiResponse.badRequest(res, 'ファイルにデータがありません');
+    }
+
+    // 優先オペレーター設定（管理者/マネージャーのみ）
+    let priorityOperatorIds = [];
+    let graceDays = 0;
+    if (req.user.role !== 'operator' && req.body.priority_operator_ids) {
+      try { priorityOperatorIds = JSON.parse(req.body.priority_operator_ids); } catch (e) { /* ignore */ }
+      graceDays = parseInt(req.body.grace_days) || 0;
+    }
+
+    let insertedCount = 0;
+    let skippedCount = 0;
+    let duplicateCount = 0;
+    const errors = [];
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      for (let i = 0; i < records.length; i++) {
+        const row = records[i];
+        const lineNum = i + 2;
+
+        const companyName = normalizeCompanyName((row.company_name || '').trim());
+        const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim());
+        const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
+        const jobType = (row.job_type || '').trim() || null;
+        const comment = (row.comment || '').trim() || null;
+        const dataSource = (row.data_source || '').trim() || null;
+        const address = (row.address || '').trim() || null;
+        const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
+
+        if (!companyName || !phoneNumber) {
+          errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
+          skippedCount++;
+          continue;
+        }
+
+        // 重複チェック（特別リスト内での重複のみ）
+        const [existing] = await conn.execute(
+          'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_special = 1',
+          [phoneNumber, companyName]
+        );
+        if (existing.length > 0) {
+          duplicateCount++;
+          skippedCount++;
+          continue;
+        }
+
+        // NG/既存案件リストは無視してインサート（is_special=1）
+        const [insertResult] = await conn.execute(
+          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, is_special)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address]
+        );
+
+        // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
+        if (priorityOperatorIds.length > 0 && graceDays > 0) {
+          await conn.execute(
+            'UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?',
+            [graceDays, insertResult.insertId]
+          );
+          for (const opId of priorityOperatorIds) {
+            try {
+              await conn.execute(
+                'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+                [insertResult.insertId, opId, req.user.id]
+              );
+            } catch (assignErr) {
+              if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
+            }
+          }
+        }
+
+        insertedCount++;
+      }
+
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    cleanupFile(filePath);
+
+    logger.info(`特別リストインポート完了: inserted=${insertedCount}, skipped=${skippedCount}, duplicates=${duplicateCount}, user=${req.user.id}`);
+
+    return ApiResponse.success(res, {
+      totalRows: records.length,
+      insertedCount,
+      skippedCount,
+      duplicateCount,
+      autoAssigned: 0,
+      errors: errors.slice(0, 50),
+    }, `特別リストに${insertedCount}件をインポートしました`);
+  } catch (err) {
+    cleanupFile(req.file?.path);
+    next(err);
+  }
+};
+
+/**
+ * POST /api/csv/manual-special
+ * 特別リストに1件手動登録（NG/既存案件を無視）
+ */
+const manualAddSpecial = async (req, res, next) => {
+  try {
+    const { company_name, phone_number, industry, job_type, comment, address, region } = req.body;
+
+    if (!company_name || !phone_number) {
+      return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
+    }
+
+    const companyName = normalizeCompanyName(company_name);
+    const phoneNumber = normalizePhoneNumber(phone_number);
+
+    if (!phoneNumber) {
+      return ApiResponse.badRequest(res, '有効な電話番号を入力してください');
+    }
+
+    // 特別リスト内での重複チェックのみ
+    const [existing] = await pool.execute(
+      'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_special = 1',
+      [phoneNumber, companyName]
+    );
+    if (existing.length > 0) {
+      return ApiResponse.badRequest(res, '既に特別リストに登録済みです');
+    }
+
+    const derivedRegion = region || extractRegionFromAddress(address);
+
+    const [insertResult] = await pool.execute(
+      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, is_special)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [companyName, phoneNumber, industry || null, job_type || null, comment || null, derivedRegion, address || null]
+    );
+
+    logger.info(`特別リスト手動登録: id=${insertResult.insertId}, user=${req.user.id}`);
+    return ApiResponse.created(res, { companyId: insertResult.insertId }, '特別リストに登録しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion, importSpecialList, manualAddSpecial };

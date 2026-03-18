@@ -65,7 +65,7 @@ export default function CallPage() {
   const [savedProjectId, setSavedProjectId] = useState(null);
 
   // ピックアップモード
-  const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist'
+  const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist' | 'special'
   const [selectedIndustry, setSelectedIndustry] = useState('');
 
   // スクリプト（アウト返し・Q&A）
@@ -92,6 +92,7 @@ export default function CallPage() {
     if (pickupMode !== 'auto') params.mode = pickupMode;
     if (pickupMode === 'industry' && selectedIndustry) params.industry = selectedIndustry;
     return params;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupMode, selectedIndustry]);
 
   // 架電リスト取得
@@ -480,6 +481,7 @@ export default function CallPage() {
         <p className="text-sm text-gray-400 mt-0.5">
           {pickupMode === 'auto' ? '自動優先順位による架電対象' :
            pickupMode === 'industry' ? `業種別ピックアップ${selectedIndustry ? `（${selectedIndustry}）` : ''}` :
+           pickupMode === 'special' ? '特別リストからピックアップ' :
            '自作リストからピックアップ'}
         </p>
       </div>
@@ -509,6 +511,7 @@ export default function CallPage() {
                   { value: 'auto', label: '自動' },
                   { value: 'industry', label: '業種別' },
                   { value: 'mylist', label: '自作リスト' },
+                  { value: 'special', label: '特別リスト' },
                 ].map(m => (
                   <button key={m.value}
                     onClick={() => { setPickupMode(m.value); }}

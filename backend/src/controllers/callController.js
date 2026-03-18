@@ -5,7 +5,7 @@
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
-const { findTranscriptsBatch } = require('../services/googleSheetsService');
+const { findTranscript, findTranscriptsBatch } = require('../services/googleSheetsService');
 
 /**
  * POST /api/calls/start
@@ -168,6 +168,18 @@ const endCall = async (req, res, next) => {
     await conn.commit();
 
     logger.info(`通話結果登録: call=${id}, result=${result_code}`);
+
+    // バックグラウンドで文字起こしを取得・保存（レスポンスはブロックしない）
+    if (call.phone_number && call.call_started_at && !call.transcript) {
+      findTranscript(call.phone_number, call.call_started_at).then(async (transcript) => {
+        if (transcript) {
+          await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, id]);
+          logger.info(`通話終了時Transcript取得: call=${id}`);
+        }
+      }).catch(e => {
+        logger.error('通話終了時Transcript取得エラー:', e.message);
+      });
+    }
 
     return ApiResponse.success(res, { callId: parseInt(id), projectId }, '通話結果を保存しました');
   } catch (err) {

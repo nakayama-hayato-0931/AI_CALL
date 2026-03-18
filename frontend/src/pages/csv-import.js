@@ -41,13 +41,15 @@ export default function CallListPage() {
 
   // CSV import state
   const [showImport, setShowImport] = useState(true);
-  const [importTab, setImportTab] = useState('calllist'); // 'calllist' | 'ng' | 'existing'
+  const [importTab, setImportTab] = useState('calllist'); // 'calllist' | 'special' | 'ng' | 'existing'
+  const [listView, setListView] = useState('calllist'); // 'calllist' | 'special' - 企業一覧の表示切替
 
   // クエリパラメータが変わったらタブを切り替え
   useEffect(() => {
-    if (queryTab === 'ng' || queryTab === 'existing' || queryTab === 'calllist') {
+    if (queryTab === 'ng' || queryTab === 'existing' || queryTab === 'calllist' || queryTab === 'special') {
       setImportTab(queryTab);
       setShowImport(true);
+      if (queryTab === 'special') setListView('special');
     }
   }, [queryTab]);
   const [file, setFile] = useState(null);
@@ -104,6 +106,7 @@ export default function CallListPage() {
       if (industry) params.industry = industry;
       if (region) params.region = region;
       if (showExcluded) params.show_excluded = '1';
+      if (listView === 'special') params.list_type = 'special';
       const { data } = await api.get('/api/companies', { params });
       setCompanies(data.data.companies);
       setPagination(data.data.pagination);
@@ -116,7 +119,7 @@ export default function CallListPage() {
 
   useEffect(() => {
     fetchCompanies();
-  }, [industry, region, showExcluded]);
+  }, [industry, region, showExcluded, listView]);
 
   // 30秒ごとにリスト自動リフレッシュ（ロック状態をリアルタイム反映）
   useEffect(() => {
@@ -210,13 +213,14 @@ export default function CallListPage() {
       formData.append('file', file);
 
       // 優先オペレーター設定
-      if (importTab === 'calllist' && isManager && selectedOperators.length > 0 && graceDays > 0) {
+      if ((importTab === 'calllist' || importTab === 'special') && isManager && selectedOperators.length > 0 && graceDays > 0) {
         formData.append('priority_operator_ids', JSON.stringify(selectedOperators));
         formData.append('grace_days', String(graceDays));
       }
 
       let url = '/api/csv/import';
-      if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
+      if (importTab === 'special') url = '/api/csv/import-special';
+      else if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
       else if (importTab === 'existing') url = '/api/csv/import-exclusion?list_type=existing_project';
 
       const { data } = await api.post(url, formData, {
@@ -226,7 +230,7 @@ export default function CallListPage() {
       toast.success(data.message);
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      if (importTab === 'calllist') fetchCompanies(1);
+      if (importTab === 'calllist' || importTab === 'special') { if (importTab === 'special') setListView('special'); fetchCompanies(1); }
       else { fetchCompanies(pagination.page || 1); fetchExclusionStats(); } // 除外フラグ更新・統計を反映
     } catch (err) {
       const msg = err.response?.data?.message || 'インポートに失敗しました';
@@ -239,7 +243,7 @@ export default function CallListPage() {
   // 手動登録ハンドラ
   const handleManualSubmit = async (e) => {
     e.preventDefault();
-    if (importTab === 'calllist') {
+    if (importTab === 'calllist' || importTab === 'special') {
       if (!manualForm.company_name.trim() || !manualForm.phone_number.trim()) {
         toast.error('企業名と電話番号は必須です');
         return;
@@ -252,9 +256,11 @@ export default function CallListPage() {
     }
     setManualSubmitting(true);
     try {
-      if (importTab === 'calllist') {
-        const { data } = await api.post('/api/csv/manual-company', manualForm);
+      if (importTab === 'calllist' || importTab === 'special') {
+        const url = importTab === 'special' ? '/api/csv/manual-special' : '/api/csv/manual-company';
+        const { data } = await api.post(url, manualForm);
         toast.success(data.message || '登録しました');
+        if (importTab === 'special') setListView('special');
         fetchCompanies(1);
       } else {
         const listType = importTab === 'ng' ? 'ng' : 'existing_project';
@@ -281,7 +287,7 @@ export default function CallListPage() {
       <div className="flex items-end justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">リスト管理</h1>
-          <p className="text-sm text-gray-400 mt-0.5">架電リスト・NGリスト・既存案件リストのインポート・手動登録</p>
+          <p className="text-sm text-gray-400 mt-0.5">架電リスト・特別リスト・NGリスト・既存案件リストのインポート・手動登録</p>
         </div>
         <button
           onClick={() => setShowImport(!showImport)}
@@ -308,6 +314,7 @@ export default function CallListPage() {
           <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
             {[
               { key: 'calllist', label: '架電リスト' },
+              { key: 'special', label: '特別リスト' },
               { key: 'ng', label: 'NGリスト' },
               { key: 'existing', label: '既存案件リスト' },
             ].map((tab) => (
@@ -351,10 +358,10 @@ export default function CallListPage() {
           <div className="card p-4">
             <div className="flex items-start gap-3">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                importTab === 'calllist' ? 'bg-blue-50' : importTab === 'ng' ? 'bg-red-50' : 'bg-amber-50'
+                importTab === 'calllist' ? 'bg-blue-50' : importTab === 'special' ? 'bg-purple-50' : importTab === 'ng' ? 'bg-red-50' : 'bg-amber-50'
               }`}>
                 <svg className={`w-4 h-4 ${
-                  importTab === 'calllist' ? 'text-blue-600' : importTab === 'ng' ? 'text-red-600' : 'text-amber-600'
+                  importTab === 'calllist' ? 'text-blue-600' : importTab === 'special' ? 'text-purple-600' : importTab === 'ng' ? 'text-red-600' : 'text-amber-600'
                 }`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
@@ -367,6 +374,14 @@ export default function CallListPage() {
                     <p className="text-xs text-gray-400">対応形式: <span className="font-medium">.xls / .xlsx / .csv</span></p>
                     <p className="text-xs text-gray-400 mt-0.5">重複判定: 電話番号 または 会社名が一致する場合はスキップ</p>
                     <p className="text-xs text-gray-400 mt-0.5">NG/既存案件リストに一致する企業も自動的にスキップされます</p>
+                  </>
+                ) : importTab === 'special' ? (
+                  <>
+                    <p className="text-sm font-medium text-gray-800 mb-1">特別リストインポート</p>
+                    <p className="text-xs text-gray-600 mb-1.5">NGリスト・既存案件リストの除外を無視して追加されます</p>
+                    <p className="text-xs text-gray-400">対応形式: <span className="font-medium">.xls / .xlsx / .csv</span></p>
+                    <p className="text-xs text-gray-400 mt-0.5">重複判定: 特別リスト内で電話番号 または 会社名が一致する場合はスキップ</p>
+                    <p className="text-xs text-gray-400 mt-0.5">特別リストの企業は自動架電・業種タブには表示されません（特別リストタブ専用）</p>
                   </>
                 ) : importTab === 'ng' ? (
                   <>
@@ -410,7 +425,7 @@ export default function CallListPage() {
           </div>
 
           {/* 優先オペレーター設定（管理者/マネージャー・架電リストのみ） */}
-          {isManager && importTab === 'calllist' && (
+          {isManager && (importTab === 'calllist' || importTab === 'special') && (
             <div className="card p-4">
               <p className="text-xs font-medium text-gray-700 mb-2">優先オペレーター設定（任意）</p>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -583,7 +598,7 @@ export default function CallListPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    企業名 {importTab === 'calllist' && <span className="text-red-500">*</span>}
+                    企業名 {(importTab === 'calllist' || importTab === 'special') && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="text"
@@ -595,7 +610,7 @@ export default function CallListPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    電話番号 {importTab === 'calllist' && <span className="text-red-500">*</span>}
+                    電話番号 {(importTab === 'calllist' || importTab === 'special') && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="text"
@@ -607,7 +622,7 @@ export default function CallListPage() {
                 </div>
               </div>
 
-              {importTab === 'calllist' && (
+              {(importTab === 'calllist' || importTab === 'special') && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -661,7 +676,7 @@ export default function CallListPage() {
                 </>
               )}
 
-              {importTab !== 'calllist' && (
+              {importTab !== 'calllist' && importTab !== 'special' && (
                 <p className="text-xs text-gray-400">
                   {importTab === 'ng' ? 'NGリスト' : '既存案件リスト'}に手動で1件登録します。企業名または電話番号のどちらかは必須です。
                   架電リストに該当企業がある場合は自動的に除外されます。
@@ -690,6 +705,26 @@ export default function CallListPage() {
           )}
         </div>
       )}
+
+      {/* リスト表示切替 */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-4">
+        {[
+          { key: 'calllist', label: '架電リスト' },
+          { key: 'special', label: '特別リスト' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => { setListView(tab.key); }}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+              listView === tab.key
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* 検索・フィルターバー */}
       <form onSubmit={handleSearch} className="flex items-center gap-3 mb-5">

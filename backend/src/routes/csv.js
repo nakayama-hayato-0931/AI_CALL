@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion } = require('../controllers/csvController');
+const { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion, importSpecialList, manualAddSpecial } = require('../controllers/csvController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 
 // Multer設定: CSV / XLS / XLSX ファイル許可
@@ -41,5 +41,11 @@ router.post('/manual-company', manualAddCompany);
 
 // POST /api/csv/manual-exclusion - NG/既存案件リスト手動登録 (マネージャー以上)
 router.post('/manual-exclusion', requireManager, manualAddExclusion);
+
+// POST /api/csv/import-special - 特別リストインポート (マネージャー以上)
+router.post('/import-special', requireManager, upload.single('file'), importSpecialList);
+
+// POST /api/csv/manual-special - 特別リスト手動登録 (マネージャー以上)
+router.post('/manual-special', requireManager, manualAddSpecial);
 
 module.exports = router;

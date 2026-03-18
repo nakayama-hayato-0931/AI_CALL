@@ -27,7 +27,7 @@ const getCompanies = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { search, industry, region, show_excluded } = req.query;
+    const { search, industry, region, show_excluded, list_type } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -35,6 +35,13 @@ const getCompanies = async (req, res, next) => {
     // show_excluded=1 なら除外企業も表示、デフォルトは除外
     if (show_excluded !== '1') {
       whereClauses.push('c.exclusion_flag = 0');
+    }
+
+    // list_type=special なら特別リストのみ、それ以外は通常リスト
+    if (list_type === 'special') {
+      whereClauses.push('c.is_special = 1');
+    } else {
+      whereClauses.push('c.is_special = 0');
     }
 
     if (search) {
@@ -240,6 +247,7 @@ const getNextCallTarget = async (req, res, next) => {
     const mode = req.query.mode || 'auto';
     const industryParam = req.query.industry || '';
     const isMyList = mode === 'mylist';
+    const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
     if (mode === 'industry' && industryParam) {
@@ -250,10 +258,29 @@ const getNextCallTarget = async (req, res, next) => {
       modeFilterParams = [userId];
     }
 
-    // 自作リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
-    const irFilter = isMyList ? '' : industryRegionFilterSQL;
-    const lrFilter = isMyList ? '' : lastResultExclusionSQL;
-    const asFilter = isMyList ? '' : assignmentFilterSQL;
+    // 自作リスト/特別リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
+    const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
+    const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
+    const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
+
+    // 特別リストモード: is_special=1の企業のみ
+    if (isSpecialList) {
+      const [specialRows] = await pool.query(
+        `SELECT c.*,
+                (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+                (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
+         FROM companies c
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1
+           ${lockFilterSQL}
+         ORDER BY c.created_at DESC
+         LIMIT 1`,
+        [userId]
+      );
+      if (specialRows.length > 0) {
+        return ApiResponse.success(res, { target: specialRows[0], reason: 'special' });
+      }
+      return ApiResponse.success(res, { target: null, reason: 'no_target' }, '架電対象がありません');
+    }
 
     // 自作リストモード: シンプルに全件返す（フィルタなし）
     if (isMyList) {
@@ -262,7 +289,7 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0
+         WHERE c.exclusion_flag = 0 AND c.is_special = 0
            ${modeFilterSQL}
          ORDER BY c.created_at DESC
          LIMIT 1`,
@@ -282,7 +309,7 @@ const getNextCallTarget = async (req, res, next) => {
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
-         AND c.exclusion_flag = 0
+         AND c.exclusion_flag = 0 AND c.is_special = 0
          ${irFilter}
          ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
@@ -301,7 +328,7 @@ const getNextCallTarget = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
@@ -322,7 +349,7 @@ const getNextCallTarget = async (req, res, next) => {
       `SELECT c.*,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 AND c.last_called_at IS NULL
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          ${asFilter}
@@ -342,7 +369,7 @@ const getNextCallTarget = async (req, res, next) => {
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
@@ -364,7 +391,7 @@ const getNextCallTarget = async (req, res, next) => {
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
@@ -403,6 +430,7 @@ const getCallList = async (req, res, next) => {
     const mode = req.query.mode || 'auto';
     const industryParam = req.query.industry || '';
     const isMyList = mode === 'mylist';
+    const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
     if (mode === 'industry' && industryParam) {
@@ -413,10 +441,10 @@ const getCallList = async (req, res, next) => {
       modeFilterParams = [userId];
     }
 
-    // 自作リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
-    const irFilter = isMyList ? '' : industryRegionFilterSQL;
-    const lrFilter = isMyList ? '' : lastResultExclusionSQL;
-    const asFilter = isMyList ? '' : assignmentFilterSQL;
+    // 自作リスト/特別リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
+    const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
+    const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
+    const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
 
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
@@ -429,6 +457,23 @@ const getCallList = async (req, res, next) => {
       return `AND c.id NOT IN (${ids.map(() => '?').join(',')})`;
     };
 
+    // 特別リストモード: is_special=1の企業のみ
+    if (isSpecialList) {
+      const [specialRows] = await pool.query(
+        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+                'special' as reason,
+                (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+                (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
+         FROM companies c
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1
+           ${lockFilterSQL}
+         ORDER BY c.created_at DESC
+         LIMIT ?`,
+        [userId, LIST_SIZE]
+      );
+      return ApiResponse.success(res, { targets: specialRows });
+    }
+
     // 自作リストモード: シンプルに全件返す（フィルタなし）
     if (isMyList) {
       const [mylistRows] = await pool.query(
@@ -437,7 +482,7 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0
+         WHERE c.exclusion_flag = 0 AND c.is_special = 0
            ${lockFilterSQL}
            ${modeFilterSQL}
          ORDER BY c.created_at DESC
@@ -454,7 +499,7 @@ const getCallList = async (req, res, next) => {
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
-         AND c.exclusion_flag = 0
+         AND c.exclusion_flag = 0 AND c.is_special = 0
          ${lockFilterSQL}
          ${irFilter}
          ${modeFilterSQL}
@@ -477,7 +522,7 @@ const getCallList = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
@@ -505,7 +550,7 @@ const getCallList = async (req, res, next) => {
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.last_called_at IS NULL
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 AND c.last_called_at IS NULL
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          ${lockFilterSQL}
@@ -531,7 +576,7 @@ const getCallList = async (req, res, next) => {
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
@@ -559,7 +604,7 @@ const getCallList = async (req, res, next) => {
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
