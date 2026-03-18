@@ -934,7 +934,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="card p-5">
-          <h2 className="text-sm font-bold text-gray-800 mb-4">業種別案件化率 <span className="text-[11px] font-normal text-gray-400">({PERIODS.find(p => p.value === kpiPeriod)?.label})</span></h2>
+          <h2 className="text-sm font-bold text-gray-800 mb-4">業種別案件化率</h2>
           {industryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
@@ -955,7 +955,7 @@ export default function DashboardPage() {
       {/* 時間帯×業種別 接続数テーブル */}
       <div className="card mt-5 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数/接続率 <span className="text-[11px] font-normal text-gray-400">({PERIODS.find(p => p.value === kpiPeriod)?.label})</span></h2>
+          <h2 className="text-sm font-bold text-gray-800">時間帯×業種別 接続数/接続率</h2>
           <p className="text-[11px] text-gray-400 mt-0.5">不通を除く接続数と接続率のクロス集計</p>
         </div>
         {connectionTable && connectionTable.industries.length > 0 ? (
