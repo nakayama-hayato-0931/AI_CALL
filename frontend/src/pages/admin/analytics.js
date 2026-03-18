@@ -1,6 +1,7 @@
 /**
  * CPA / 案件質分析ページ
  * 全オペレーター比較テーブル表示
+ * 週別は全週一覧表示
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
@@ -50,11 +51,15 @@ export default function AnalyticsPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [selectedWeekDate, setSelectedWeekDate] = useState('');
   const [tab, setTab] = useState('cpa'); // cpa | quality
 
-  const [cpaData, setCpaData] = useState(null);   // { team, operators[] }
-  const [qualData, setQualData] = useState(null);  // { team, operators[] }
+  // 月別・累計用（単一データ）
+  const [cpaData, setCpaData] = useState(null);
+  const [qualData, setQualData] = useState(null);
+
+  // 週別用（全週のデータ配列）
+  const [weeklyData, setWeeklyData] = useState([]); // [{ weekLabel, cpa, qual }]
+
   const [loading, setLoading] = useState(true);
 
   // CSV
@@ -71,46 +76,44 @@ export default function AnalyticsPage() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (periodMode === 'weekly') {
-      const weeks = getWeeksInMonth(selectedMonth);
-      if (weeks.length > 0 && !selectedWeekDate) {
-        setSelectedWeekDate(weeks[0].date);
-      }
-    }
-  }, [periodMode, selectedMonth]);
-
-  const getApiParams = useCallback(() => {
-    let period, date;
-    if (periodMode === 'monthly') {
-      period = 'monthly';
-      date = `${selectedMonth}-15`;
-    } else if (periodMode === 'weekly') {
-      period = 'weekly';
-      date = selectedWeekDate || `${selectedMonth}-01`;
-    } else {
-      period = 'cumulative';
-      date = new Date().toISOString().slice(0, 10);
-    }
-    return { period, date };
-  }, [periodMode, selectedMonth, selectedWeekDate]);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = getApiParams();
-      const [cpaRes, qualRes] = await Promise.all([
-        api.get('/api/analytics/cpa-all', { params }),
-        api.get('/api/analytics/quality-all', { params }),
-      ]);
-      setCpaData(cpaRes.data.data);
-      setQualData(qualRes.data.data);
+      if (periodMode === 'weekly') {
+        // 全週分を一括取得
+        const weeks = getWeeksInMonth(selectedMonth);
+        const results = await Promise.all(
+          weeks.map(async (w) => {
+            const params = { period: 'weekly', date: w.date };
+            const [cpaRes, qualRes] = await Promise.all([
+              api.get('/api/analytics/cpa-all', { params }),
+              api.get('/api/analytics/quality-all', { params }),
+            ]);
+            return { weekLabel: w.label, cpa: cpaRes.data.data, qual: qualRes.data.data };
+          })
+        );
+        setWeeklyData(results);
+        setCpaData(null);
+        setQualData(null);
+      } else {
+        // 月別・累計
+        const params = periodMode === 'monthly'
+          ? { period: 'monthly', date: `${selectedMonth}-15` }
+          : { period: 'cumulative', date: new Date().toISOString().slice(0, 10) };
+        const [cpaRes, qualRes] = await Promise.all([
+          api.get('/api/analytics/cpa-all', { params }),
+          api.get('/api/analytics/quality-all', { params }),
+        ]);
+        setCpaData(cpaRes.data.data);
+        setQualData(qualRes.data.data);
+        setWeeklyData([]);
+      }
     } catch (err) {
       toast.error('データの取得に失敗しました');
     } finally {
       setLoading(false);
     }
-  }, [getApiParams]);
+  }, [periodMode, selectedMonth]);
 
   useEffect(() => {
     if (user && (user.role === 'admin' || user.role === 'manager')) {
@@ -198,6 +201,108 @@ export default function AnalyticsPage() {
     return fmt(value);
   };
 
+  // CPA テーブル描画（再利用）
+  const renderCpaTable = (data, title, subtitle) => (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        <h2 className="text-sm font-bold text-gray-800">{title}</h2>
+        {subtitle && <span className="text-[10px] text-gray-400 ml-auto">{subtitle}</span>}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+              {cpaColumns.map(col => (
+                <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* 全体行 */}
+            <tr className="bg-blue-50/40 border-b-2 border-blue-200">
+              <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
+              {cpaColumns.map(col => (
+                <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
+                  {formatCell(data.team[col.key], col.format)}
+                </td>
+              ))}
+            </tr>
+            {/* 各オペレーター行 */}
+            {data.operators.map((op, i) => (
+              <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                  {op.name}
+                </td>
+                {cpaColumns.map(col => (
+                  <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
+                    {formatCell(op[col.key], col.format)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  // 案件質テーブル描画（再利用）
+  const renderQualTable = (data, title, subtitle) => (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        <h2 className="text-sm font-bold text-gray-800">{title}</h2>
+        {subtitle && <span className="text-[10px] text-gray-400 ml-auto">{subtitle}</span>}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+              {qualColumns.map(col => (
+                <th key={col.key} className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* 全体行 */}
+            <tr className="bg-blue-50/40 border-b-2 border-blue-200">
+              <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
+              {qualColumns.map(col => (
+                <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
+                  <span>{fmt(data.team[col.key])}</span>
+                  {col.pctKey && (
+                    <span className="ml-1 text-[10px] text-blue-400">({fmtPct(data.team[col.pctKey])})</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+            {/* 各オペレーター行 */}
+            {data.operators.map((op, i) => (
+              <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                  {op.name}
+                </td>
+                {qualColumns.map(col => (
+                  <td key={col.key} className="py-2 px-3 text-right text-gray-800">
+                    <span>{fmt(op[col.key])}</span>
+                    {col.pctKey && (
+                      <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <Layout>
       <div className="mb-5">
@@ -231,21 +336,8 @@ export default function AnalyticsPage() {
             <div>
               <label className="input-label">月</label>
               <select className="input text-sm" value={selectedMonth}
-                onChange={e => { setSelectedMonth(e.target.value); setSelectedWeekDate(''); }}>
+                onChange={e => setSelectedMonth(e.target.value)}>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
-            </div>
-          )}
-
-          {/* 週選択 */}
-          {periodMode === 'weekly' && (
-            <div>
-              <label className="input-label">週</label>
-              <select className="input text-sm" value={selectedWeekDate}
-                onChange={e => setSelectedWeekDate(e.target.value)}>
-                {getWeeksInMonth(selectedMonth).map((w, i) => (
-                  <option key={i} value={w.date}>第{i + 1}週 ({w.label})</option>
-                ))}
               </select>
             </div>
           )}
@@ -301,112 +393,27 @@ export default function AnalyticsPage() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
         </div>
+      ) : periodMode === 'weekly' ? (
+        /* ========== 週別: 全週一覧表示 ========== */
+        <div className="space-y-5">
+          {weeklyData.map((w, wi) => (
+            <div key={wi}>
+              {tab === 'cpa'
+                ? renderCpaTable(w.cpa, `第${wi + 1}週`, w.weekLabel)
+                : renderQualTable(w.qual, `第${wi + 1}週`, w.weekLabel)
+              }
+            </div>
+          ))}
+          {weeklyData.length === 0 && (
+            <div className="card p-8 text-center text-sm text-gray-400">データがありません</div>
+          )}
+        </div>
       ) : tab === 'cpa' ? (
-        /* ========== CPA比較テーブル（名前=行, 指標=列） ========== */
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-            <h2 className="text-sm font-bold text-gray-800">CPA指標 - 全員比較</h2>
-            {cpaData && <span className="text-[10px] text-gray-400 ml-auto">{cpaData.dateFrom} 〜 {cpaData.dateTo}</span>}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
-                  {cpaColumns.map(col => (
-                    <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {cpaData && (
-                  <>
-                    {/* 全体行 */}
-                    <tr className="bg-blue-50/40 border-b-2 border-blue-200">
-                      <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
-                      {cpaColumns.map(col => (
-                        <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
-                          {formatCell(cpaData.team[col.key], col.format)}
-                        </td>
-                      ))}
-                    </tr>
-                    {/* 各オペレーター行 */}
-                    {cpaData.operators.map((op, i) => (
-                      <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                        <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          {op.name}
-                        </td>
-                        {cpaColumns.map(col => (
-                          <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
-                            {formatCell(op[col.key], col.format)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        /* ========== 月別・累計: CPA ========== */
+        cpaData && renderCpaTable(cpaData, 'CPA指標 - 全員比較', `${cpaData.dateFrom} 〜 ${cpaData.dateTo}`)
       ) : (
-        /* ========== 案件質比較テーブル（名前=行, 指標=列） ========== */
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-            <h2 className="text-sm font-bold text-gray-800">案件質向上 - 全員比較</h2>
-            {qualData && <span className="text-[10px] text-gray-400 ml-auto">{qualData.dateFrom} 〜 {qualData.dateTo}</span>}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
-                  {qualColumns.map(col => (
-                    <th key={col.key} className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {qualData && (
-                  <>
-                    {/* 全体行 */}
-                    <tr className="bg-blue-50/40 border-b-2 border-blue-200">
-                      <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
-                      {qualColumns.map(col => (
-                        <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
-                          <span>{fmt(qualData.team[col.key])}</span>
-                          {col.pctKey && (
-                            <span className="ml-1 text-[10px] text-blue-400">({fmtPct(qualData.team[col.pctKey])})</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                    {/* 各オペレーター行 */}
-                    {qualData.operators.map((op, i) => (
-                      <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                        <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          {op.name}
-                        </td>
-                        {qualColumns.map(col => (
-                          <td key={col.key} className="py-2 px-3 text-right text-gray-800">
-                            <span>{fmt(op[col.key])}</span>
-                            {col.pctKey && (
-                              <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        /* ========== 月別・累計: 案件質 ========== */
+        qualData && renderQualTable(qualData, '案件質向上 - 全員比較', `${qualData.dateFrom} 〜 ${qualData.dateTo}`)
       )}
     </Layout>
   );
