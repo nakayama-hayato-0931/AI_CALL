@@ -76,10 +76,16 @@ export default function SalesProjects() {
   const [salesUsers, setSalesUsers] = useState([]);
 
   // 通話ログモーダル
-  const [callLogModal, setCallLogModal] = useState(null); // { projectId, companyName }
+  const [callLogModal, setCallLogModal] = useState(null);
   const [callLogs, setCallLogs] = useState([]);
   const [callLogsLoading, setCallLogsLoading] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
+
+  // 内定者情報モーダル
+  const [hireModal, setHireModal] = useState(null);
+  const [hires, setHires] = useState([]);
+  const [hireCount, setHireCount] = useState(1);
+  const [hireSaving, setHireSaving] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'sales') { router.push('/'); return; }
@@ -143,11 +149,49 @@ export default function SalesProjects() {
     const newStatus = e.target.value;
     try {
       await api.put(`/api/projects/${projectId}`, { status: newStatus });
+      const proj = projects.find(p => p.id === projectId);
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus } : p));
       toast.success('ステータスを更新しました');
+      if (newStatus === 'NAITEI') {
+        openHireModal(projectId, proj?.company_name || '');
+      }
     } catch (err) {
       toast.error('ステータスの更新に失敗しました');
     }
+  };
+
+  const openHireModal = async (projectId, companyName) => {
+    setHireModal({ projectId, companyName });
+    try {
+      const { data } = await api.get(`/api/projects/${projectId}/hires`);
+      const existing = data.data || [];
+      if (existing.length > 0) { setHires(existing); setHireCount(existing.length); }
+      else { setHires([{ registration_number: '', course: '国内', initial_payment: '', expected_revenue: '' }]); setHireCount(1); }
+    } catch { setHires([{ registration_number: '', course: '国内', initial_payment: '', expected_revenue: '' }]); setHireCount(1); }
+  };
+
+  const handleHireCountChange = (count) => {
+    const n = Math.max(0, Math.min(20, parseInt(count, 10) || 0));
+    setHireCount(n);
+    setHires(prev => n > prev.length
+      ? [...prev, ...Array(n - prev.length).fill(null).map(() => ({ registration_number: '', course: '国内', initial_payment: '', expected_revenue: '' }))]
+      : prev.slice(0, n));
+  };
+
+  const updateHire = (index, field, value) => {
+    if (field === 'initial_payment' || field === 'expected_revenue') value = value.replace(/[^0-9]/g, '');
+    setHires(prev => prev.map((h, i) => i === index ? { ...h, [field]: value } : h));
+  };
+
+  const handleSaveHires = async () => {
+    if (!hireModal) return;
+    setHireSaving(true);
+    try {
+      await api.put(`/api/projects/${hireModal.projectId}/hires`, { hires });
+      toast.success('内定者情報を保存しました');
+      setHireModal(null);
+    } catch { toast.error('内定者情報の保存に失敗しました'); }
+    finally { setHireSaving(false); }
   };
 
   // 担当営業変更
@@ -435,6 +479,60 @@ export default function SalesProjects() {
                 className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors">
                 閉じる
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 内定者情報モーダル */}
+      {hireModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setHireModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎉</span>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">内定者情報の入力</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{hireModal.companyName}</p>
+                </div>
+              </div>
+              <button onClick={() => setHireModal(null)} className="p-2 hover:bg-white/60 rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">内定人数</label>
+                <select value={hireCount} onChange={(e) => handleHireCountChange(e.target.value)} className="input w-24 text-sm">
+                  {[0,1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}名</option>)}
+                </select>
+              </div>
+              {hires.map((hire, idx) => (
+                <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                    <span className="text-sm font-bold text-gray-800">内定者 {idx + 1}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="text-xs text-gray-500 font-medium">登録番号</label><input type="text" value={hire.registration_number || ''} onChange={(e) => updateHire(idx, 'registration_number', e.target.value)} className="input text-sm mt-0.5" placeholder="例: AB1234" /></div>
+                    <div><label className="text-xs text-gray-500 font-medium">コース</label><select value={hire.course || '国内'} onChange={(e) => updateHire(idx, 'course', e.target.value)} className="input text-sm mt-0.5"><option value="国内">国内</option><option value="転職">転職</option><option value="海外">海外</option></select></div>
+                    <div><label className="text-xs text-gray-500 font-medium">初回入金 (円)</label><input type="text" inputMode="numeric" value={hire.initial_payment || ''} onChange={(e) => updateHire(idx, 'initial_payment', e.target.value)} className="input text-sm mt-0.5" placeholder="200000" /></div>
+                    <div><label className="text-xs text-gray-500 font-medium">見込売上 (円)</label><input type="text" inputMode="numeric" value={hire.expected_revenue || ''} onChange={(e) => updateHire(idx, 'expected_revenue', e.target.value)} className="input text-sm mt-0.5" placeholder="1000000" /></div>
+                  </div>
+                </div>
+              ))}
+              {hireCount === 0 && <div className="text-center py-8 text-gray-400"><p className="text-sm">内定人数を選択してください</p></div>}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              {hires.length > 0 && (
+                <div className="text-xs text-gray-500 space-x-4">
+                  <span>入金合計: <span className="font-bold text-gray-800">¥{hires.reduce((s, h) => s + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span></span>
+                  <span>売上合計: <span className="font-bold text-blue-700">¥{hires.reduce((s, h) => s + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span></span>
+                </div>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <button onClick={() => setHireModal(null)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">キャンセル</button>
+                <button onClick={handleSaveHires} disabled={hireSaving || hireCount === 0} className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{hireSaving ? '保存中...' : '保存する'}</button>
+              </div>
             </div>
           </div>
         </div>
