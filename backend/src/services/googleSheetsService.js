@@ -136,7 +136,9 @@ const getTranscriptIndex = async () => {
     const time = rows[i][2] || '';
     if (!phone || !transcript) continue;
     if (!index.has(phone)) index.set(phone, []);
-    index.get(phone).push({ transcript, time: time ? new Date(time).getTime() : 0 });
+    // シートの時刻はJST（UTC+9）なので、タイムゾーンを明示してパース
+    const parsedTime = time ? new Date(time.replace(/\s/, 'T') + '+09:00').getTime() : 0;
+    index.get(phone).push({ transcript, time: parsedTime });
   }
 
   transcriptCache = { index, fetchedAt: Date.now() };
