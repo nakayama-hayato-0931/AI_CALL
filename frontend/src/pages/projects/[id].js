@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 
 const STATUS_OPTIONS = [
   { value: 'NAITEI', label: '内定' },
+  { value: 'NAITEI_TORIKESHI', label: '内定取消' },
   { value: 'FUGOKAKU', label: '不合格' },
   { value: 'KEKKA_MACHI', label: '結果待ち' },
   { value: 'MENSETSU_KAKUTEI', label: '面接確定' },
@@ -89,6 +90,11 @@ export default function ProjectDetailPage() {
     if (field === 'initial_payment' || field === 'expected_revenue') {
       value = value.replace(/[^0-9]/g, '');
     }
+    // 取消チェック時に金額を0に
+    if (field === 'is_cancelled' && value) {
+      setHires(prev => prev.map((h, i) => i === index ? { ...h, is_cancelled: true, initial_payment: '0', expected_revenue: '0' } : h));
+      return;
+    }
     setHires(prev => prev.map((h, i) => i === index ? { ...h, [field]: value } : h));
   };
 
@@ -153,6 +159,10 @@ export default function ProjectDetailPage() {
       });
       toast.success('案件を更新しました');
       fetchProject();
+      // 内定取消の場合、内定者情報の金額がバックエンドでリセットされるので再取得
+      if (form.status === 'NAITEI_TORIKESHI') {
+        fetchHires();
+      }
     } catch (err) {
       toast.error('更新に失敗しました');
     }
@@ -447,21 +457,22 @@ export default function ProjectDetailPage() {
               {hires.length > 0 ? (
                 <div className="space-y-2">
                   {hires.map((hire, idx) => (
-                    <div key={idx} className="bg-white rounded-lg p-2.5 border border-gray-100 flex items-center justify-between text-xs">
+                    <div key={idx} className={`bg-white rounded-lg p-2.5 border flex items-center justify-between text-xs ${hire.is_cancelled ? 'border-red-200 bg-red-50/50 opacity-60' : 'border-gray-100'}`}>
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-blue-600">#{idx + 1}</span>
-                        <span className="text-gray-700 font-medium">{hire.registration_number || '-'}</span>
+                        <span className={`font-bold ${hire.is_cancelled ? 'text-red-400' : 'text-blue-600'}`}>#{idx + 1}</span>
+                        <span className={`font-medium ${hire.is_cancelled ? 'text-red-400 line-through' : 'text-gray-700'}`}>{hire.registration_number || '-'}</span>
                         <span className="text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{hire.course}</span>
+                        {hire.is_cancelled ? <span className="text-[10px] font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded">取消</span> : null}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-gray-500">入金 <span className="font-bold text-gray-800">{hire.initial_payment ? `¥${Number(hire.initial_payment).toLocaleString()}` : '-'}</span></span>
-                        <span className="text-gray-500">売上 <span className="font-bold text-blue-700">{hire.expected_revenue ? `¥${Number(hire.expected_revenue).toLocaleString()}` : '-'}</span></span>
+                        <span className="text-gray-500">入金 <span className={`font-bold ${hire.is_cancelled ? 'text-red-400' : 'text-gray-800'}`}>{hire.initial_payment != null ? `¥${Number(hire.initial_payment).toLocaleString()}` : '-'}</span></span>
+                        <span className="text-gray-500">売上 <span className={`font-bold ${hire.is_cancelled ? 'text-red-400' : 'text-blue-700'}`}>{hire.expected_revenue != null ? `¥${Number(hire.expected_revenue).toLocaleString()}` : '-'}</span></span>
                       </div>
                     </div>
                   ))}
                   <div className="flex justify-end gap-6 pt-1 text-xs">
-                    <span className="text-gray-500">入金合計 <span className="font-bold text-gray-900">¥{hires.reduce((s, h) => s + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span></span>
-                    <span className="text-gray-500">売上合計 <span className="font-bold text-blue-700">¥{hires.reduce((s, h) => s + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span></span>
+                    <span className="text-gray-500">入金合計 <span className="font-bold text-gray-900">¥{hires.filter(h => !h.is_cancelled).reduce((s, h) => s + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span></span>
+                    <span className="text-gray-500">売上合計 <span className="font-bold text-blue-700">¥{hires.filter(h => !h.is_cancelled).reduce((s, h) => s + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span></span>
                   </div>
                 </div>
               ) : (
@@ -559,10 +570,22 @@ export default function ProjectDetailPage() {
               </div>
 
               {hires.map((hire, idx) => (
-                <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
-                    <span className="text-sm font-bold text-gray-800">内定者 {idx + 1}</span>
+                <div key={idx} className={`border rounded-xl p-4 space-y-3 ${hire.is_cancelled ? 'bg-red-50/50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${hire.is_cancelled ? 'bg-red-400' : 'bg-blue-600'}`}>{idx + 1}</span>
+                      <span className={`text-sm font-bold ${hire.is_cancelled ? 'text-red-500 line-through' : 'text-gray-800'}`}>内定者 {idx + 1}</span>
+                      {hire.is_cancelled && <span className="text-[10px] font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded">取消</span>}
+                    </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={!!hire.is_cancelled}
+                        onChange={(e) => updateHire(idx, 'is_cancelled', e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-red-500 focus:ring-red-400"
+                      />
+                      <span className="text-xs text-red-500 font-medium">取消/辞退</span>
+                    </label>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -592,7 +615,7 @@ export default function ProjectDetailPage() {
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={hire.initial_payment || ''}
+                        value={hire.initial_payment != null ? String(hire.initial_payment) : ''}
                         onChange={(e) => updateHire(idx, 'initial_payment', e.target.value)}
                         className="input text-sm mt-0.5"
                         placeholder="200000"
@@ -603,7 +626,7 @@ export default function ProjectDetailPage() {
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={hire.expected_revenue || ''}
+                        value={hire.expected_revenue != null ? String(hire.expected_revenue) : ''}
                         onChange={(e) => updateHire(idx, 'expected_revenue', e.target.value)}
                         className="input text-sm mt-0.5"
                         placeholder="1000000"
@@ -623,8 +646,8 @@ export default function ProjectDetailPage() {
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               {hires.length > 0 && (
                 <div className="text-xs text-gray-500 space-x-4">
-                  <span>入金合計: <span className="font-bold text-gray-800">¥{hires.reduce((s, h) => s + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span></span>
-                  <span>売上合計: <span className="font-bold text-blue-700">¥{hires.reduce((s, h) => s + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span></span>
+                  <span>入金合計: <span className="font-bold text-gray-800">¥{hires.filter(h => !h.is_cancelled).reduce((s, h) => s + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span></span>
+                  <span>売上合計: <span className="font-bold text-blue-700">¥{hires.filter(h => !h.is_cancelled).reduce((s, h) => s + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span></span>
                 </div>
               )}
               <div className="flex gap-2 ml-auto">

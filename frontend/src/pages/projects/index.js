@@ -20,6 +20,7 @@ const RESULT_BADGES = {
 const STATUS_OPTIONS = [
   { value: '', label: 'すべて' },
   { value: 'NAITEI', label: '内定' },
+  { value: 'NAITEI_TORIKESHI', label: '内定取消' },
   { value: 'FUGOKAKU', label: '不合格' },
   { value: 'KEKKA_MACHI', label: '結果待ち' },
   { value: 'MENSETSU_KAKUTEI', label: '面接確定' },
@@ -36,6 +37,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_STYLES = {
   NAITEI:           'bg-blue-600 text-white',
+  NAITEI_TORIKESHI: 'bg-orange-500 text-white',
   FUGOKAKU:         'bg-red-600 text-white',
   KEKKA_MACHI:      'bg-pink-500 text-white',
   MENSETSU_KAKUTEI: 'bg-pink-500 text-white',

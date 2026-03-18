@@ -161,7 +161,7 @@ const updateProject = async (req, res, next) => {
 
     // ステータスバリデーション
     const validStatuses = [
-      'NAITEI', 'FUGOKAKU', 'KEKKA_MACHI', 'MENSETSU_KAKUTEI',
+      'NAITEI', 'NAITEI_TORIKESHI', 'FUGOKAKU', 'KEKKA_MACHI', 'MENSETSU_KAKUTEI',
       'BOSHUCHU', 'SHORUI_CHU', 'LOST', 'BARASHI', 'HORYU',
       'SHORUI_OCHI', 'KISON_NASHI', 'MODOSHI', 'MODORI',
     ];
@@ -216,6 +216,15 @@ const updateProject = async (req, res, next) => {
           [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, address !== undefined ? (address || null) : null, proj[0].company_id]
         );
       }
+    }
+
+    // 内定取消の場合、全内定者の初回入金・見込売上を0にし、is_cancelledを1にする
+    if (status === 'NAITEI_TORIKESHI') {
+      await pool.execute(
+        'UPDATE project_hires SET initial_payment = 0, expected_revenue = 0, is_cancelled = 1 WHERE project_id = ?',
+        [id]
+      );
+      logger.info(`内定取消: project=${id} — 全内定者の金額を0に変更`);
     }
 
     logger.info(`案件更新: project=${id}, status=${status}`);
@@ -341,14 +350,15 @@ const saveProjectHires = async (req, res, next) => {
       // 新規挿入
       for (const hire of hires) {
         await conn.execute(
-          `INSERT INTO project_hires (project_id, registration_number, course, initial_payment, expected_revenue)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO project_hires (project_id, registration_number, course, initial_payment, expected_revenue, is_cancelled)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [
             id,
             hire.registration_number || null,
             hire.course || '国内',
-            hire.initial_payment || null,
-            hire.expected_revenue || null,
+            hire.initial_payment != null ? hire.initial_payment : null,
+            hire.expected_revenue != null ? hire.expected_revenue : null,
+            hire.is_cancelled ? 1 : 0,
           ]
         );
       }
