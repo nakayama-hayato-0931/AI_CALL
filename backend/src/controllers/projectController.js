@@ -263,7 +263,7 @@ const getCallLogs = async (req, res, next) => {
       try {
         const transcriptMap = await Promise.race([
           findTranscriptsBatch(missingTranscripts),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
         ]);
         for (const [callId, transcript] of transcriptMap) {
           await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
