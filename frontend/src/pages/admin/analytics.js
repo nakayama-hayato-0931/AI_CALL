@@ -305,7 +305,6 @@ export default function AnalyticsPage() {
         /* ========== CPA比較テーブル ========== */
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-lg">📊</span>
             <h2 className="text-sm font-bold text-gray-800">CPA指標 - 全員比較</h2>
             {cpaData && <span className="text-[10px] text-gray-400 ml-auto">{cpaData.dateFrom} 〜 {cpaData.dateTo}</span>}
           </div>
@@ -348,7 +347,6 @@ export default function AnalyticsPage() {
         /* ========== 案件質比較テーブル ========== */
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-lg">📈</span>
             <h2 className="text-sm font-bold text-gray-800">案件質向上 - 全員比較</h2>
             {qualData && <span className="text-[10px] text-gray-400 ml-auto">{qualData.dateFrom} 〜 {qualData.dateTo}</span>}
           </div>
