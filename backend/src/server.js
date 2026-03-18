@@ -28,6 +28,7 @@ const logRoutes = require('./routes/logs');
 const adminRoutes = require('./routes/admin');
 const requestRoutes = require('./routes/requests');
 const scriptRoutes = require('./routes/scripts');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -96,6 +97,7 @@ app.use('/api/logs', logRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/scripts', scriptRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
