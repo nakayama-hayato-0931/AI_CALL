@@ -11,6 +11,9 @@ const logger = require('../utils/logger');
 // 1日あたりのAI評価回数上限
 const DAILY_EVAL_LIMIT = 2;
 
+// 文字起こしの最低行数（これ以下は門前払いのため評価対象外）
+const MIN_TRANSCRIPT_LINES = 15;
+
 /**
  * POST /api/ai/evaluate
  * 通話をAI評価する
@@ -22,6 +25,12 @@ const evaluate = async (req, res, next) => {
 
     if (!call_id || !transcript) {
       return ApiResponse.badRequest(res, '通話IDと文字起こしテキストは必須です');
+    }
+
+    // 文字起こし行数チェック
+    const transcriptLines = transcript.split(/\r?\n/).filter(l => l.trim()).length;
+    if (transcriptLines < MIN_TRANSCRIPT_LINES) {
+      return ApiResponse.badRequest(res, `文字起こしが${MIN_TRANSCRIPT_LINES}行未満のため評価対象外です（門前払い等の短い通話）`);
     }
 
     // 通話存在チェック
@@ -165,6 +174,14 @@ const evaluateFromData = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'SKIP通話は評価対象外です');
     }
 
+    // 文字起こし行数チェック
+    if (callData.transcript) {
+      const transcriptLines = callData.transcript.split(/\r?\n/).filter(l => l.trim()).length;
+      if (transcriptLines < MIN_TRANSCRIPT_LINES) {
+        return ApiResponse.badRequest(res, `文字起こしが${MIN_TRANSCRIPT_LINES}行未満のため評価対象外です（門前払い等の短い通話）`);
+      }
+    }
+
     // 既存評価チェック
     const [existingEval] = await pool.query(
       'SELECT id FROM ai_evaluations WHERE call_id = ?',
@@ -266,8 +283,16 @@ const evaluateDailyBatch = async (req, res, next) => {
       [userId, date]
     );
 
-    const totalUnevaluated = unevaluatedCalls.length;
-    const batch = unevaluatedCalls.slice(0, BATCH_LIMIT);
+    // 文字起こし行数が足りない通話を除外
+    const eligibleCalls = unevaluatedCalls.filter(c => {
+      if (!c.transcript) return false;
+      const lines = c.transcript.split(/\r?\n/).filter(l => l.trim()).length;
+      return lines >= MIN_TRANSCRIPT_LINES;
+    });
+    const skippedShortCalls = unevaluatedCalls.length - eligibleCalls.length;
+
+    const totalUnevaluated = eligibleCalls.length;
+    const batch = eligibleCalls.slice(0, BATCH_LIMIT);
 
     let evaluatedCount = 0;
     const evaluatedResults = [];
@@ -388,7 +413,8 @@ const evaluateDailyBatch = async (req, res, next) => {
       dailyLimit: DAILY_EVAL_LIMIT,
       remainingEvals: Math.max(0, remainingEvals),
       remainingUnevaluated,
-    }, `${evaluatedCount}件の通話を評価しました${remainingUnevaluated > 0 ? `（残り${remainingUnevaluated}件）` : ''}`);
+      skippedShortCalls,
+    }, `${evaluatedCount}件の通話を評価しました${remainingUnevaluated > 0 ? `（残り${remainingUnevaluated}件）` : ''}${skippedShortCalls > 0 ? `（${skippedShortCalls}件は短い通話のためスキップ）` : ''}`);
   } catch (err) {
     next(err);
   }
