@@ -302,7 +302,7 @@ export default function AnalyticsPage() {
           </svg>
         </div>
       ) : tab === 'cpa' ? (
-        /* ========== CPA比較テーブル ========== */
+        /* ========== CPA比較テーブル（名前=行, 指標=列） ========== */
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
             <h2 className="text-sm font-bold text-gray-800">CPA指標 - 全員比較</h2>
@@ -312,39 +312,47 @@ export default function AnalyticsPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">指標</th>
-                  {cpaData && (
-                    <>
-                      <th className="text-right py-2.5 px-3 font-bold text-blue-700 bg-blue-50 min-w-[90px]">全体</th>
-                      {cpaData.operators.map(op => (
-                        <th key={op.userId} className="text-right py-2.5 px-3 font-semibold text-gray-700 min-w-[90px]">{op.name}</th>
-                      ))}
-                    </>
-                  )}
+                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+                  {cpaColumns.map(col => (
+                    <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {cpaData && cpaColumns.map((col, i) => (
-                  <tr key={col.key} className={`border-b border-gray-50 ${col.highlight ? 'bg-blue-50/30' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                    <td className={`py-2 px-3 font-medium sticky left-0 z-10 ${col.highlight ? 'text-blue-700 bg-blue-50/30' : 'text-gray-600 ' + (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30')}`}>
-                      {col.label}
-                    </td>
-                    <td className={`py-2 px-3 text-right font-bold ${col.highlight ? 'text-blue-700 bg-blue-50/50' : 'text-gray-900 bg-blue-50/20'}`}>
-                      {formatCell(cpaData.team[col.key], col.format)}
-                    </td>
-                    {cpaData.operators.map(op => (
-                      <td key={op.userId} className="py-2 px-3 text-right text-gray-800">
-                        {formatCell(op[col.key], col.format)}
-                      </td>
+                {cpaData && (
+                  <>
+                    {/* 全体行 */}
+                    <tr className="bg-blue-50/40 border-b-2 border-blue-200">
+                      <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
+                      {cpaColumns.map(col => (
+                        <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
+                          {formatCell(cpaData.team[col.key], col.format)}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* 各オペレーター行 */}
+                    {cpaData.operators.map((op, i) => (
+                      <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                        <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          {op.name}
+                        </td>
+                        {cpaColumns.map(col => (
+                          <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
+                            {formatCell(op[col.key], col.format)}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
+                  </>
+                )}
               </tbody>
             </table>
           </div>
         </div>
       ) : (
-        /* ========== 案件質比較テーブル ========== */
+        /* ========== 案件質比較テーブル（名前=行, 指標=列） ========== */
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
             <h2 className="text-sm font-bold text-gray-800">案件質向上 - 全員比較</h2>
@@ -354,41 +362,47 @@ export default function AnalyticsPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[120px]">指標</th>
-                  {qualData && (
-                    <>
-                      <th className="text-right py-2.5 px-3 font-bold text-blue-700 bg-blue-50 min-w-[100px]">全体</th>
-                      {qualData.operators.map(op => (
-                        <th key={op.userId} className="text-right py-2.5 px-3 font-semibold text-gray-700 min-w-[100px]">{op.name}</th>
-                      ))}
-                    </>
-                  )}
+                  <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+                  {qualColumns.map(col => (
+                    <th key={col.key} className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {qualData && qualColumns.map((col, i) => (
-                  <tr key={col.key} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                    <td className={`py-2 px-3 font-medium text-gray-600 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                      {col.label}
-                    </td>
-                    {/* 全体 */}
-                    <td className="py-2 px-3 text-right font-bold text-gray-900 bg-blue-50/20">
-                      <span>{fmt(qualData.team[col.key])}</span>
-                      {col.pctKey && (
-                        <span className="ml-1 text-[10px] text-gray-400">({fmtPct(qualData.team[col.pctKey])})</span>
-                      )}
-                    </td>
-                    {/* 各オペレーター */}
-                    {qualData.operators.map(op => (
-                      <td key={op.userId} className="py-2 px-3 text-right text-gray-800">
-                        <span>{fmt(op[col.key])}</span>
-                        {col.pctKey && (
-                          <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
-                        )}
-                      </td>
+                {qualData && (
+                  <>
+                    {/* 全体行 */}
+                    <tr className="bg-blue-50/40 border-b-2 border-blue-200">
+                      <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
+                      {qualColumns.map(col => (
+                        <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
+                          <span>{fmt(qualData.team[col.key])}</span>
+                          {col.pctKey && (
+                            <span className="ml-1 text-[10px] text-blue-400">({fmtPct(qualData.team[col.pctKey])})</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* 各オペレーター行 */}
+                    {qualData.operators.map((op, i) => (
+                      <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                        <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          {op.name}
+                        </td>
+                        {qualColumns.map(col => (
+                          <td key={col.key} className="py-2 px-3 text-right text-gray-800">
+                            <span>{fmt(op[col.key])}</span>
+                            {col.pctKey && (
+                              <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
+                  </>
+                )}
               </tbody>
             </table>
           </div>
