@@ -41,14 +41,14 @@ const getCpaMetrics = async (req, res, next) => {
       whParams.push(targetUserId);
     }
 
-    // コスト（稼働時間 × 時給）
+    // コスト（CSVインポート出勤記録 × 時給）
     const [costRows] = await pool.query(
       `SELECT COALESCE(SUM(
-        TIMESTAMPDIFF(MINUTE, CONCAT(wh.date, ' ', wh.start_time), CONCAT(wh.date, ' ', wh.end_time))
-        - COALESCE(wh.break_minutes, 0)
+        TIMESTAMPDIFF(MINUTE, CONCAT(cr.date, ' ', cr.start_time), CONCAT(cr.date, ' ', cr.end_time))
+        - COALESCE(cr.break_minutes, 0)
       ), 0) as total_minutes
-       FROM work_hours wh
-       WHERE wh.date BETWEEN ? AND ? ${whUserCond}`,
+       FROM cost_records cr
+       WHERE cr.date BETWEEN ? AND ? ${whUserCond.replace(/wh\./g, 'cr.')}`,
       whParams
     );
     const totalMinutes = Number(costRows[0].total_minutes) || 0;
@@ -249,7 +249,7 @@ const importCostCsv = async (req, res, next) => {
 
       try {
         await pool.execute(
-          `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes)
+          `INSERT INTO cost_records (user_id, date, start_time, end_time, break_minutes)
            VALUES (?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
           [userId, dateStr, startTime, endTime, parseInt(breakMin, 10) || 0]
