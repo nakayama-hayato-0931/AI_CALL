@@ -676,7 +676,7 @@ export default function CallPage() {
                       <svg className="w-8 h-8 mx-auto mb-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
                       </svg>
-                      <span className="text-sm font-bold">架電開始</span>
+                      <span className="text-sm font-bold">自動架電開始</span>
                     </div>
                   </button>
                 ) : (
@@ -693,7 +693,7 @@ export default function CallPage() {
                         <svg className="w-8 h-8 mx-auto mb-1.5" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M3.68 16.07l3.92-3.11c.28-.22.47-.56.47-.95v-3.56c2.67-.89 5.56-.89 8.23 0V12c0 .38.18.73.47.95l3.92 3.11c.56.45 1.4.06 1.4-.65V5.33c0-.36-.18-.7-.5-.87A18.03 18.03 0 0012 2.42c-3.27 0-6.38.85-9.09 2.43a.97.97 0 00-.5.87v9.72c0 .71.84 1.1 1.4.65l-.13.02z" />
                         </svg>
-                        <span className="text-sm font-bold">架電終了</span>
+                        <span className="text-sm font-bold">自動架電停止</span>
                       </div>
                     </button>
                   </div>
@@ -722,7 +722,7 @@ export default function CallPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-bold text-gray-800">結果入力</h2>
                   {(calling && !autoMode) && (
-                    <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">架電終了後に入力</span>
+                    <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">自動架電停止後に入力</span>
                   )}
                 </div>
 
