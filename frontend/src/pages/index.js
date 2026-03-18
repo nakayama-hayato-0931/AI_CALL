@@ -463,6 +463,9 @@ export default function DashboardPage() {
                           <p className="text-[11px] text-gray-400 mt-0.5">
                             {avgDaily ? `平均 ${avgDaily}h/日` : wh?.start_time ? `${wh.start_time}〜${wh.end_time}` : '\u00A0'}
                           </p>
+                          {canEdit && (
+                            <p className="text-[10px] text-blue-500 mt-1 animate-pulse">&#x25B6; クリックして入力</p>
+                          )}
                         </div>
                         <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
                           <KpiIcon type={config.gradient} />
