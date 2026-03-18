@@ -235,25 +235,31 @@ const getIndustryConversion = async (req, res, next) => {
       params.push(req.user.id);
     }
 
+    // 案件化したコールのみを対象に、業種別の件数と割合を算出
     const [rows] = await pool.query(
       `SELECT
          co.industry,
-         COUNT(c.id) as total_calls,
-         CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as projects,
-         ROUND(
-           CAST(SUM(CASE WHEN c.is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) / COUNT(c.id) * 100, 1
-         ) as conversion_rate
+         COUNT(c.id) as projects
        FROM calls c
        JOIN companies co ON c.company_id = co.id
        WHERE DATE(c.call_started_at) BETWEEN ? AND ?
          AND co.industry IS NOT NULL AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
+         AND c.is_project_created = 1
          ${userCond}
        GROUP BY co.industry
-       ORDER BY conversion_rate DESC`,
+       ORDER BY projects DESC`,
       params
     );
 
-    return ApiResponse.success(res, rows);
+    // 合計から割合を計算
+    const totalProjects = rows.reduce((s, r) => s + Number(r.projects), 0);
+    const data = rows.map(r => ({
+      industry: r.industry,
+      projects: Number(r.projects),
+      conversion_rate: totalProjects > 0 ? Math.round(Number(r.projects) / totalProjects * 1000) / 10 : 0,
+    }));
+
+    return ApiResponse.success(res, data);
   } catch (err) {
     next(err);
   }
