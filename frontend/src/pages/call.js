@@ -510,8 +510,8 @@ export default function CallPage() {
                 {[
                   { value: 'auto', label: '自動' },
                   { value: 'industry', label: '業種別' },
-                  { value: 'mylist', label: '自作リスト' },
-                  { value: 'special', label: '特別リスト' },
+                  { value: 'mylist', label: '自作' },
+                  { value: 'special', label: '特別' },
                 ].map(m => (
                   <button key={m.value}
                     onClick={() => { setPickupMode(m.value); }}
