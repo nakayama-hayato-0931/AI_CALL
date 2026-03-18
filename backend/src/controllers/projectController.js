@@ -301,4 +301,70 @@ const getSalesUsers = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers };
+/**
+ * GET /api/projects/:id/hires
+ * 内定者情報取得
+ */
+const getProjectHires = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.execute(
+      'SELECT * FROM project_hires WHERE project_id = ? ORDER BY id ASC',
+      [id]
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/projects/:id/hires
+ * 内定者情報の一括保存（既存を全削除して再挿入）
+ */
+const saveProjectHires = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { hires } = req.body; // [{registration_number, course, initial_payment, expected_revenue}]
+
+    if (!Array.isArray(hires)) {
+      return ApiResponse.badRequest(res, 'hires は配列で指定してください');
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // 既存を全削除
+      await conn.execute('DELETE FROM project_hires WHERE project_id = ?', [id]);
+
+      // 新規挿入
+      for (const hire of hires) {
+        await conn.execute(
+          `INSERT INTO project_hires (project_id, registration_number, course, initial_payment, expected_revenue)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            id,
+            hire.registration_number || null,
+            hire.course || '国内',
+            hire.initial_payment || null,
+            hire.expected_revenue || null,
+          ]
+        );
+      }
+
+      await conn.commit();
+      logger.info(`内定者情報保存: project=${id}, 件数=${hires.length}`);
+      return ApiResponse.success(res, null, '内定者情報を保存しました');
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires };

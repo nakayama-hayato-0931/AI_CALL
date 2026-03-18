@@ -30,6 +30,7 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const { id } = router.query;
   const isSales = user?.role === 'sales';
+  const isOperator = user?.role === 'operator';
   const [project, setProject] = useState(null);
   const [callHistory, setCallHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +44,60 @@ export default function ProjectDetailPage() {
   const [companyEditing, setCompanyEditing] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
 
+  // 内定者情報
+  const [hires, setHires] = useState([]);
+  const [hireCount, setHireCount] = useState(0);
+  const [hireEditing, setHireEditing] = useState(false);
+  const [hireSaving, setHireSaving] = useState(false);
+
   useEffect(() => {
-    if (id) fetchProject();
+    if (id) {
+      fetchProject();
+      fetchHires();
+    }
   }, [id]);
+
+  const fetchHires = async () => {
+    try {
+      const { data } = await api.get(`/api/projects/${id}/hires`);
+      const hiresData = data.data || [];
+      setHires(hiresData);
+      setHireCount(hiresData.length);
+    } catch (err) {
+      // サイレント
+    }
+  };
+
+  const handleSaveHires = async () => {
+    setHireSaving(true);
+    try {
+      await api.put(`/api/projects/${id}/hires`, { hires });
+      toast.success('内定者情報を保存しました');
+      setHireEditing(false);
+      fetchHires();
+    } catch (err) {
+      toast.error('内定者情報の保存に失敗しました');
+    } finally {
+      setHireSaving(false);
+    }
+  };
+
+  const updateHire = (index, field, value) => {
+    setHires(prev => prev.map((h, i) => i === index ? { ...h, [field]: value } : h));
+  };
+
+  const handleHireCountChange = (count) => {
+    const n = Math.max(0, Math.min(20, parseInt(count, 10) || 0));
+    setHireCount(n);
+    setHires(prev => {
+      if (n > prev.length) {
+        return [...prev, ...Array(n - prev.length).fill(null).map(() => ({
+          registration_number: '', course: '国内', initial_payment: '', expected_revenue: '',
+        }))];
+      }
+      return prev.slice(0, n);
+    });
+  };
 
   const fetchProject = async () => {
     try {
@@ -346,6 +398,153 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             </div>
+
+          {/* 内定者情報（オペレーター以外に表示） */}
+          {!isOperator && (
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-gray-800">内定者情報</h2>
+                {!hireEditing && hires.length > 0 && (
+                  <button onClick={() => setHireEditing(true)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                    編集
+                  </button>
+                )}
+              </div>
+
+              {/* 読み取り専用表示 */}
+              {!hireEditing && hires.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500">内定人数: <span className="font-bold text-gray-800">{hires.length}名</span></p>
+                  {hires.map((hire, idx) => (
+                    <div key={idx} className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                      <p className="text-xs font-bold text-gray-700">内定者 {idx + 1}</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div className="text-xs">
+                          <span className="text-gray-400">登録番号</span>
+                          <p className="font-medium text-gray-800">{hire.registration_number || '-'}</p>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-400">コース</span>
+                          <p className="font-medium text-gray-800">{hire.course || '-'}</p>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-400">初回入金</span>
+                          <p className="font-medium text-gray-800">{hire.initial_payment ? `¥${Number(hire.initial_payment).toLocaleString()}` : '-'}</p>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-400">見込売上</span>
+                          <p className="font-medium text-gray-800">{hire.expected_revenue ? `¥${Number(hire.expected_revenue).toLocaleString()}` : '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">初回入金 合計</span>
+                      <span className="font-bold text-gray-900">¥{hires.reduce((sum, h) => sum + (Number(h.initial_payment) || 0), 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-1">
+                      <span className="text-gray-500">見込売上 合計</span>
+                      <span className="font-bold text-blue-700">¥{hires.reduce((sum, h) => sum + (Number(h.expected_revenue) || 0), 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 未入力または編集中 */}
+              {(hireEditing || hires.length === 0) && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="input-label">内定人数</label>
+                    <select
+                      value={hireCount}
+                      onChange={(e) => { handleHireCountChange(e.target.value); if (!hireEditing) setHireEditing(true); }}
+                      className="input w-32"
+                    >
+                      {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
+                        <option key={n} value={n}>{n}名</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {hires.map((hire, idx) => (
+                    <div key={idx} className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-bold text-blue-700">内定者 {idx + 1}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[11px] text-gray-500">登録番号</label>
+                          <input
+                            type="text"
+                            value={hire.registration_number || ''}
+                            onChange={(e) => updateHire(idx, 'registration_number', e.target.value)}
+                            className="input text-sm"
+                            placeholder="例: AB1234"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-500">コース</label>
+                          <select
+                            value={hire.course || '国内'}
+                            onChange={(e) => updateHire(idx, 'course', e.target.value)}
+                            className="input text-sm"
+                          >
+                            <option value="国内">国内</option>
+                            <option value="転職">転職</option>
+                            <option value="海外">海外</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-500">初回入金 (円)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={hire.initial_payment || ''}
+                              onChange={(e) => updateHire(idx, 'initial_payment', e.target.value)}
+                              className="input text-sm"
+                              placeholder="55000"
+                              step="1000"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-500">見込売上 (円)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={hire.expected_revenue || ''}
+                              onChange={(e) => updateHire(idx, 'expected_revenue', e.target.value)}
+                              className="input text-sm"
+                              placeholder="500000"
+                              step="1000"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {hireCount > 0 && (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={handleSaveHires}
+                        disabled={hireSaving}
+                        className="btn-primary text-sm !py-1.5 flex-1"
+                      >
+                        {hireSaving ? '保存中...' : '内定者情報を保存'}
+                      </button>
+                      {hireEditing && (
+                        <button
+                          onClick={() => { setHireEditing(false); fetchHires(); }}
+                          className="btn-secondary text-sm !py-1.5 flex-1"
+                        >キャンセル</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 右: 通話履歴 */}
