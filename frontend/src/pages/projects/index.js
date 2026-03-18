@@ -144,6 +144,18 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleInlineStatusChange = async (e, projectId) => {
+    e.stopPropagation();
+    const newStatus = e.target.value;
+    try {
+      await api.put(`/api/projects/${projectId}`, { status: newStatus });
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus } : p));
+      toast.success('ステータスを更新しました');
+    } catch (err) {
+      toast.error('ステータスの更新に失敗しました');
+    }
+  };
+
   const calcDuration = (start, end) => {
     if (!start || !end) return '-';
     const sec = Math.round((new Date(end) - new Date(start)) / 1000);
@@ -252,10 +264,18 @@ export default function ProjectsPage() {
                         <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
                         <td className="table-cell font-medium truncate" title={p.company_name}>{p.company_name}</td>
                         <td className="table-cell truncate" title={p.sales_name}>{p.sales_name || '-'}</td>
-                        <td className="table-cell">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}>
-                            {getStatusLabel(p.status)}
-                          </span>
+                        <td className="table-cell" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={p.status || ''}
+                            onChange={(e) => handleInlineStatusChange(e, p.id)}
+                            className={`text-xs font-medium rounded-full px-2 py-0.5 border-0 cursor-pointer appearance-none text-center ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}
+                            style={{ backgroundImage: 'none' }}
+                          >
+                            <option value="">未設定</option>
+                            {STATUS_OPTIONS.filter(s => s.value).map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="table-cell text-gray-500 whitespace-nowrap">
                           {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
