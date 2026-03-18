@@ -257,19 +257,27 @@ const getCallLogs = async (req, res, next) => {
       [phone_number, company_id]
     );
 
-    // transcriptがnullの通話をGoogle Sheetsからバックグラウンドで取得
+    // transcriptがnullの通話をGoogle Sheetsから同期取得（3秒タイムアウト）
     const missingTranscripts = calls.filter(c => !c.transcript && c.phone_number && c.call_started_at);
     if (missingTranscripts.length > 0) {
-      findTranscriptsBatch(missingTranscripts).then(async (transcriptMap) => {
+      try {
+        const transcriptMap = await Promise.race([
+          findTranscriptsBatch(missingTranscripts),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+        ]);
         for (const [callId, transcript] of transcriptMap) {
           await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
+          const call = calls.find(c => c.id === callId);
+          if (call) call.transcript = transcript;
         }
         if (transcriptMap.size > 0) {
-          logger.info(`案件通話ログ: Transcript ${transcriptMap.size}件取得・保存`);
+          logger.info(`案件通話ログ: Transcript ${transcriptMap.size}件同期取得・保存`);
         }
-      }).catch(e => {
-        logger.error('Transcript取得エラー:', e.message);
-      });
+      } catch (e) {
+        if (e.message !== 'timeout') {
+          logger.error('Transcript取得エラー:', e.message);
+        }
+      }
     }
 
     return ApiResponse.success(res, calls);

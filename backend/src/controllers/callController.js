@@ -345,19 +345,29 @@ const getCalls = async (req, res, next) => {
       [...params, String(limit), String(offset)]
     );
 
-    // transcriptがnullの通話をGoogle Sheetsからバックグラウンドで取得（レスポンスをブロックしない）
+    // transcriptがnullの通話をGoogle Sheetsから同期取得（3秒タイムアウト）
     const missingTranscripts = rows.filter(r => !r.transcript && r.phone_number && r.call_started_at);
     if (missingTranscripts.length > 0) {
-      findTranscriptsBatch(missingTranscripts).then(async (transcriptMap) => {
+      try {
+        const transcriptMap = await Promise.race([
+          findTranscriptsBatch(missingTranscripts),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+        ]);
         for (const [callId, transcript] of transcriptMap) {
           await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
+          // レスポンスにも反映
+          const row = rows.find(r => r.id === callId);
+          if (row) row.transcript = transcript;
         }
         if (transcriptMap.size > 0) {
-          logger.info(`Transcript自動取得: ${transcriptMap.size}件保存`);
+          logger.info(`Transcript同期取得: ${transcriptMap.size}件保存`);
         }
-      }).catch(e => {
-        logger.error('Transcript一括取得エラー:', e.message);
-      });
+      } catch (e) {
+        // タイムアウトやエラーの場合はスキップ（レスポンスは返す）
+        if (e.message !== 'timeout') {
+          logger.error('Transcript取得エラー:', e.message);
+        }
+      }
     }
 
     return ApiResponse.success(res, {
