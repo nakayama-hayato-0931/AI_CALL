@@ -98,6 +98,9 @@ export default function DashboardPage() {
   const [connectionTable, setConnectionTable] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 時間帯別コール数チャート専用の期間切替
+  const [hourlyPeriod, setHourlyPeriod] = useState('daily');
+
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
   const isManagerRole = user?.role === 'admin' || user?.role === 'manager';
@@ -247,10 +250,15 @@ export default function DashboardPage() {
     }
   }, [isManager]);
 
-  // 初回: チャートデータ取得
+  // 初回: チャートデータ取得（業種系のみ）
   useEffect(() => {
     fetchChartData();
   }, []);
+
+  // 時間帯別コール数: hourlyPeriod / kpiScope / kpiTargetUserId 変更時に再取得
+  useEffect(() => {
+    fetchHourlyCalls();
+  }, [hourlyPeriod, kpiScope, kpiTargetUserId]);
 
   // KPI期間・スコープ変更時にstats再取得
   useEffect(() => {
@@ -278,14 +286,25 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchHourlyCalls = async () => {
+    try {
+      const params = { period: hourlyPeriod, scope: kpiScope };
+      if (kpiScope === 'operator' && kpiTargetUserId) {
+        params.target_user_id = kpiTargetUserId;
+      }
+      const res = await api.get('/api/dashboard/hourly-calls', { params });
+      setHourlyCalls(res.data.data);
+    } catch (err) {
+      console.error('時間帯別コール数取得失敗:', err);
+    }
+  };
+
   const fetchChartData = async () => {
     try {
-      const [hourlyRes, industryRes, connRes] = await Promise.all([
-        api.get('/api/dashboard/hourly-calls'),
+      const [industryRes, connRes] = await Promise.all([
         api.get('/api/dashboard/industry-conversion'),
         api.get('/api/dashboard/hourly-industry-connections'),
       ]);
-      setHourlyCalls(hourlyRes.data.data);
       setIndustryData(industryRes.data.data);
       setConnectionTable(connRes.data.data);
     } catch (err) {
@@ -921,7 +940,17 @@ export default function DashboardPage() {
       {/* グラフエリア */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card p-5">
-          <h2 className="text-sm font-bold text-gray-800 mb-4">時間帯別コール数</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-gray-800">時間帯別コール数</h2>
+            <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+              {PERIODS.map(p => (
+                <button key={p.value} onClick={() => setHourlyPeriod(p.value)}
+                  className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                    hourlyPeriod === p.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}>{p.label}</button>
+              ))}
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={hourlyCalls} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
