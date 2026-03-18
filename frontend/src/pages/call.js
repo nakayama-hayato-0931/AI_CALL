@@ -631,9 +631,22 @@ export default function CallPage() {
                   ].map((item) => (
                     <div key={item.label} className="flex items-baseline justify-between text-sm">
                       <span className="text-gray-400 text-xs">{item.label}</span>
-                      <span className={item.bold ? 'font-semibold text-gray-900' : 'text-gray-700'}>
-                        {item.value || '-'}
-                      </span>
+                      {item.bold ? (
+                        <span
+                          className="font-semibold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer transition-colors"
+                          title="クリックでハローワーク検索"
+                          onClick={() => {
+                            const query = encodeURIComponent(`${item.value} ハローワーク`);
+                            window.open(`https://www.google.com/search?q=${query}`, '_blank');
+                          }}
+                        >
+                          {item.value || '-'}
+                        </span>
+                      ) : (
+                        <span className="text-gray-700">
+                          {item.value || '-'}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
