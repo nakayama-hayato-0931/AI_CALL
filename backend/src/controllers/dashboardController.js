@@ -7,6 +7,128 @@ const ApiResponse = require('../utils/apiResponse');
 const { getDateRange } = require('../utils/periodHelper');
 
 /**
+ * 業種を大分類にまとめるマッピング
+ */
+const INDUSTRY_CATEGORY_MAP = {
+  // 製造業
+  '食料品製造業': '製造業',
+  '飲料・たばこ・飼料製造業': '製造業',
+  '繊維工業': '製造業',
+  '木材・木製品製造業': '製造業',
+  '家具・装備品製造業': '製造業',
+  'パルプ・紙・紙加工品製造業': '製造業',
+  '印刷・同関連業': '製造業',
+  '化学工業': '製造業',
+  '石油製品・石炭製品製造業': '製造業',
+  'プラスチック製品製造業': '製造業',
+  'ゴム製品製造業': '製造業',
+  'なめし革・同製品・毛皮製造業': '製造業',
+  '窯業・土石製品製造業': '製造業',
+  '鉄鋼業': '製造業',
+  '非鉄金属製造業': '製造業',
+  '金属製品製造業': '製造業',
+  'はん用機械器具製造業': '製造業',
+  '生産用機械器具製造業': '製造業',
+  '業務用機械器具製造業': '製造業',
+  '電子部品・デバイス・電子回路製造業': '製造業',
+  '電気機械器具製造業': '製造業',
+  '情報通信機械器具製造業': '製造業',
+  '輸送用機械器具製造業': '製造業',
+  'その他の製造業': '製造業',
+
+  // 飲食・宿泊
+  '飲食店': '飲食・宿泊',
+  '持ち帰り・配達飲食サービス業': '飲食・宿泊',
+  '宿泊業': '飲食・宿泊',
+  '宿泊業，飲食サービス業': '飲食・宿泊',
+
+  // 建設
+  '総合工事業': '建設業',
+  '職別工事業': '建設業',
+  '設備工事業': '建設業',
+  '建設業': '建設業',
+
+  // 卸売・小売
+  '各種商品卸売業': '卸売・小売',
+  '繊維・衣服等卸売業': '卸売・小売',
+  '飲食料品卸売業': '卸売・小売',
+  '建築材料，鉱物・金属材料等卸売業': '卸売・小売',
+  '機械器具卸売業': '卸売・小売',
+  'その他の卸売業': '卸売・小売',
+  '各種商品小売業': '卸売・小売',
+  '織物・衣服・身の回り品小売業': '卸売・小売',
+  '飲食料品小売業': '卸売・小売',
+  '機械器具小売業': '卸売・小売',
+  'その他の小売業': '卸売・小売',
+  '無店舗小売業': '卸売・小売',
+
+  // 運輸
+  '道路旅客運送業': '運輸業',
+  '道路貨物運送業': '運輸業',
+  '水運業': '運輸業',
+  '航空運輸業': '運輸業',
+  '倉庫業': '運輸業',
+  '運輸に附帯するサービス業': '運輸業',
+  '郵便業': '運輸業',
+
+  // 情報通信
+  '通信業': '情報通信',
+  '放送業': '情報通信',
+  '情報サービス業': '情報通信',
+  'インターネット附随サービス業': '情報通信',
+  '映像・音声・文字情報制作業': '情報通信',
+
+  // サービス
+  '洗濯・理容・美容・浴場業': 'サービス業',
+  'その他の生活関連サービス業': 'サービス業',
+  '娯楽業': 'サービス業',
+  '廃棄物処理業': 'サービス業',
+  '自動車整備業': 'サービス業',
+  '機械等修理業': 'サービス業',
+  '職業紹介・労働者派遣業': 'サービス業',
+  'その他の事業サービス業': 'サービス業',
+  'その他のサービス業': 'サービス業',
+
+  // 医療・福祉
+  '医療業': '医療・福祉',
+  '保健衛生': '医療・福祉',
+  '社会保険・社会福祉・介護事業': '医療・福祉',
+  '老人福祉・介護事業': '医療・福祉',
+  '児童福祉事業': '医療・福祉',
+
+  // 教育・学習支援
+  '学校教育': '教育',
+  'その他の教育，学習支援業': '教育',
+
+  // 不動産
+  '不動産取引業': '不動産',
+  '不動産賃貸業・管理業': '不動産',
+
+  // 農林漁業
+  '農業': '農林漁業',
+  '林業': '農林漁業',
+  '漁業': '農林漁業',
+};
+
+const getIndustryCategory = (industry) => {
+  if (!industry) return 'その他';
+  if (INDUSTRY_CATEGORY_MAP[industry]) return INDUSTRY_CATEGORY_MAP[industry];
+  // 部分一致でカテゴリ推定
+  if (industry.includes('製造')) return '製造業';
+  if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン')) return '飲食・宿泊';
+  if (industry.includes('建設') || industry.includes('工事')) return '建設業';
+  if (industry.includes('卸売') || industry.includes('小売')) return '卸売・小売';
+  if (industry.includes('運送') || industry.includes('運輸') || industry.includes('倉庫')) return '運輸業';
+  if (industry.includes('情報') || industry.includes('通信') || industry.includes('ソフト')) return '情報通信';
+  if (industry.includes('医療') || industry.includes('福祉') || industry.includes('介護')) return '医療・福祉';
+  if (industry.includes('教育') || industry.includes('学習')) return '教育';
+  if (industry.includes('不動産')) return '不動産';
+  if (industry.includes('農') || industry.includes('林') || industry.includes('漁')) return '農林漁業';
+  if (industry.includes('宿泊') || industry.includes('ホテル')) return '飲食・宿泊';
+  return 'その他';
+};
+
+/**
  * GET /api/dashboard/stats
  * KPI統計取得（期間・スコープ対応）
  * ?date=YYYY-MM-DD&period=daily|weekly|monthly|cumulative&scope=self|team|operator&target_user_id=N
@@ -251,13 +373,21 @@ const getIndustryConversion = async (req, res, next) => {
       params
     );
 
-    // 合計から割合を計算
-    const totalProjects = rows.reduce((s, r) => s + Number(r.projects), 0);
-    const data = rows.map(r => ({
-      industry: r.industry,
-      projects: Number(r.projects),
-      conversion_rate: totalProjects > 0 ? Math.round(Number(r.projects) / totalProjects * 1000) / 10 : 0,
-    }));
+    // 業種を大分類にまとめる
+    const grouped = {};
+    for (const r of rows) {
+      const cat = getIndustryCategory(r.industry);
+      grouped[cat] = (grouped[cat] || 0) + Number(r.projects);
+    }
+
+    const totalProjects = Object.values(grouped).reduce((s, v) => s + v, 0);
+    const data = Object.entries(grouped)
+      .map(([industry, projects]) => ({
+        industry,
+        projects,
+        conversion_rate: totalProjects > 0 ? Math.round(projects / totalProjects * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.projects - a.projects);
 
     return ApiResponse.success(res, data);
   } catch (err) {
@@ -321,15 +451,19 @@ const getHourlyIndustryConnections = async (req, res, next) => {
       connParams
     );
 
-    // ユニーク業種リスト
-    const allIndustries = new Set([...rows.map(r => r.industry), ...totalRows.map(r => r.industry)]);
+    // 大分類にまとめて集計
+    const catRows = rows.map(r => ({ ...r, industry: getIndustryCategory(r.industry) }));
+    const catTotalRows = totalRows.map(r => ({ ...r, industry: getIndustryCategory(r.industry) }));
+
+    // ユニーク大分類リスト
+    const allIndustries = new Set([...catRows.map(r => r.industry), ...catTotalRows.map(r => r.industry)]);
     const industries = [...allIndustries].sort();
 
     // 9〜19時のクロス集計テーブル整形
-    const tableRows = [];
+    const tableRowsArr = [];
     const totals = {};
-    const totalCalls = {};
-    industries.forEach(ind => { totals[ind] = 0; totalCalls[ind] = 0; });
+    const totalCallsMap = {};
+    industries.forEach(ind => { totals[ind] = 0; totalCallsMap[ind] = 0; });
     let grandTotal = 0;
     let grandTotalCalls = 0;
 
@@ -338,14 +472,12 @@ const getHourlyIndustryConnections = async (req, res, next) => {
       let rowTotal = 0;
       let rowTotalCalls = 0;
       for (const ind of industries) {
-        const found = rows.find(r => r.hour === h && r.industry === ind);
-        const foundTotal = totalRows.find(r => r.hour === h && r.industry === ind);
-        const val = found ? found.connections : 0;
-        const calls = foundTotal ? foundTotal.total_calls : 0;
+        const val = catRows.filter(r => r.hour === h && r.industry === ind).reduce((s, r) => s + r.connections, 0);
+        const calls = catTotalRows.filter(r => r.hour === h && r.industry === ind).reduce((s, r) => s + r.total_calls, 0);
         row[ind] = val;
         row[`${ind}_total`] = calls;
         totals[ind] += val;
-        totalCalls[ind] += calls;
+        totalCallsMap[ind] += calls;
         rowTotal += val;
         rowTotalCalls += calls;
       }
@@ -353,14 +485,14 @@ const getHourlyIndustryConnections = async (req, res, next) => {
       row.totalCalls = rowTotalCalls;
       grandTotal += rowTotal;
       grandTotalCalls += rowTotalCalls;
-      tableRows.push(row);
+      tableRowsArr.push(row);
     }
 
     return ApiResponse.success(res, {
       industries,
-      rows: tableRows,
+      rows: tableRowsArr,
       totals: { ...totals, total: grandTotal },
-      totalCalls: { ...totalCalls, total: grandTotalCalls },
+      totalCalls: { ...totalCallsMap, total: grandTotalCalls },
     });
   } catch (err) {
     next(err);
