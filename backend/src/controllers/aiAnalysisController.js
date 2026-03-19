@@ -422,8 +422,14 @@ const generateStatusSheets = async (req, res, next) => {
         [op.id, dateFrom, dateTo]
       );
 
-      // 直近の評価
-      const [evalRows] = await pool.query(
+      // 直近2週間の評価から厳選ピックアップ
+      const twoWeeksAgo = new Date();
+      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+      const evalDateFrom = twoWeeksAgo.toISOString().slice(0, 10);
+      const evalDateTo = new Date().toISOString().slice(0, 10);
+
+      // 良い例: 案件化(PROJECT)したもの、スコア高い順、最大5件
+      const [goodEvals] = await pool.query(
         `SELECT
           ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
           c.result_code, co.company_name
@@ -431,10 +437,28 @@ const generateStatusSheets = async (req, res, next) => {
         JOIN calls c ON ae.call_id = c.id
         LEFT JOIN companies co ON c.company_id = co.id
         WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
-        ORDER BY c.call_started_at DESC
-        LIMIT 10`,
-        [op.id, dateFrom, dateTo]
+          AND c.result_code = 'PROJECT'
+        ORDER BY ae.overall_score DESC, c.call_started_at DESC
+        LIMIT 5`,
+        [op.id, evalDateFrom, evalDateTo]
       );
+
+      // 悪い例: NG結果でスコアが高いもの（門前払いではなく会話できたが案件化できなかった）、最大5件
+      const [badEvals] = await pool.query(
+        `SELECT
+          ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
+          c.result_code, co.company_name
+        FROM ai_evaluations ae
+        JOIN calls c ON ae.call_id = c.id
+        LEFT JOIN companies co ON c.company_id = co.id
+        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+          AND c.result_code = 'NG'
+        ORDER BY ae.overall_score DESC, c.call_started_at DESC
+        LIMIT 5`,
+        [op.id, evalDateFrom, evalDateTo]
+      );
+
+      const evalRows = [...goodEvals, ...badEvals];
 
       // 稼働時間
       const [whRows] = await pool.query(

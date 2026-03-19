@@ -300,9 +300,20 @@ const evaluateStatusSheet = async (operatorData) => {
 - アポ効率: ${stats.projects > 0 ? (wh / stats.projects).toFixed(1) + '時間/件' : 'アポなし'} （目標: 8時間/件）`;
     }
 
-    const evalSummaries = evaluations.slice(0, 10).map((e, i) =>
-      `${i + 1}. ${e.company_name || '企業'}: ${e.result_code} / スコア${e.overall_score}点 / 良い点:${e.good_points || '-'} / 改善点:${e.improvement_points || '-'}`
-    ).join('\n');
+    // 良い例（PROJECT）と悪い例（NG高スコア）を分離
+    const goodEvals = evaluations.filter(e => e.result_code === 'PROJECT');
+    const badEvals = evaluations.filter(e => e.result_code === 'NG');
+
+    const formatEval = (e, i) =>
+      `${i + 1}. ${e.company_name || '企業'}: スコア${e.overall_score}点\n   要約: ${e.summary || '-'}\n   良い点: ${e.good_points || '-'}\n   改善点: ${e.improvement_points || '-'}`;
+
+    const goodSection = goodEvals.length > 0
+      ? `【成功事例（案件化できた通話）直近2週間・最大5件】\n${goodEvals.map(formatEval).join('\n\n')}`
+      : '【成功事例】なし';
+
+    const badSection = badEvals.length > 0
+      ? `【改善事例（NGだがスコアが高い＝会話はできたが案件化できなかった通話）直近2週間・最大5件】\n${badEvals.map(formatEval).join('\n\n')}`
+      : '【改善事例】なし';
 
     const userContent = `【オペレーター育成ステータスシート作成依頼 (${periodLabel})】
 
@@ -322,8 +333,11 @@ const evaluateStatusSheet = async (operatorData) => {
 - 切り返し: ${scoreAvgs.rebuttal}
 - クロージング: ${scoreAvgs.closing}
 
-【直近の架電評価詳細】
-${evalSummaries || '（評価データなし）'}`;
+${goodSection}
+
+${badSection}
+
+上記の成功事例と改善事例を比較し、何が案件化の決め手になっているか、何が不足しているかを分析してください。`;
 
     const result = await callClaude(systemPrompt, userContent, 2500, 0.3);
 
