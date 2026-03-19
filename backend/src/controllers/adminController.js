@@ -146,7 +146,7 @@ const updateUser = async (req, res, next) => {
 
 /**
  * DELETE /api/admin/users/:id
- * ユーザーソフト削除
+ * ユーザー完全削除（関連データも削除）
  */
 const deleteUser = async (req, res, next) => {
   try {
@@ -156,15 +156,30 @@ const deleteUser = async (req, res, next) => {
       return ApiResponse.badRequest(res, '自分自身を削除することはできません');
     }
 
-    const [existing] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
+    const [existing] = await pool.execute('SELECT id, name FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
       return ApiResponse.notFound(res, 'ユーザーが見つかりません');
     }
 
-    await pool.execute('UPDATE users SET is_active = 0 WHERE id = ?', [id]);
+    const userName = existing[0].name;
 
-    logger.info(`ユーザー無効化: ID ${id}`);
-    return ApiResponse.success(res, null, 'ユーザーを無効化しました');
+    // 関連データを削除（外部キー制約対応）
+    await pool.execute('DELETE FROM ai_evaluations WHERE user_id = ?', [id]);
+    await pool.execute('DELETE FROM status_sheets WHERE user_id = ?', [id]);
+    await pool.execute('DELETE FROM work_hours WHERE user_id = ?', [id]);
+    await pool.execute('DELETE FROM recall_tasks WHERE user_id = ?', [id]);
+    await pool.execute('DELETE FROM feature_requests WHERE user_id = ?', [id]);
+    // callsは企業情報と紐づくため、user_idをNULLに
+    await pool.execute('UPDATE calls SET user_id = NULL WHERE user_id = ?', [id]);
+    // projectsのoperator参照もNULLに
+    await pool.execute('UPDATE projects SET user_id = NULL WHERE user_id = ?', [id]);
+    // cost_records
+    try { await pool.execute('DELETE FROM cost_records WHERE user_id = ?', [id]); } catch (e) {}
+    // ユーザー本体を削除
+    await pool.execute('DELETE FROM users WHERE id = ?', [id]);
+
+    logger.info(`ユーザー完全削除: ID ${id} (${userName})`);
+    return ApiResponse.success(res, null, `${userName}を完全に削除しました`);
   } catch (err) {
     next(err);
   }

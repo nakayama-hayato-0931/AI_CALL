@@ -26,6 +26,8 @@ export default function AdminUsers() {
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'operator' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin') { router.push('/'); return; }
@@ -66,14 +68,18 @@ export default function AdminUsers() {
     setShowForm(true);
   };
 
-  const handleDelete = async (u) => {
-    if (!confirm(`${u.name} を無効化しますか？`)) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/api/admin/users/${u.id}`);
-      toast.success('ユーザーを無効化しました');
+      setDeleting(true);
+      const { data } = await api.delete(`/api/admin/users/${deleteTarget.id}`);
+      toast.success(data.message || '削除しました');
+      setDeleteTarget(null);
       fetchUsers();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'エラーが発生しました');
+      toast.error(err.response?.data?.message || '削除に失敗しました');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -97,6 +103,48 @@ export default function AdminUsers() {
 
   return (
     <Layout>
+      {/* 完全削除確認モーダル */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-bold text-gray-900">ユーザーの完全削除</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              <span className="font-bold text-red-600">{deleteTarget.name}</span> を完全に削除します。
+            </p>
+            <p className="text-xs text-gray-500 mb-1">この操作は取り消せません。以下のデータも削除されます:</p>
+            <ul className="text-xs text-gray-500 mb-4 ml-4 list-disc space-y-0.5">
+              <li>AI評価データ</li>
+              <li>ステータスシート</li>
+              <li>稼働時間・出勤記録</li>
+              <li>リコール予定</li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="btn-secondary text-sm">キャンセル</button>
+              <button onClick={handleDeleteConfirm} disabled={deleting}
+                className="btn-danger text-sm flex items-center gap-1.5">
+                {deleting ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    削除中...
+                  </>
+                ) : '完全に削除する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">ユーザー管理</h1>
         <button
@@ -179,7 +227,7 @@ export default function AdminUsers() {
                   <div className="flex gap-1">
                     <button onClick={() => handleEdit(u)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編集</button>
                     {u.id !== user.id && (
-                      <button onClick={() => handleDelete(u)} className="text-red-500 hover:text-red-700 text-xs font-medium ml-2">削除</button>
+                      <button onClick={() => setDeleteTarget(u)} className="text-red-500 hover:text-red-700 text-xs font-medium ml-2">削除</button>
                     )}
                   </div>
                 </td>
