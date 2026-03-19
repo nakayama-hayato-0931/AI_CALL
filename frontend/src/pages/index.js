@@ -991,9 +991,12 @@ export default function DashboardPage() {
         <div className="card p-5">
           <h2 className="text-sm font-bold text-gray-800 mb-4">業種別案件化率</h2>
           {industryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={industryData} dataKey="projects" nameKey="industry" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} label={({ industry, conversion_rate }) => `${industry} ${conversion_rate}%`}>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                <Pie data={industryData} dataKey="projects" nameKey="industry" cx="50%" cy="45%" innerRadius={45} outerRadius={75} paddingAngle={3}
+                  label={({ industry, conversion_rate }) => `${industry} ${conversion_rate}%`}
+                  labelLine={{ strokeWidth: 1 }}
+                  style={{ fontSize: '12px' }}>
                   {industryData.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
