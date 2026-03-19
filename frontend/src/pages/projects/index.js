@@ -333,8 +333,7 @@ export default function ProjectsPage() {
                           <select
                             value={p.status || ''}
                             onChange={(e) => handleInlineStatusChange(e, p.id)}
-                            className={`text-xs font-medium rounded-full px-2 py-0.5 border-0 cursor-pointer appearance-none text-center ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}
-                            style={{ backgroundImage: 'none' }}
+                            className={`select-no-arrow text-xs font-medium rounded-full px-2 py-0.5 border-0 cursor-pointer text-center ${STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'}`}
                           >
                             <option value="">未設定</option>
                             {STATUS_OPTIONS.filter(s => s.value).map(s => (
