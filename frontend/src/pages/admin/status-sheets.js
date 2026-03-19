@@ -28,6 +28,7 @@ export default function StatusSheetsPage() {
   // 編集
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState(null);
+  const [alertMessage, setAlertMessage] = useState(null);
 
   useEffect(() => {
     if (!authLoading && user) fetchSheets();
@@ -93,9 +94,8 @@ export default function StatusSheetsPage() {
       if (data.success) {
         const generated = data.data?.sheets || [];
         const withSheets = generated.filter(s => s.sheet);
+        const skipped = generated.filter(s => !s.sheet);
         if (withSheets.length > 0) {
-          toast.success(`${withSheets.length}件のステータスシートを生成しました`);
-          // POST結果から直接シート表示用データを構築
           const mapped = withSheets.map(s => ({
             id: s.userId,
             user_id: s.userId,
@@ -109,15 +109,18 @@ export default function StatusSheetsPage() {
           }));
           setSheets(mapped);
           setExpandedUser(mapped[0]?.user_id || null);
+          let msg = `${withSheets.length}件のステータスシートを生成しました。\n\n生成済み: ${withSheets.map(s => s.name).join('、')}`;
+          if (skipped.length > 0) {
+            msg += `\n\nスキップ: ${skipped.map(s => `${s.name}（${s.message || 'データなし'}）`).join('、')}`;
+          }
+          setAlertMessage(msg);
         } else {
-          const skipped = generated.filter(s => !s.sheet);
-          toast.error(`生成できませんでした: ${skipped.map(s => s.message || 'データなし').join(', ')}`);
+          setAlertMessage(`生成できませんでした。\n\n${skipped.map(s => `${s.name}: ${s.message || 'データなし'}`).join('\n')}`);
         }
-        // DBからも再取得
         fetchSheets();
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'ステータスシート生成に失敗しました');
+      setAlertMessage(`生成に失敗しました: ${err.response?.data?.message || err.message}`);
     } finally {
       setGenerating(false);
     }
@@ -135,11 +138,11 @@ export default function StatusSheetsPage() {
   const handleSaveEdit = async () => {
     try {
       await api.put(`/api/ai/analysis/status-sheets/${editingId}`, editData);
-      toast.success('更新しました');
+      setAlertMessage('ステータスシートを更新しました。');
       setEditingId(null);
       fetchSheets();
     } catch (err) {
-      toast.error('更新に失敗しました');
+      setAlertMessage('更新に失敗しました。');
     }
   };
 
@@ -162,6 +165,20 @@ export default function StatusSheetsPage() {
 
   return (
     <Layout>
+      {/* 確認ポップアップ */}
+      {alertMessage && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setAlertMessage(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-800 mb-3">結果</h3>
+            <p className="text-sm text-gray-600 whitespace-pre-wrap">{alertMessage}</p>
+            <div className="mt-5 flex justify-end">
+              <button onClick={() => setAlertMessage(null)}
+                className="btn-primary text-sm px-6">確認</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6">
         <h1 className="text-lg font-bold text-gray-900">育成ステータスシート</h1>
         <p className="text-xs text-gray-500 mt-1">各オペレーターの育成状況・育成プラン・ネクストステップを管理</p>
