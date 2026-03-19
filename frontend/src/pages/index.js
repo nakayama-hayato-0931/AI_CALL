@@ -401,7 +401,7 @@ export default function DashboardPage() {
                 }`}>{p.label}</button>
             ))}
           </div>
-          {isManager && (
+          {!isManager && (
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               {[{ value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
                 <button key={s.value} onClick={() => {
@@ -417,171 +417,12 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-          {isManager && kpiScope === 'operator' && (
-            <select value={kpiTargetUserId || ''} onChange={e => setKpiTargetUserId(e.target.value)}
-              className="input text-sm py-1.5">
-              {operators.map(op => (
-                <option key={op.id} value={String(op.id)}>{op.name}</option>
-              ))}
-            </select>
-          )}
         </div>
       </div>
 
-      {/* KPIカード */}
-      {(() => {
-        // 稼働時間計算（/h率用）
-        const wh = stats?.manualWorkHours;
-        let totalWorkHours = 0;
-        if (wh?.totalMinutes) {
-          totalWorkHours = wh.totalMinutes / 60;
-        } else if (wh?.start_time && wh?.end_time) {
-          totalWorkHours = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes);
-        } else {
-          totalWorkHours = (stats?.workMinutes || 0) / 60;
-        }
-        const perHour = (val) => totalWorkHours > 0 ? (val / totalWorkHours).toFixed(1) : '-';
-
-        return (
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-            {KPI_CONFIG.map((config) => {
-              // 稼働時間カードの特別処理
-              if (config.key === 'workMinutes') {
-                let displayValue, displaySuffix;
-                let avgDaily = null;
-                if (wh?.totalMinutes) {
-                  displayValue = (wh.totalMinutes / 60).toFixed(1);
-                  displaySuffix = '時間';
-                  if (wh.entryCount && wh.entryCount > 0) {
-                    avgDaily = (wh.totalMinutes / 60 / wh.entryCount).toFixed(1);
-                  }
-                } else if (wh?.start_time && wh?.end_time) {
-                  displayValue = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes).toFixed(1);
-                  displaySuffix = '時間';
-                } else {
-                  displayValue = stats?.workMinutes ?? 0;
-                  displaySuffix = '分';
-                }
-                const canEdit = !isManager || (kpiScope === 'operator' && kpiPeriod === 'daily');
-                return (
-                  <div key={config.key} onClick={canEdit ? () => setShowWorkHoursModal(true) : undefined}
-                    className={canEdit ? 'cursor-pointer' : ''}>
-                    <div className="card p-4 animate-fade-in">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
-                          <p className="text-2xl font-bold text-gray-900 tracking-tight">
-                            {displayValue}
-                            <span className="text-xs font-medium text-gray-400 ml-0.5">{displaySuffix}</span>
-                          </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            {avgDaily ? `平均 ${avgDaily}h/日` : wh?.start_time ? `${wh.start_time}〜${wh.end_time}` : '\u00A0'}
-                          </p>
-                          {canEdit && (
-                            <p className="text-[10px] text-blue-500 mt-1 animate-pulse">&#x25B6; クリックして入力</p>
-                          )}
-                        </div>
-                        <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
-                          <KpiIcon type={config.gradient} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              // 案件獲得の獲得効率表示
-              if (config.key === 'projectCount') {
-                const val = stats?.[config.key] || 0;
-                const efficiency = val > 0 ? (totalWorkHours / val).toFixed(1) : '-';
-                return (
-                  <div key={config.key} className="card p-4 animate-fade-in">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
-                        <p className="text-2xl font-bold text-gray-900 tracking-tight">
-                          {val}<span className="text-xs font-medium text-gray-400 ml-0.5">{config.suffix}</span>
-                        </p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">{efficiency}h/件</p>
-                      </div>
-                      <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
-                        <KpiIcon type={config.gradient} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              // その他: /h率付き
-              const val = stats?.[config.key] || 0;
-              const rate = perHour(val);
-              return (
-                <div key={config.key} className="card p-4 animate-fade-in">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[11px] font-medium text-gray-400 mb-1">{config.label}</p>
-                      <p className="text-2xl font-bold text-gray-900 tracking-tight">
-                        {val}<span className="text-xs font-medium text-gray-400 ml-0.5">{config.suffix}</span>
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">{rate}/h</p>
-                    </div>
-                    <div className={`w-9 h-9 bg-gradient-to-br ${config.gradient} rounded-lg flex items-center justify-center shadow-sm`}>
-                      <KpiIcon type={config.gradient} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
-
-      {/* 稼働時間入力モーダル */}
-      {showWorkHoursModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowWorkHoursModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl p-5 w-80 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-gray-800 mb-4">稼働時間を入力</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
-                <input type="time" value={workStartTime} min="08:00" max="21:00"
-                  onChange={(e) => setWorkStartTime(e.target.value)} className="input text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
-                <input type="time" value={workEndTime} min="08:00" max="21:00"
-                  onChange={(e) => setWorkEndTime(e.target.value)} className="input text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">休憩時間（分）</label>
-                <input type="number" value={breakMinutes} min="0" max="180" step="5"
-                  onChange={(e) => setBreakMinutes(e.target.value)} className="input text-sm" placeholder="0" />
-              </div>
-              {workStartTime && workEndTime && (
-                <p className="text-center text-lg font-bold text-blue-600">
-                  {calcWorkHours(workStartTime, workEndTime, breakMinutes).toFixed(1)} <span className="text-sm font-medium text-gray-400">時間</span>
-                  {parseInt(breakMinutes) > 0 && <span className="text-xs font-medium text-gray-400 ml-1">（休憩{breakMinutes}分含む）</span>}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => setShowWorkHoursModal(false)}
-                className="flex-1 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                キャンセル
-              </button>
-              <button onClick={handleSaveWorkHours} disabled={savingWorkHours}
-                className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
-                {savingWorkHours ? '保存中...' : '保存'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* オペレーター実績一覧（管理者/マネージャーのみ） */}
-      {isManager && perfData?.operators && (
+      {/* オペレーター実績テーブル（管理者/マネージャー）or KPIカード（オペレーター） */}
+      {isManager && perfData?.operators ? (
         <div className="card overflow-hidden mb-6">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-800">オペレーター実績</h2>
-          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -623,7 +464,6 @@ export default function DashboardPage() {
                     </tr>
                   );
                 })}
-                {/* 合計行 */}
                 {(() => {
                   const t = perfData.operators.reduce((acc, op) => ({
                     work_minutes: acc.work_minutes + (op.work_minutes || 0),
@@ -657,6 +497,112 @@ export default function DashboardPage() {
           {perfData.operators.length === 0 && (
             <div className="text-center py-6 text-gray-400 text-xs">データがありません</div>
           )}
+        </div>
+      ) : !isManager && (
+        (() => {
+          const wh = stats?.manualWorkHours;
+          let totalWorkHours = 0;
+          if (wh?.totalMinutes) { totalWorkHours = wh.totalMinutes / 60; }
+          else if (wh?.start_time && wh?.end_time) { totalWorkHours = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes); }
+          else { totalWorkHours = (stats?.workMinutes || 0) / 60; }
+          const perHour = (val) => totalWorkHours > 0 ? (val / totalWorkHours).toFixed(1) : '-';
+          const displayWorkValue = wh?.totalMinutes ? (wh.totalMinutes / 60).toFixed(1)
+            : wh?.start_time ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes).toFixed(1)
+            : (stats?.workMinutes ?? 0);
+          const displayWorkSuffix = (wh?.totalMinutes || wh?.start_time) ? '時間' : '分';
+
+          return (
+            <div className="card overflow-hidden mb-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="table-header text-right">稼働時間</th>
+                      <th className="table-header text-right">コール数</th>
+                      <th className="table-header text-right">リコール獲得</th>
+                      <th className="table-header text-right">リコール消化</th>
+                      <th className="table-header text-right">有効接続</th>
+                      <th className="table-header text-right">担当接続</th>
+                      <th className="table-header text-right">案件獲得</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100">
+                      <td className="table-cell text-right cursor-pointer" onClick={() => setShowWorkHoursModal(true)}>
+                        <span className="font-bold text-sm">{displayWorkValue}</span>
+                        <span className="text-gray-400 ml-0.5">{displayWorkSuffix}</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm">{stats?.callCount || 0}</span>
+                        <span className="text-gray-400 ml-1 text-[10px]">{perHour(stats?.callCount || 0)}/h</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm">{stats?.recallGained || 0}</span>
+                        <span className="text-gray-400 ml-1 text-[10px]">{perHour(stats?.recallGained || 0)}/h</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm">{stats?.recallDone || 0}</span>
+                        <span className="text-gray-400 ml-1 text-[10px]">{perHour(stats?.recallDone || 0)}/h</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm">{stats?.effectiveCount || 0}</span>
+                        <span className="text-gray-400 ml-1 text-[10px]">{perHour(stats?.effectiveCount || 0)}/h</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm">{stats?.personCount || 0}</span>
+                        <span className="text-gray-400 ml-1 text-[10px]">{perHour(stats?.personCount || 0)}/h</span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-bold text-sm text-blue-600">{stats?.projectCount || 0}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()
+      )}
+
+      {/* 稼働時間入力モーダル */}
+      {showWorkHoursModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowWorkHoursModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl p-5 w-80 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-800 mb-4">稼働時間を入力</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
+                <input type="time" value={workStartTime} min="08:00" max="21:00"
+                  onChange={(e) => setWorkStartTime(e.target.value)} className="input text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
+                <input type="time" value={workEndTime} min="08:00" max="21:00"
+                  onChange={(e) => setWorkEndTime(e.target.value)} className="input text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">休憩時間（分）</label>
+                <input type="number" value={breakMinutes} min="0" max="180" step="5"
+                  onChange={(e) => setBreakMinutes(e.target.value)} className="input text-sm" placeholder="0" />
+              </div>
+              {workStartTime && workEndTime && (
+                <p className="text-center text-lg font-bold text-blue-600">
+                  {calcWorkHours(workStartTime, workEndTime, breakMinutes).toFixed(1)} <span className="text-sm font-medium text-gray-400">時間</span>
+                  {parseInt(breakMinutes) > 0 && <span className="text-xs font-medium text-gray-400 ml-1">（休憩{breakMinutes}分含む）</span>}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setShowWorkHoursModal(false)}
+                className="flex-1 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                キャンセル
+              </button>
+              <button onClick={handleSaveWorkHours} disabled={savingWorkHours}
+                className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+                {savingWorkHours ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

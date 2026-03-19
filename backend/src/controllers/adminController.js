@@ -211,7 +211,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
     // リコール消化数と稼働時間を各オペレーターに追加
     for (const op of rows) {
       const [recallRows] = await pool.query(
-        `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(completed_at) BETWEEN ? AND ?`,
+        `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(updated_at) BETWEEN ? AND ?`,
         [op.user_id, dateFrom, dateTo]
       );
       op.recall_done = recallRows[0]?.cnt || 0;
