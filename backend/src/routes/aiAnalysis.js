@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, getStatusSheets, getStatusSheet, updateStatusSheet } = require('../controllers/aiAnalysisController');
+const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet } = require('../controllers/aiAnalysisController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 
 router.use(authenticate);
@@ -20,9 +20,10 @@ router.get('/operator/:userId', getOperatorDetail);
 router.post('/operator/:userId/coaching', getOperatorCoaching);
 
 // ステータスシート
-router.post('/status-sheets', generateStatusSheets);     // 全オペレーター一括生成
-router.get('/status-sheets', getStatusSheets);            // 保存済み一覧取得
-router.get('/status-sheets/:userId', getStatusSheet);     // 個別取得
-router.put('/status-sheets/:id', updateStatusSheet);      // 手動編集
+router.post('/status-sheets', generateStatusSheets);                    // 全オペレーター一括生成
+router.post('/status-sheets/:userId/generate', generateSingleStatusSheet); // 個別生成
+router.get('/status-sheets', getStatusSheets);                         // 保存済み一覧取得
+router.get('/status-sheets/:userId', getStatusSheet);                  // 個別取得
+router.put('/status-sheets/:id', updateStatusSheet);                   // 手動編集
 
 module.exports = router;

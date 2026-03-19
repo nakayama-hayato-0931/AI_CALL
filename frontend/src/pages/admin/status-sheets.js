@@ -11,8 +11,10 @@ import toast from 'react-hot-toast';
 export default function StatusSheetsPage() {
   const { user, loading: authLoading } = useAuth();
   const [sheets, setSheets] = useState([]);
+  const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingSingle, setGeneratingSingle] = useState(null); // user_id of single generating
   const [expandedUser, setExpandedUser] = useState(null);
 
   // 編集
@@ -21,8 +23,18 @@ export default function StatusSheetsPage() {
   const [alertMessage, setAlertMessage] = useState(null);
 
   useEffect(() => {
-    if (!authLoading && user) fetchSheets();
+    if (!authLoading && user) {
+      fetchSheets();
+      fetchOperators();
+    }
   }, [authLoading, user]);
+
+  const fetchOperators = async () => {
+    try {
+      const { data } = await api.get('/api/analytics/operators');
+      if (data.success) setOperators(data.data || []);
+    } catch (err) { console.error(err); }
+  };
 
   const fetchSheets = async () => {
     try {
@@ -90,6 +102,23 @@ export default function StatusSheetsPage() {
     }
   };
 
+  const handleGenerateSingle = async (opId, opName) => {
+    try {
+      setGeneratingSingle(opId);
+      const { data } = await api.post(`/api/ai/analysis/status-sheets/${opId}/generate`, {}, { timeout: 120000 });
+      if (data.success && data.data?.sheet?.sheet) {
+        setAlertMessage(`${opName}のステータスシートを生成しました。`);
+        fetchSheets();
+      } else {
+        setAlertMessage(`${opName}: ${data.data?.message || data.message || '生成できませんでした'}`);
+      }
+    } catch (err) {
+      setAlertMessage(`${opName}の生成に失敗しました: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setGeneratingSingle(null);
+    }
+  };
+
   const handleStartEdit = (sheet) => {
     setEditingId(sheet.id);
     setEditData({
@@ -150,10 +179,9 @@ export default function StatusSheetsPage() {
 
       {/* 生成セクション */}
       <div className="card p-4 mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-medium text-gray-600">期間:</span>
-          <span className="text-xs text-gray-500">直近2週間のAI評価データから生成</span>
-          <button onClick={handleGenerate} disabled={generating}
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <span className="text-xs font-medium text-gray-600">直近2週間のAI評価データから生成</span>
+          <button onClick={handleGenerate} disabled={generating || generatingSingle}
             className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50 ml-auto">
             {generating ? (
               <>
@@ -166,6 +194,24 @@ export default function StatusSheetsPage() {
             ) : 'AI生成 (全員)'}
           </button>
         </div>
+        {operators.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-400">個別生成:</span>
+            {operators.map(op => (
+              <button key={op.id} onClick={() => handleGenerateSingle(op.id, op.name)}
+                disabled={generating || generatingSingle === op.id}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                {generatingSingle === op.id ? (
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : null}
+                {op.name}
+              </button>
+            ))}
+          </div>
+        )}
         {generating && (
           <p className="text-xs text-gray-400 mt-2">全オペレーターのステータスシートをAIが生成中です。数分かかる場合があります。</p>
         )}

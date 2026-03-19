@@ -363,6 +363,123 @@ const getOperatorCoaching = async (req, res, next) => {
 };
 
 /**
+ * 1オペレーターのステータスシート生成（共通処理）
+ */
+const generateSheetForOperator = async (op, dateFrom, dateTo, createdBy) => {
+  // コール統計
+  const [statsRows] = await pool.query(
+    `SELECT
+      COUNT(c.id) as total_calls,
+      CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
+      CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
+      CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects
+    FROM calls c
+    WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
+    [op.id, dateFrom, dateTo]
+  );
+
+  // スコア平均
+  const [avgRows] = await pool.query(
+    `SELECT
+      ROUND(AVG(ae.overall_score), 1) as overall,
+      ROUND(AVG(ae.opening_score), 1) as opening,
+      ROUND(AVG(ae.clarity_score), 1) as clarity,
+      ROUND(AVG(ae.hearing_score), 1) as hearing,
+      ROUND(AVG(ae.rebuttal_score), 1) as rebuttal,
+      ROUND(AVG(ae.closing_score), 1) as closing
+    FROM ai_evaluations ae
+    JOIN calls c ON ae.call_id = c.id
+    WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
+    [op.id, dateFrom, dateTo]
+  );
+
+  // 直近2週間の評価から厳選ピックアップ
+  const twoWeeksAgo = new Date();
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+  const evalDateFrom = twoWeeksAgo.toISOString().slice(0, 10);
+  const evalDateTo = new Date().toISOString().slice(0, 10);
+
+  const [goodEvals] = await pool.query(
+    `SELECT ae.overall_score, ae.summary, ae.good_points, ae.improvement_points, c.result_code, co.company_name
+    FROM ai_evaluations ae JOIN calls c ON ae.call_id = c.id LEFT JOIN companies co ON c.company_id = co.id
+    WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code = 'PROJECT'
+    ORDER BY ae.overall_score DESC, c.call_started_at DESC LIMIT 5`,
+    [op.id, evalDateFrom, evalDateTo]
+  );
+
+  const [badEvals] = await pool.query(
+    `SELECT ae.overall_score, ae.summary, ae.good_points, ae.improvement_points, c.result_code, co.company_name
+    FROM ai_evaluations ae JOIN calls c ON ae.call_id = c.id LEFT JOIN companies co ON c.company_id = co.id
+    WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code = 'NG'
+    ORDER BY ae.overall_score DESC, c.call_started_at DESC LIMIT 5`,
+    [op.id, evalDateFrom, evalDateTo]
+  );
+
+  const evalRows = [...goodEvals, ...badEvals];
+
+  // 稼働時間
+  const [whRows] = await pool.query(
+    `SELECT SUM(TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i')) - COALESCE(break_minutes, 0)) as total_minutes
+     FROM work_hours WHERE user_id = ? AND date BETWEEN ? AND ?`,
+    [op.id, dateFrom, dateTo]
+  );
+  const workHours = whRows[0]?.total_minutes ? whRows[0].total_minutes / 60 : 0;
+
+  const stats = statsRows[0];
+  const scoreAvgs = avgRows[0];
+
+  // データがない場合
+  if (!stats.total_calls && evalRows.length === 0) {
+    return { userId: op.id, name: op.name, sheet: null, message: 'この期間のデータがありません' };
+  }
+
+  // AI生成
+  let sheet;
+  try {
+    sheet = await evaluateStatusSheet({
+      name: op.name,
+      level: op.operator_level,
+      dateFrom, dateTo, workHours,
+      stats: {
+        totalCalls: stats.total_calls || 0,
+        effectiveConnections: stats.effective_connections || 0,
+        personConnections: stats.person_connections || 0,
+        projects: stats.projects || 0,
+      },
+      evaluations: evalRows,
+      scoreAvgs: {
+        overall: scoreAvgs.overall || 0, opening: scoreAvgs.opening || 0,
+        clarity: scoreAvgs.clarity || 0, hearing: scoreAvgs.hearing || 0,
+        rebuttal: scoreAvgs.rebuttal || 0, closing: scoreAvgs.closing || 0,
+      },
+    });
+  } catch (aiErr) {
+    logger.error(`AI生成失敗 (${op.name}):`, aiErr.message);
+    return { userId: op.id, name: op.name, sheet: null, message: `AI生成失敗: ${aiErr.message}` };
+  }
+
+  // DBに保存
+  try {
+    const [existing] = await pool.query('SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [op.id]);
+    if (existing.length > 0) {
+      await pool.execute(
+        `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
+        [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), createdBy, existing[0].id]
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), createdBy]
+      );
+    }
+  } catch (dbErr) {
+    logger.error(`DB保存失敗 (${op.name}):`, dbErr.message);
+  }
+
+  return { userId: op.id, name: op.name, sheet };
+};
+
+/**
  * POST /api/ai/analysis/status-sheets
  * 全オペレーターの育成ステータスシート一括生成
  */
@@ -395,154 +512,8 @@ const generateStatusSheets = async (req, res, next) => {
     const sheets = [];
 
     for (const op of operators) {
-      // コール統計
-      const [statsRows] = await pool.query(
-        `SELECT
-          COUNT(c.id) as total_calls,
-          CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
-          CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
-          CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects
-        FROM calls c
-        WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
-        [op.id, dateFrom, dateTo]
-      );
-
-      // スコア平均
-      const [avgRows] = await pool.query(
-        `SELECT
-          ROUND(AVG(ae.overall_score), 1) as overall,
-          ROUND(AVG(ae.opening_score), 1) as opening,
-          ROUND(AVG(ae.clarity_score), 1) as clarity,
-          ROUND(AVG(ae.hearing_score), 1) as hearing,
-          ROUND(AVG(ae.rebuttal_score), 1) as rebuttal,
-          ROUND(AVG(ae.closing_score), 1) as closing
-        FROM ai_evaluations ae
-        JOIN calls c ON ae.call_id = c.id
-        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
-        [op.id, dateFrom, dateTo]
-      );
-
-      // 直近2週間の評価から厳選ピックアップ
-      const twoWeeksAgo = new Date();
-      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-      const evalDateFrom = twoWeeksAgo.toISOString().slice(0, 10);
-      const evalDateTo = new Date().toISOString().slice(0, 10);
-
-      // 良い例: 案件化(PROJECT)したもの、スコア高い順、最大5件
-      const [goodEvals] = await pool.query(
-        `SELECT
-          ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
-          c.result_code, co.company_name
-        FROM ai_evaluations ae
-        JOIN calls c ON ae.call_id = c.id
-        LEFT JOIN companies co ON c.company_id = co.id
-        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
-          AND c.result_code = 'PROJECT'
-        ORDER BY ae.overall_score DESC, c.call_started_at DESC
-        LIMIT 5`,
-        [op.id, evalDateFrom, evalDateTo]
-      );
-
-      // 悪い例: NG結果でスコアが高いもの（門前払いではなく会話できたが案件化できなかった）、最大5件
-      const [badEvals] = await pool.query(
-        `SELECT
-          ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
-          c.result_code, co.company_name
-        FROM ai_evaluations ae
-        JOIN calls c ON ae.call_id = c.id
-        LEFT JOIN companies co ON c.company_id = co.id
-        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
-          AND c.result_code = 'NG'
-        ORDER BY ae.overall_score DESC, c.call_started_at DESC
-        LIMIT 5`,
-        [op.id, evalDateFrom, evalDateTo]
-      );
-
-      const evalRows = [...goodEvals, ...badEvals];
-
-      // 稼働時間
-      const [whRows] = await pool.query(
-        `SELECT SUM(
-           TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
-           - COALESCE(break_minutes, 0)
-         ) as total_minutes
-         FROM work_hours
-         WHERE user_id = ? AND date BETWEEN ? AND ?`,
-        [op.id, dateFrom, dateTo]
-      );
-      const workHours = whRows[0]?.total_minutes ? whRows[0].total_minutes / 60 : 0;
-
-      const stats = statsRows[0];
-      const scoreAvgs = avgRows[0];
-
-      // データがない場合はスキップ
-      if (!stats.total_calls && evalRows.length === 0) {
-        sheets.push({
-          userId: op.id,
-          name: op.name,
-          sheet: null,
-          message: 'この期間のデータがありません',
-        });
-        continue;
-      }
-
-      // AI生成
-      let sheet;
-      try {
-        sheet = await evaluateStatusSheet({
-          name: op.name,
-          level: op.operator_level,
-          dateFrom,
-          dateTo,
-          workHours,
-          stats: {
-            totalCalls: stats.total_calls || 0,
-            effectiveConnections: stats.effective_connections || 0,
-            personConnections: stats.person_connections || 0,
-            projects: stats.projects || 0,
-          },
-          evaluations: evalRows,
-          scoreAvgs: {
-            overall: scoreAvgs.overall || 0,
-            opening: scoreAvgs.opening || 0,
-            clarity: scoreAvgs.clarity || 0,
-            hearing: scoreAvgs.hearing || 0,
-            rebuttal: scoreAvgs.rebuttal || 0,
-            closing: scoreAvgs.closing || 0,
-          },
-        });
-      } catch (aiErr) {
-        logger.error(`AI生成失敗 (${op.name}):`, aiErr.message);
-        sheets.push({ userId: op.id, name: op.name, sheet: null, message: `AI生成失敗: ${aiErr.message}` });
-        continue;
-      }
-
-      // DBに保存
-      try {
-        const [existing] = await pool.query(
-          'SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
-          [op.id]
-        );
-        if (existing.length > 0) {
-          await pool.execute(
-            `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
-            [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), req.user.id, existing[0].id]
-          );
-        } else {
-          await pool.execute(
-            `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), req.user.id]
-          );
-        }
-      } catch (dbErr) {
-        logger.error(`DB保存失敗 (${op.name}):`, dbErr.message);
-      }
-
-      sheets.push({
-        userId: op.id,
-        name: op.name,
-        sheet,
-      });
+      const result = await generateSheetForOperator(op, dateFrom, dateTo, req.user.id);
+      sheets.push(result);
     }
 
     return ApiResponse.success(res, {
@@ -632,4 +603,43 @@ const updateStatusSheet = async (req, res, next) => {
   }
 };
 
-module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, getStatusSheets, getStatusSheet, updateStatusSheet };
+/**
+ * POST /api/ai/analysis/status-sheets/:userId/generate
+ * 個別オペレーターのステータスシート生成
+ */
+const generateSingleStatusSheet = async (req, res, next) => {
+  try {
+    await ensureStatusSheetsTable();
+    const { userId } = req.params;
+
+    // オペレーター取得
+    const [opRows] = await pool.query(
+      `SELECT id, name, operator_level FROM users WHERE id = ? AND role = 'operator' AND is_active = 1`,
+      [userId]
+    );
+    if (opRows.length === 0) {
+      return ApiResponse.notFound(res, 'オペレーターが見つかりません');
+    }
+    const op = opRows[0];
+
+    // 直近2週間固定
+    const now = new Date();
+    const twoWeeksAgo = new Date(now);
+    twoWeeksAgo.setDate(now.getDate() - 14);
+    const dateFrom = twoWeeksAgo.toISOString().slice(0, 10);
+    const dateTo = now.toISOString().slice(0, 10);
+
+    const result = await generateSheetForOperator(op, dateFrom, dateTo, req.user.id);
+
+    if (!result.sheet) {
+      return ApiResponse.success(res, { success: false, message: result.message || 'データがありません' });
+    }
+
+    return ApiResponse.success(res, { sheet: result, dateFrom, dateTo });
+  } catch (err) {
+    logger.error('個別ステータスシート生成エラー:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet };
