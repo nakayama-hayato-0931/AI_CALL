@@ -441,18 +441,21 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {perfData.operators.map(op => {
-                  const workH = op.work_minutes > 0 ? (op.work_minutes / 60).toFixed(1) : '-';
+                  const wh = op.work_minutes > 0 ? op.work_minutes / 60 : 0;
+                  const workH = wh > 0 ? wh.toFixed(1) : '-';
+                  const ph = (val) => wh > 0 ? (val / wh).toFixed(1) : '-';
                   const convRate = op.total_calls > 0 ? ((op.projects / op.total_calls) * 100).toFixed(1) : '-';
+                  const projEff = op.projects > 0 && wh > 0 ? (wh / op.projects).toFixed(1) : '-';
                   return (
                     <tr key={op.user_id} className="border-b border-gray-100 hover:bg-gray-50/50">
                       <td className="table-cell font-medium text-gray-800">{op.name}</td>
                       <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
-                      <td className="table-cell text-right">{op.total_calls}</td>
-                      <td className="table-cell text-right">{op.recall_gained || 0}</td>
-                      <td className="table-cell text-right">{op.recall_done || 0}</td>
-                      <td className="table-cell text-right">{op.effective_connections}</td>
-                      <td className="table-cell text-right">{op.person_connections}</td>
-                      <td className="table-cell text-right font-semibold text-blue-600">{op.projects}</td>
+                      <td className="table-cell text-right">{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
+                      <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
+                      <td className="table-cell text-right">{op.recall_done || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_done || 0)}/h</span></td>
+                      <td className="table-cell text-right">{op.effective_connections} <span className="text-[10px] text-gray-400">{ph(op.effective_connections)}/h</span></td>
+                      <td className="table-cell text-right">{op.person_connections} <span className="text-[10px] text-gray-400">{ph(op.person_connections)}/h</span></td>
+                      <td className="table-cell text-right font-semibold text-blue-600">{op.projects} <span className="text-[10px] text-gray-400 font-normal">{projEff !== '-' ? `${projEff}h/件` : ''}</span></td>
                       <td className="table-cell text-right">
                         {op.avg_ai_score > 0 ? (
                           <span className={`font-medium ${op.avg_ai_score >= 70 ? 'text-emerald-600' : op.avg_ai_score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
@@ -474,18 +477,21 @@ export default function DashboardPage() {
                     person_connections: acc.person_connections + (op.person_connections || 0),
                     projects: acc.projects + (op.projects || 0),
                   }), { work_minutes: 0, total_calls: 0, recall_gained: 0, recall_done: 0, effective_connections: 0, person_connections: 0, projects: 0 });
-                  const totalWorkH = t.work_minutes > 0 ? (t.work_minutes / 60).toFixed(1) : '-';
+                  const twh = t.work_minutes > 0 ? t.work_minutes / 60 : 0;
+                  const totalWorkH = twh > 0 ? twh.toFixed(1) : '-';
+                  const tph = (val) => twh > 0 ? (val / twh).toFixed(1) : '-';
                   const totalConv = t.total_calls > 0 ? ((t.projects / t.total_calls) * 100).toFixed(1) : '-';
+                  const totalProjEff = t.projects > 0 && twh > 0 ? (twh / t.projects).toFixed(1) : '-';
                   return (
                     <tr className="bg-blue-50/50 font-semibold">
                       <td className="table-cell">合計</td>
                       <td className="table-cell text-right">{totalWorkH !== '-' ? `${totalWorkH}h` : '-'}</td>
-                      <td className="table-cell text-right">{t.total_calls}</td>
-                      <td className="table-cell text-right">{t.recall_gained}</td>
-                      <td className="table-cell text-right">{t.recall_done}</td>
-                      <td className="table-cell text-right">{t.effective_connections}</td>
-                      <td className="table-cell text-right">{t.person_connections}</td>
-                      <td className="table-cell text-right text-blue-600">{t.projects}</td>
+                      <td className="table-cell text-right">{t.total_calls} <span className="text-[10px] text-gray-400 font-normal">{tph(t.total_calls)}/h</span></td>
+                      <td className="table-cell text-right">{t.recall_gained} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_gained)}/h</span></td>
+                      <td className="table-cell text-right">{t.recall_done} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_done)}/h</span></td>
+                      <td className="table-cell text-right">{t.effective_connections} <span className="text-[10px] text-gray-400 font-normal">{tph(t.effective_connections)}/h</span></td>
+                      <td className="table-cell text-right">{t.person_connections} <span className="text-[10px] text-gray-400 font-normal">{tph(t.person_connections)}/h</span></td>
+                      <td className="table-cell text-right text-blue-600">{t.projects} <span className="text-[10px] text-gray-400 font-normal">{totalProjEff !== '-' ? `${totalProjEff}h/件` : ''}</span></td>
                       <td className="table-cell text-right">-</td>
                       <td className="table-cell text-right">{totalConv !== '-' ? `${totalConv}%` : '-'}</td>
                     </tr>
