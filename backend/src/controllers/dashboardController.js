@@ -37,10 +37,10 @@ const INDUSTRY_CATEGORY_MAP = {
   'その他の製造業': '製造業',
 
   // 飲食・宿泊
-  '飲食店': '飲食・宿泊',
-  '持ち帰り・配達飲食サービス業': '飲食・宿泊',
-  '宿泊業': '飲食・宿泊',
-  '宿泊業，飲食サービス業': '飲食・宿泊',
+  '飲食店': '飲食',
+  '持ち帰り・配達飲食サービス業': '飲食',
+  '宿泊業': '宿泊',
+  '宿泊業，飲食サービス業': '飲食',
 
   // 建設
   '総合工事業': '建設業',
@@ -115,7 +115,7 @@ const getIndustryCategory = (industry) => {
   if (INDUSTRY_CATEGORY_MAP[industry]) return INDUSTRY_CATEGORY_MAP[industry];
   // 部分一致でカテゴリ推定
   if (industry.includes('製造')) return '製造業';
-  if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン')) return '飲食・宿泊';
+  if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン')) return '飲食';
   if (industry.includes('建設') || industry.includes('工事')) return '建設業';
   if (industry.includes('卸売') || industry.includes('小売')) return '卸売・小売';
   if (industry.includes('運送') || industry.includes('運輸') || industry.includes('倉庫')) return '運輸業';
@@ -124,7 +124,7 @@ const getIndustryCategory = (industry) => {
   if (industry.includes('教育') || industry.includes('学習')) return '教育';
   if (industry.includes('不動産')) return '不動産';
   if (industry.includes('農') || industry.includes('林') || industry.includes('漁')) return '農林漁業';
-  if (industry.includes('宿泊') || industry.includes('ホテル')) return '飲食・宿泊';
+  if (industry.includes('宿泊') || industry.includes('ホテル')) return '宿泊';
   return 'その他';
 };
 
