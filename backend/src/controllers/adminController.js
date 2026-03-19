@@ -163,29 +163,43 @@ const deleteUser = async (req, res, next) => {
 
     const userName = existing[0].name;
 
-    // 関連データを安全に削除（テーブルが存在しない場合もスキップ）
-    const safeDel = async (sql, params) => {
-      try { await pool.execute(sql, params); } catch (e) { logger.warn(`削除スキップ: ${e.message}`); }
-    };
-    await safeDel('DELETE FROM ai_evaluations WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM status_sheets WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM status_sheets WHERE created_by = ?', [id]);
-    await safeDel('DELETE FROM work_hours WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM recall_tasks WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM feature_requests WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM cost_records WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM evaluation_batch_logs WHERE user_id = ?', [id]);
-    await safeDel('DELETE FROM priority_assignments WHERE user_id = ?', [id]);
-    // callsのuser_idをNULL許容に変更してからNULLに
-    await safeDel('ALTER TABLE calls MODIFY COLUMN user_id INT UNSIGNED DEFAULT NULL', []);
-    await safeDel('UPDATE calls SET user_id = NULL WHERE user_id = ?', [id]);
-    // projectsのowner_user_idも同様
-    await safeDel('ALTER TABLE projects MODIFY COLUMN owner_user_id INT UNSIGNED DEFAULT NULL', []);
-    await safeDel('UPDATE projects SET owner_user_id = NULL WHERE owner_user_id = ?', [id]);
-    // companiesのロック解除
-    await safeDel('UPDATE companies SET locked_by_user_id = NULL WHERE locked_by_user_id = ?', [id]);
-    // ユーザー本体を削除
-    await pool.execute('DELETE FROM users WHERE id = ?', [id]);
+    // トランザクション内で外部キーチェックを無効化して削除
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute('SET FOREIGN_KEY_CHECKS = 0');
+
+      // 関連データを安全に削除
+      const tables = [
+        ['ai_evaluations', 'user_id'],
+        ['status_sheets', 'user_id'],
+        ['status_sheets', 'created_by'],
+        ['work_hours', 'user_id'],
+        ['recall_tasks', 'user_id'],
+        ['feature_requests', 'user_id'],
+        ['cost_records', 'user_id'],
+        ['evaluation_batch_logs', 'user_id'],
+        ['priority_assignments', 'user_id'],
+      ];
+      for (const [table, col] of tables) {
+        try { await conn.execute(`DELETE FROM ${table} WHERE ${col} = ?`, [id]); } catch (e) { /* skip */ }
+      }
+      // calls, projectsはuser参照をNULLに
+      try { await conn.execute('UPDATE calls SET user_id = NULL WHERE user_id = ?', [id]); } catch (e) { /* skip */ }
+      try { await conn.execute('UPDATE projects SET owner_user_id = NULL WHERE owner_user_id = ?', [id]); } catch (e) { /* skip */ }
+      try { await conn.execute('UPDATE companies SET locked_by_user_id = NULL WHERE locked_by_user_id = ?', [id]); } catch (e) { /* skip */ }
+      // ユーザー本体を削除
+      await conn.execute('DELETE FROM users WHERE id = ?', [id]);
+
+      await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
+      await conn.commit();
+    } catch (e) {
+      await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
 
     logger.info(`ユーザー完全削除: ID ${id} (${userName})`);
     return ApiResponse.success(res, null, `${userName}を完全に削除しました`);
