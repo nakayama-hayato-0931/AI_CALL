@@ -65,10 +65,31 @@ const createUser = async (req, res, next) => {
       [name, email || null, passwordHash, userRole]
     );
 
+    const newUserId = result.insertId;
     logger.info(`ユーザー作成: ${name} (role: ${userRole})`);
 
+    // オペレーターなら研修進捗を初期化
+    if (userRole === 'operator') {
+      const trainingSteps = [
+        [1, '座学研修/サービス理解'],
+        [2, 'トークスクリプト読み込み'],
+        [3, 'ロープレ'],
+        [4, 'コールシステム説明'],
+        [5, '架電開始'],
+        [6, '改善点フィードバック'],
+      ];
+      for (const [stepNum, stepName] of trainingSteps) {
+        try {
+          await pool.execute(
+            'INSERT IGNORE INTO operator_training (user_id, step_number, step_name) VALUES (?, ?, ?)',
+            [newUserId, stepNum, stepName]
+          );
+        } catch (e) { /* skip if table doesn't exist yet */ }
+      }
+    }
+
     return ApiResponse.created(res, {
-      id: result.insertId,
+      id: newUserId,
       name,
       email: email || null,
       role: userRole,

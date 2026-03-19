@@ -187,6 +187,20 @@ const runMigrations = async () => {
   } catch (err) {
     logger.warn('[Migration] operator_training:', err.message);
   }
+  // 既存オペレーターの研修進捗を初期化
+  try {
+    const [ops] = await pool.query("SELECT id FROM users WHERE role = 'operator' AND is_active = 1");
+    const steps = [
+      [1, '座学研修/サービス理解'], [2, 'トークスクリプト読み込み'], [3, 'ロープレ'],
+      [4, 'コールシステム説明'], [5, '架電開始'], [6, '改善点フィードバック'],
+    ];
+    for (const op of ops) {
+      for (const [num, name] of steps) {
+        try { await pool.execute('INSERT IGNORE INTO operator_training (user_id, step_number, step_name) VALUES (?, ?, ?)', [op.id, num, name]); } catch(e) {}
+      }
+    }
+    logger.info('[Migration] 既存オペレーター研修進捗 初期化完了');
+  } catch (err) { logger.warn('[Migration] 研修進捗初期化:', err.message); }
   // status_sheetsにtargets/scenarioカラム追加
   try {
     await pool.execute(`ALTER TABLE status_sheets ADD COLUMN targets JSON DEFAULT NULL`);

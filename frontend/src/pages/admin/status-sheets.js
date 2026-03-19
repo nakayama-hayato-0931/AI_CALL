@@ -247,15 +247,36 @@ export default function StatusSheetsPage() {
         )}
       </div>
 
-      {/* ステータスシート一覧 */}
-      {sheets.length === 0 ? (
-        <div className="card p-8 text-center">
-          <p className="text-sm text-gray-400">ステータスシートがありません</p>
-          <p className="text-xs text-gray-300 mt-1">「AI生成」ボタンで各オペレーターのシートを作成してください</p>
-        </div>
-      ) : (
+      {/* ステータスシート一覧（シートがないオペレーターも含む） */}
+      {(() => {
+        // シートがあるオペレーターのIDセット
+        const sheetUserIds = new Set(sheets.map(s => s.user_id));
+        // シートがないオペレーターをダミーエントリとして追加
+        const allEntries = [
+          ...sheets,
+          ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
+            id: null,
+            user_id: op.id,
+            user_name: op.name,
+            operator_level: op.operator_level || null,
+            current_status: null,
+            training_plan: null,
+            next_steps: null,
+            targets: null,
+            scenario: null,
+            updated_at: null,
+            period_from: null,
+            period_to: null,
+            _placeholder: true,
+          }))
+        ];
+        return allEntries.length === 0 ? (
+          <div className="card p-8 text-center">
+            <p className="text-sm text-gray-400">オペレーターがいません</p>
+          </div>
+        ) : (
         <div className="space-y-3">
-          {sheets.map(sheet => {
+          {allEntries.map(sheet => {
             const cs = parseJSON(sheet.current_status);
             const tp = parseJSON(sheet.training_plan);
             const ns = parseJSON(sheet.next_steps);
@@ -264,6 +285,7 @@ export default function StatusSheetsPage() {
             const isExpanded = expandedUser === sheet.user_id;
             const isEditing = editingId === sheet.id;
             const isBeginnerLevel = sheet.operator_level === '初級';
+            const isPlaceholder = sheet._placeholder;
 
             return (
               <div key={sheet.id} className="card overflow-hidden">
@@ -283,8 +305,11 @@ export default function StatusSheetsPage() {
                     <div className="text-left">
                       <p className="text-sm font-medium text-gray-800">{sheet.user_name}</p>
                       <p className="text-[10px] text-gray-400">
-                        {sheet.period_from} 〜 {sheet.period_to}
-                        {' / '}更新: {new Date(sheet.updated_at).toLocaleDateString('ja-JP')}
+                        {sheet.period_from ? (
+                          <>{sheet.period_from} 〜 {sheet.period_to} / 更新: {new Date(sheet.updated_at).toLocaleDateString('ja-JP')}</>
+                        ) : (
+                          <span className="text-gray-300">ステータスシート未生成</span>
+                        )}
                       </p>
                     </div>
                     {sheet.operator_level && (
@@ -304,18 +329,35 @@ export default function StatusSheetsPage() {
                 {/* 展開コンテンツ */}
                 {isExpanded && (
                   <div className="px-5 pb-5 space-y-5 border-t border-gray-100 pt-4">
-                    {/* 編集ボタン */}
-                    <div className="flex justify-end gap-2">
-                      {isEditing ? (
-                        <>
-                          <button onClick={() => setEditingId(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded border">キャンセル</button>
-                          <button onClick={handleSaveEdit} className="btn-primary text-xs">保存</button>
-                        </>
-                      ) : (
-                        <button onClick={() => handleStartEdit(sheet)} className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-50">編集</button>
-                      )}
-                    </div>
+                    {/* プレースホルダー（シート未生成）の場合 */}
+                    {isPlaceholder && !isBeginnerLevel && (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-gray-400">ステータスシートが未生成です</p>
+                        <p className="text-xs text-gray-300 mt-1">「AI生成」または「個別生成」で作成してください</p>
+                      </div>
+                    )}
+                    {isPlaceholder && isBeginnerLevel && (
+                      <>
+                        <div className="text-center py-2">
+                          <p className="text-xs text-gray-400">ステータスシートは「AI生成」で作成できます</p>
+                        </div>
+                      </>
+                    )}
+                    {/* 編集ボタン（シートがある場合のみ） */}
+                    {!isPlaceholder && (
+                      <div className="flex justify-end gap-2">
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => setEditingId(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded border">キャンセル</button>
+                            <button onClick={handleSaveEdit} className="btn-primary text-xs">保存</button>
+                          </>
+                        ) : (
+                          <button onClick={() => handleStartEdit(sheet)} className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-50">編集</button>
+                        )}
+                      </div>
+                    )}
 
+                    {!isPlaceholder && (<>
                     {/* 1. 現在の育成状況 */}
                     <div>
                       <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
@@ -634,6 +676,7 @@ export default function StatusSheetsPage() {
                       </div>
                     )}
 
+                    </>)}
                     {/* 6. 研修進捗（初級のみ） */}
                     {isBeginnerLevel && (
                       <div>
@@ -713,7 +756,8 @@ export default function StatusSheetsPage() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
     </Layout>
   );
 }
