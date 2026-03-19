@@ -100,6 +100,7 @@ export default function DashboardPage() {
 
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
+  const [kpiDate, setKpiDate] = useState(new Date().toISOString().slice(0, 10));
   const isManagerRole = user?.role === 'admin' || user?.role === 'manager';
   const [kpiScope, setKpiScope] = useState(isManagerRole ? 'team' : 'self');
   const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
@@ -255,11 +256,11 @@ export default function DashboardPage() {
     fetchStats();
     fetchChartData();
     if (isManager) fetchPerfData();
-  }, [kpiPeriod, kpiScope, kpiTargetUserId]);
+  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId]);
 
   const fetchStats = async () => {
     try {
-      const params = { period: kpiPeriod, scope: kpiScope };
+      const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate };
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -280,7 +281,7 @@ export default function DashboardPage() {
 
   const fetchChartData = async () => {
     try {
-      const params = { period: kpiPeriod, scope: kpiScope };
+      const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate };
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -299,8 +300,7 @@ export default function DashboardPage() {
 
   const fetchPerfData = async () => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${today}`);
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}`);
       if (res.success) setPerfData(res.data);
     } catch (err) {
       console.error('オペレーター実績取得失敗:', err);
@@ -401,6 +401,10 @@ export default function DashboardPage() {
                 }`}>{p.label}</button>
             ))}
           </div>
+          {kpiPeriod === 'daily' && (
+            <input type="date" value={kpiDate} onChange={e => setKpiDate(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+          )}
           {!isManager && (
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               {[{ value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
