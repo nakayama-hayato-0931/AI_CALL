@@ -299,7 +299,7 @@ export default function AIEvaluationPage() {
 
             {/* 右: フィードバック */}
             <div className="space-y-3 text-sm">
-              <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">日次サマリー</div>
+              <div className="text-xs font-semibold text-gray-500">日次サマリー</div>
               <p className="text-gray-600 text-xs">
                 評価済み: {dailySummary.evaluatedCalls} / {dailySummary.totalCalls}件
               </p>
@@ -409,7 +409,7 @@ export default function AIEvaluationPage() {
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                                 {/* スコアバー */}
                                 <div className="space-y-2">
-                                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">スコア詳細</h4>
+                                  <h4 className="text-xs font-semibold text-gray-500 mb-3">スコア詳細</h4>
                                   <ScoreBar label="第一声" score={call.opening_score} />
                                   <ScoreBar label="明瞭さ" score={call.clarity_score} />
                                   <ScoreBar label="ヒアリング" score={call.hearing_score} />
@@ -421,7 +421,7 @@ export default function AIEvaluationPage() {
                                 <div className="space-y-3">
                                   {call.summary && (
                                     <div>
-                                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">要約</h4>
+                                      <h4 className="text-xs font-semibold text-gray-500 mb-1">要約</h4>
                                       <p className="text-sm text-gray-600">{call.summary}</p>
                                     </div>
                                   )}

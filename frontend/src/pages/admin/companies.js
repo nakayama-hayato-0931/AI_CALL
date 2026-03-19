@@ -408,7 +408,7 @@ export default function AdminCompanies() {
               </thead>
               <tbody>
                 {companies.map(c => (
-                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                     <td className="table-cell font-medium">{c.company_name}</td>
                     <td className="table-cell text-gray-500">{c.phone_number}</td>
                     <td className="table-cell text-gray-500">{c.industry || '-'}</td>
@@ -530,7 +530,7 @@ export default function AdminCompanies() {
                   <tbody>
                     {hours.map(h => (
                       <tr key={h} className={`border-b border-gray-50 transition-colors ${
-                        h === currentHour ? 'bg-yellow-50 ring-1 ring-yellow-300 ring-inset' : 'hover:bg-gray-50/50'
+                        h === currentHour ? 'bg-yellow-50 ring-1 ring-yellow-300 ring-inset' : 'hover:bg-blue-50/30 transition-colors'
                       }`}>
                         <td className={`px-3 py-1.5 font-medium ${h === currentHour ? 'text-yellow-700 font-bold' : 'text-gray-500'}`}>
                           {h}:00{h === currentHour && ' ★'}

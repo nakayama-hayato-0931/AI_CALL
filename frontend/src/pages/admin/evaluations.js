@@ -360,7 +360,7 @@ export default function AdminEvaluations() {
           </thead>
           <tbody>
             {evaluations.map(ev => (
-              <tr key={ev.id} className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer group"
+              <tr key={ev.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer group"
                 onClick={() => setExpandedId(expandedId === ev.id ? null : ev.id)}>
                 <td colSpan="6" className="p-0">
                   {/* メイン行 */}

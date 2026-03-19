@@ -24,20 +24,20 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLES = {
-  NAITEI:           'bg-blue-600 text-white',
-  NAITEI_TORIKESHI: 'bg-orange-500 text-white',
-  FUGOKAKU:         'bg-red-600 text-white',
-  KEKKA_MACHI:      'bg-pink-500 text-white',
-  MENSETSU_KAKUTEI: 'bg-pink-500 text-white',
-  BOSHUCHU:         'bg-teal-100 text-teal-700',
-  SHORUI_CHU:       'bg-pink-200 text-pink-800',
-  LOST:             'bg-gray-800 text-white',
-  BARASHI:          'bg-gray-800 text-white',
-  HORYU:            'bg-amber-100 text-amber-700',
-  SHORUI_OCHI:      'bg-gray-800 text-white',
-  KISON_NASHI:      'bg-gray-800 text-white',
-  MODOSHI:          'bg-yellow-400 text-yellow-900',
-  MODORI:           'bg-emerald-500 text-white',
+  NAITEI:           'bg-emerald-50 text-emerald-700 border border-emerald-200/60',
+  NAITEI_TORIKESHI: 'bg-orange-50 text-orange-700 border border-orange-200/60',
+  FUGOKAKU:         'bg-red-50 text-red-700 border border-red-200/60',
+  KEKKA_MACHI:      'bg-blue-50 text-blue-700 border border-blue-200/60',
+  MENSETSU_KAKUTEI: 'bg-emerald-50 text-emerald-700 border border-emerald-200/60',
+  BOSHUCHU:         'bg-blue-50 text-blue-700 border border-blue-200/60',
+  SHORUI_CHU:       'bg-blue-50 text-blue-700 border border-blue-200/60',
+  LOST:             'bg-red-50 text-red-700 border border-red-200/60',
+  BARASHI:          'bg-red-50 text-red-700 border border-red-200/60',
+  HORYU:            'bg-amber-50 text-amber-700 border border-amber-200/60',
+  SHORUI_OCHI:      'bg-red-50 text-red-700 border border-red-200/60',
+  KISON_NASHI:      'bg-gray-50 text-gray-600 border border-gray-200/60',
+  MODOSHI:          'bg-amber-50 text-amber-700 border border-amber-200/60',
+  MODORI:           'bg-emerald-50 text-emerald-700 border border-emerald-200/60',
 };
 
 const RESULT_BADGES = {
@@ -323,7 +323,7 @@ export default function AdminProjects() {
               {projects.map(p => {
                 const urgent = isUrgentUnconfirmed(p);
                 return (
-                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer"
+                  <tr key={p.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
                     onClick={() => router.push(`/projects/${p.id}`)}>
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {new Date(p.created_at).toLocaleDateString('ja-JP')}

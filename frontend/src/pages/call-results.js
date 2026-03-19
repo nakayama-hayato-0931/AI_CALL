@@ -364,7 +364,7 @@ export default function CallResultsPage() {
                               <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
                               </svg>
-                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">文字起こし</h4>
+                              <h4 className="text-xs font-semibold text-gray-500">文字起こし</h4>
                             </div>
                             <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-80 overflow-y-auto">
                               <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">

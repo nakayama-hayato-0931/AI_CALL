@@ -660,7 +660,7 @@ export default function CallPage() {
 
                 {callHistory.length > 0 && (
                   <div className="mt-5 pt-4 border-t border-gray-100">
-                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5">前回履歴</h3>
+                    <h3 className="text-xs font-semibold text-gray-500 mb-2.5">前回履歴</h3>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {callHistory.slice(0, 5).map((c) => (
                         <div key={c.id} className="bg-gray-50 rounded-lg p-2.5 text-xs">

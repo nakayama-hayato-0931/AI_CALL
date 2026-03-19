@@ -341,7 +341,7 @@ export default function OperatorDetailPage() {
                 </thead>
                 <tbody>
                   {data.evaluations.map(ev => (
-                    <tr key={ev.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                    <tr key={ev.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                       <td className="table-cell">{ev.company_name}</td>
                       <td className="table-cell text-gray-400">
                         {new Date(ev.call_started_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}

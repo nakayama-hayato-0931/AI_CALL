@@ -88,7 +88,7 @@ export default function AdminPerformance() {
               </thead>
               <tbody>
                 {data.operators.map(op => (
-                  <tr key={op.user_id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                  <tr key={op.user_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                     <td className="table-cell font-medium">
                       <Link href={`/admin/performance/${op.user_id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
                         {op.name}

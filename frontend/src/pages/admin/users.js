@@ -198,7 +198,7 @@ export default function AdminUsers() {
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+              <tr key={u.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                 <td className="table-cell font-medium">{u.name}</td>
                 <td className="table-cell text-gray-500">{u.email || <span className="text-gray-300">-</span>}</td>
                 <td className="table-cell">
