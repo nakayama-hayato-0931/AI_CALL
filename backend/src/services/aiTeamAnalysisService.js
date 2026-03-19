@@ -30,7 +30,28 @@ const callClaude = async (systemPrompt, userContent, maxTokens = 2000, temperatu
   if (!jsonMatch) {
     throw new Error('AIの応答からJSONを抽出できませんでした');
   }
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (parseErr) {
+    // 不完全なJSON（トークン上限で途切れた場合）を修復試行
+    let fixed = jsonMatch[0];
+    // 未閉じの文字列を閉じる
+    const openQuotes = (fixed.match(/"/g) || []).length;
+    if (openQuotes % 2 !== 0) fixed += '"';
+    // 未閉じの括弧を閉じる
+    const openBrackets = (fixed.match(/\[/g) || []).length - (fixed.match(/\]/g) || []).length;
+    for (let i = 0; i < openBrackets; i++) fixed += ']';
+    const openBraces = (fixed.match(/\{/g) || []).length - (fixed.match(/\}/g) || []).length;
+    for (let i = 0; i < openBraces; i++) fixed += '}';
+    // 末尾のカンマを除去
+    fixed = fixed.replace(/,\s*([\]}])/g, '$1');
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      logger.error('JSON修復失敗:', fixed.slice(-200));
+      throw new Error('AIの応答JSONが不完全です（トークン上限の可能性）');
+    }
+  }
 };
 
 /**
@@ -339,7 +360,7 @@ ${badSection}
 
 上記の成功事例と改善事例を比較し、何が案件化の決め手になっているか、何が不足しているかを分析してください。`;
 
-    const result = await callClaude(systemPrompt, userContent, 2500, 0.3);
+    const result = await callClaude(systemPrompt, userContent, 4096, 0.3);
 
     logger.info(`ステータスシート生成完了: name=${name}`);
     return result;
