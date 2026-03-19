@@ -29,7 +29,7 @@ const ensureStatusSheetsTable = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
   } catch (e) {
-    // テーブルが既に存在する場合はスキップ
+    logger.warn('[ensureStatusSheetsTable]', e.message);
   }
 };
 
@@ -538,8 +538,12 @@ const getStatusSheets = async (req, res, next) => {
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
+    // テーブルがまだ存在しない場合は空配列を返す
+    if (err.code === 'ER_NO_SUCH_TABLE') {
+      return ApiResponse.success(res, []);
+    }
     logger.error('ステータスシート一覧取得エラー:', err.message);
-    next(err);
+    return ApiResponse.success(res, []);
   }
 };
 

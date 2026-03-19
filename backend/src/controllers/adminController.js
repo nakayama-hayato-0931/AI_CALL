@@ -210,22 +210,30 @@ const getAllOperatorPerformance = async (req, res, next) => {
 
     // リコール消化数と稼働時間を各オペレーターに追加
     for (const op of rows) {
-      const [recallRows] = await pool.query(
-        `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(updated_at) BETWEEN ? AND ?`,
-        [op.user_id, dateFrom, dateTo]
-      );
-      op.recall_done = recallRows[0]?.cnt || 0;
+      try {
+        const [recallRows] = await pool.query(
+          `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(updated_at) BETWEEN ? AND ?`,
+          [op.user_id, dateFrom, dateTo]
+        );
+        op.recall_done = recallRows[0]?.cnt || 0;
+      } catch (e) {
+        op.recall_done = 0;
+      }
 
-      const [whRows] = await pool.query(
-        `SELECT SUM(
-           TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
-           - COALESCE(break_minutes, 0)
-         ) as total_minutes
-         FROM work_hours
-         WHERE user_id = ? AND date BETWEEN ? AND ?`,
-        [op.user_id, dateFrom, dateTo]
-      );
-      op.work_minutes = whRows[0]?.total_minutes || 0;
+      try {
+        const [whRows] = await pool.query(
+          `SELECT SUM(
+             TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+             - COALESCE(break_minutes, 0)
+           ) as total_minutes
+           FROM work_hours
+           WHERE user_id = ? AND date BETWEEN ? AND ?`,
+          [op.user_id, dateFrom, dateTo]
+        );
+        op.work_minutes = whRows[0]?.total_minutes || 0;
+      } catch (e) {
+        op.work_minutes = 0;
+      }
     }
 
     return ApiResponse.success(res, {
