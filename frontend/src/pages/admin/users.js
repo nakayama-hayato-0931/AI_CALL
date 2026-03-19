@@ -85,6 +85,14 @@ export default function AdminUsers() {
     } catch (err) { toast.error('更新に失敗しました'); }
   };
 
+  const handleLevelChange = async (u, level) => {
+    try {
+      await api.put(`/api/admin/users/${u.id}`, { operator_level: level || null });
+      toast.success('ランクを更新しました');
+      fetchUsers();
+    } catch (err) { toast.error('更新に失敗しました'); }
+  };
+
   if (!user || user.role !== 'admin') return null;
 
   return (
@@ -134,6 +142,7 @@ export default function AdminUsers() {
               <th className="table-header">名前</th>
               <th className="table-header">メール</th>
               <th className="table-header">ロール</th>
+              <th className="table-header">ランク</th>
               <th className="table-header">ステータス</th>
               <th className="table-header">作成日</th>
               <th className="table-header">操作</th>
@@ -148,6 +157,17 @@ export default function AdminUsers() {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_STYLES[u.role] || 'bg-gray-100 text-gray-700'}`}>
                     {ROLE_OPTIONS.find(r => r.value === u.role)?.label || u.role}
                   </span>
+                </td>
+                <td className="table-cell">
+                  {u.role === 'operator' ? (
+                    <select value={u.operator_level || ''} onChange={e => handleLevelChange(u, e.target.value)}
+                      className="text-xs border border-gray-200 rounded px-1.5 py-0.5">
+                      <option value="">未設定</option>
+                      <option value="初級">初級</option>
+                      <option value="中級">中級</option>
+                      <option value="上級">上級</option>
+                    </select>
+                  ) : <span className="text-gray-300 text-xs">-</span>}
                 </td>
                 <td className="table-cell">
                   <button onClick={() => handleToggleActive(u)} className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>

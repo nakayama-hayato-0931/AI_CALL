@@ -385,7 +385,7 @@ const generateStatusSheets = async (req, res, next) => {
 
     // 全アクティブオペレーター取得
     const [operators] = await pool.query(
-      `SELECT u.id, u.name FROM users u WHERE u.role = 'operator' AND u.is_active = 1 ORDER BY u.name`
+      `SELECT u.id, u.name, u.operator_level FROM users u WHERE u.role = 'operator' AND u.is_active = 1 ORDER BY u.name`
     );
 
     if (operators.length === 0) {
@@ -491,6 +491,7 @@ const generateStatusSheets = async (req, res, next) => {
       try {
         sheet = await evaluateStatusSheet({
           name: op.name,
+          level: op.operator_level,
           dateFrom,
           dateTo,
           workHours,
@@ -567,7 +568,7 @@ const getStatusSheets = async (req, res, next) => {
   try {
     await ensureStatusSheetsTable();
     const [rows] = await pool.query(
-      `SELECT ss.id, ss.user_id, u.name as user_name, ss.period_from, ss.period_to,
+      `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps,
               ss.created_at, ss.updated_at, cb.name as created_by_name
        FROM status_sheets ss
@@ -594,7 +595,7 @@ const getStatusSheet = async (req, res, next) => {
   try {
     const { userId } = req.params;
     const [rows] = await pool.query(
-      `SELECT ss.id, ss.user_id, u.name as user_name, ss.period_from, ss.period_to,
+      `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps,
               ss.created_at, ss.updated_at
        FROM status_sheets ss

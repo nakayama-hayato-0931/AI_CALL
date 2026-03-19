@@ -158,6 +158,14 @@ const runMigrations = async () => {
   } catch (err) {
     logger.warn('[Migration] status_sheets:', err.message);
   }
+  // usersテーブルにoperator_levelカラム追加
+  try {
+    await pool.execute(`ALTER TABLE users ADD COLUMN operator_level ENUM('初級','中級','上級') DEFAULT NULL`);
+    logger.info('[Migration] users.operator_level カラム追加完了');
+  } catch (err) {
+    // カラムが既に存在する場合はスキップ
+    if (!err.message.includes('Duplicate column')) logger.warn('[Migration] operator_level:', err.message);
+  }
 };
 runMigrations();
 

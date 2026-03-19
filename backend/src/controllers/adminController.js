@@ -17,7 +17,7 @@ const { getDateRange } = require('../utils/periodHelper');
 const getUsers = async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, email, role, is_active, created_at, updated_at FROM users ORDER BY created_at DESC'
+      'SELECT id, name, email, role, is_active, operator_level, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -86,7 +86,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, is_active } = req.body;
+    const { name, email, password, role, is_active, operator_level } = req.body;
 
     const [existing] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -119,6 +119,7 @@ const updateUser = async (req, res, next) => {
     if (email !== undefined) { updates.push('email = ?'); params.push(email || null); }
     if (role !== undefined) { updates.push('role = ?'); params.push(role); }
     if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active); }
+    if (operator_level !== undefined) { updates.push('operator_level = ?'); params.push(operator_level || null); }
 
     if (password) {
       const passwordHash = await bcrypt.hash(password, 10);
@@ -187,7 +188,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT
-        u.id as user_id, u.name,
+        u.id as user_id, u.name, u.operator_level,
         COUNT(DISTINCT c.id) as total_calls,
         CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
         CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,

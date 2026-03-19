@@ -247,6 +247,9 @@ ${evalSummaries || '（評価データなし）'}`;
  */
 const evaluateStatusSheet = async (operatorData) => {
   try {
+    const { name, level, dateFrom, dateTo, workHours, stats, evaluations, scoreAvgs } = operatorData;
+    const levelLabel = level || '未設定';
+
     const systemPrompt = `あなたは法人営業コールセンターの育成担当マネージャーAIです。
 個別オペレーターのパフォーマンスデータとAI評価結果を分析し、育成ステータスシートを作成してください。
 
@@ -257,46 +260,56 @@ const evaluateStatusSheet = async (operatorData) => {
 - アポ獲得効率: 8時間に1件
 - 案件化率目標: 0.61%
 
+【このオペレーターのランク: ${levelLabel}】
+ランクに応じた改善案を提示してください:
+- 初級: 基礎的なトークスクリプトの習得、受付突破の基本パターン、架電数を増やす工夫
+- 中級: 担当者接続後のヒアリング力強化、切り返しパターンの引き出し増加、案件化率向上
+- 上級: 高難度業種への対応力、後輩への指導ポイント、チーム貢献
+
+【重要な制約】
+- ロープレ（ロールプレイング練習）は提案しないでください。実施環境がありません。
+- 改善は全てOJT（実際の架電業務の中での改善）で行います。
+- 「次の架電で〜を試す」「今日の架電から〜を意識する」「実際の通話で〜を実践する」のように、実務の中で取り組めるアクションにしてください。
+
 出力は必ず以下のJSON形式のみで返してください（余計なテキストは不要）:
 {
   "current_status": {
     "summary": "現在の育成状況の総括（2-3文）",
     "can_do": ["できていること1（具体的な根拠付き）", "できていること2", "できていること3"],
-    "improvements": ["改善が必要な点1（具体的な根拠付き）", "改善が必要な点2", "改善が必要な点3"],
-    "level": "初級/中級/上級のいずれか"
+    "improvements": ["改善が必要な点1（具体的な根拠付き）", "改善が必要な点2", "改善が必要な点3"]
   },
   "training_plan": {
     "short_term": {
       "period": "今週〜来週",
       "goals": ["短期目標1", "短期目標2"],
-      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+      "methods": ["OJTで実践できる方法1", "OJTで実践できる方法2"]
     },
     "mid_term": {
       "period": "1ヶ月以内",
       "goals": ["中期目標1", "中期目標2"],
-      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+      "methods": ["OJTで実践できる方法1", "OJTで実践できる方法2"]
     },
     "long_term": {
       "period": "3ヶ月以内",
       "goals": ["長期目標1", "長期目標2"],
-      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+      "methods": ["OJTで実践できる方法1", "OJTで実践できる方法2"]
     }
   },
   "next_steps": [
     {
-      "action": "具体的にやるべきこと（例：切り返しトークの第3パターンを毎日3回ロープレする）",
+      "action": "実際の架電で取り組むこと（例：次の架電から担当者名を聞き出す質問を必ず入れる）",
       "reason": "なぜこれをやるべきか",
       "deadline": "いつまでに",
       "success_criteria": "達成基準"
     },
     {
-      "action": "具体的にやるべきこと2",
+      "action": "実際の架電で取り組むこと2",
       "reason": "なぜこれをやるべきか",
       "deadline": "いつまでに",
       "success_criteria": "達成基準"
     },
     {
-      "action": "具体的にやるべきこと3",
+      "action": "実際の架電で取り組むこと3",
       "reason": "なぜこれをやるべきか",
       "deadline": "いつまでに",
       "success_criteria": "達成基準"
@@ -304,10 +317,8 @@ const evaluateStatusSheet = async (operatorData) => {
   ]
 }
 
-ネクストステップはできるだけ具体的に、何を・どのように・いつまでに・どの水準までやるかを明確にしてください。
-抽象的な「頑張る」「意識する」ではなく、実行可能で測定可能なアクションにしてください。`;
-
-    const { name, dateFrom, dateTo, workHours, stats, evaluations, scoreAvgs } = operatorData;
+ネクストステップはOJTで実践できる具体的なアクションにしてください。
+抽象的な「頑張る」「意識する」やロープレは禁止です。`;
     const periodLabel = dateFrom === '2000-01-01' ? '全期間' : `${dateFrom} 〜 ${dateTo}`;
     const convRate = stats.totalCalls > 0 ? ((stats.projects / stats.totalCalls) * 100).toFixed(1) : '0';
 

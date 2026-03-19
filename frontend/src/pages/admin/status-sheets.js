@@ -204,12 +204,12 @@ export default function StatusSheetsPage() {
                         {' / '}更新: {new Date(sheet.updated_at).toLocaleDateString('ja-JP')}
                       </p>
                     </div>
-                    {cs?.level && (
+                    {sheet.operator_level && (
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        cs.level === '上級' ? 'bg-emerald-100 text-emerald-700' :
-                        cs.level === '中級' ? 'bg-blue-100 text-blue-700' :
+                        sheet.operator_level === '上級' ? 'bg-emerald-100 text-emerald-700' :
+                        sheet.operator_level === '中級' ? 'bg-blue-100 text-blue-700' :
                         'bg-amber-100 text-amber-700'
-                      }`}>{cs.level}</span>
+                      }`}>{sheet.operator_level}</span>
                     )}
                   </div>
                   <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
