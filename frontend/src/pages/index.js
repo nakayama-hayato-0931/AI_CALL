@@ -428,6 +428,13 @@ export default function DashboardPage() {
       {isManager && perfData?.operators ? (
         <div className="card overflow-hidden mb-6">
           <div className="overflow-x-auto">
+            {/* 目標値の凡例 */}
+            <div className="flex items-center gap-4 px-3 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] text-gray-400">
+              <span>目標/h: コール15 / 有効接続3 / 担当接続1.5 / 案件12h以内</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>達成</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>80%以上</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>80%未満</span>
+            </div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-200">
@@ -448,8 +455,23 @@ export default function DashboardPage() {
                   const wh = op.work_minutes > 0 ? op.work_minutes / 60 : 0;
                   const workH = wh > 0 ? wh.toFixed(1) : '-';
                   const ph = (val) => wh > 0 ? (val / wh).toFixed(1) : '-';
+                  const phNum = (val) => wh > 0 ? val / wh : 0;
                   const convRate = op.total_calls > 0 ? ((op.projects / op.total_calls) * 100).toFixed(1) : '-';
                   const projEff = op.projects > 0 && wh > 0 ? (wh / op.projects).toFixed(1) : '-';
+                  // 目標値との乖離色
+                  const targetColor = (actual, target) => {
+                    if (wh <= 0) return '';
+                    if (actual >= target) return 'text-emerald-600';
+                    if (actual >= target * 0.8) return 'text-amber-600';
+                    return 'text-red-500';
+                  };
+                  const projEffColor = () => {
+                    if (!op.projects || wh <= 0) return '';
+                    const eff = wh / op.projects;
+                    if (eff <= 12) return 'text-emerald-600';
+                    if (eff <= 15) return 'text-amber-600';
+                    return 'text-red-500';
+                  };
                   return (
                     <tr key={op.user_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                       <td className="table-cell">
@@ -459,12 +481,12 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
-                      <td className="table-cell text-right">{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
+                      <td className={`table-cell text-right ${targetColor(phNum(op.total_calls), 15)}`}>{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_done || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_done || 0)}/h</span></td>
-                      <td className="table-cell text-right">{op.effective_connections} <span className="text-[10px] text-gray-400">{ph(op.effective_connections)}/h</span></td>
-                      <td className="table-cell text-right">{op.person_connections} <span className="text-[10px] text-gray-400">{ph(op.person_connections)}/h</span></td>
-                      <td className="table-cell text-right font-semibold text-blue-600">{op.projects} <span className="text-[10px] text-gray-400 font-normal">{projEff !== '-' ? `${projEff}h/件` : ''}</span></td>
+                      <td className={`table-cell text-right ${targetColor(phNum(op.effective_connections), 3)}`}>{op.effective_connections} <span className="text-[10px] text-gray-400">{ph(op.effective_connections)}/h</span></td>
+                      <td className={`table-cell text-right ${targetColor(phNum(op.person_connections), 1.5)}`}>{op.person_connections} <span className="text-[10px] text-gray-400">{ph(op.person_connections)}/h</span></td>
+                      <td className={`table-cell text-right font-semibold ${projEffColor() || 'text-blue-600'}`}>{op.projects} <span className="text-[10px] text-gray-400 font-normal">{projEff !== '-' ? `${projEff}h/件` : ''}</span></td>
                       <td className="table-cell text-right">
                         {op.avg_ai_score > 0 ? (
                           <span className={`font-medium ${op.avg_ai_score >= 70 ? 'text-emerald-600' : op.avg_ai_score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
