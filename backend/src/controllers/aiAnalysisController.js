@@ -6,7 +6,7 @@ const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { getDateRange } = require('../utils/periodHelper');
-const { evaluateTeamAnalysis, evaluateOperatorCoaching } = require('../services/aiTeamAnalysisService');
+const { evaluateTeamAnalysis, evaluateOperatorCoaching, evaluateStatusSheet } = require('../services/aiTeamAnalysisService');
 
 /**
  * POST /api/ai/analysis/team
@@ -333,4 +333,231 @@ const getOperatorCoaching = async (req, res, next) => {
   }
 };
 
-module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching };
+/**
+ * POST /api/ai/analysis/status-sheets
+ * 全オペレーターの育成ステータスシート一括生成
+ */
+const generateStatusSheets = async (req, res, next) => {
+  try {
+    const { period = 'monthly', date_from, date_to } = req.body;
+    let dateFrom, dateTo;
+    if (date_from && date_to) {
+      dateFrom = date_from;
+      dateTo = date_to;
+    } else {
+      const range = getDateRange(period, new Date().toISOString().slice(0, 10));
+      if (!range) {
+        return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+      }
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
+
+    // 全アクティブオペレーター取得
+    const [operators] = await pool.query(
+      `SELECT u.id, u.name FROM users u WHERE u.role = 'operator' AND u.is_active = 1 ORDER BY u.name`
+    );
+
+    if (operators.length === 0) {
+      return ApiResponse.success(res, { sheets: [], message: 'オペレーターがいません' });
+    }
+
+    const sheets = [];
+
+    for (const op of operators) {
+      // コール統計
+      const [statsRows] = await pool.query(
+        `SELECT
+          COUNT(c.id) as total_calls,
+          CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
+          CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
+          CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects
+        FROM calls c
+        WHERE c.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'`,
+        [op.id, dateFrom, dateTo]
+      );
+
+      // スコア平均
+      const [avgRows] = await pool.query(
+        `SELECT
+          ROUND(AVG(ae.overall_score), 1) as overall,
+          ROUND(AVG(ae.opening_score), 1) as opening,
+          ROUND(AVG(ae.clarity_score), 1) as clarity,
+          ROUND(AVG(ae.hearing_score), 1) as hearing,
+          ROUND(AVG(ae.rebuttal_score), 1) as rebuttal,
+          ROUND(AVG(ae.closing_score), 1) as closing
+        FROM ai_evaluations ae
+        JOIN calls c ON ae.call_id = c.id
+        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?`,
+        [op.id, dateFrom, dateTo]
+      );
+
+      // 直近の評価
+      const [evalRows] = await pool.query(
+        `SELECT
+          ae.overall_score, ae.summary, ae.good_points, ae.improvement_points,
+          c.result_code, co.company_name
+        FROM ai_evaluations ae
+        JOIN calls c ON ae.call_id = c.id
+        LEFT JOIN companies co ON c.company_id = co.id
+        WHERE ae.user_id = ? AND DATE(c.call_started_at) BETWEEN ? AND ?
+        ORDER BY c.call_started_at DESC
+        LIMIT 10`,
+        [op.id, dateFrom, dateTo]
+      );
+
+      // 稼働時間
+      const [whRows] = await pool.query(
+        `SELECT SUM(
+           TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+           - COALESCE(break_minutes, 0)
+         ) as total_minutes
+         FROM work_hours
+         WHERE user_id = ? AND date BETWEEN ? AND ?`,
+        [op.id, dateFrom, dateTo]
+      );
+      const workHours = whRows[0]?.total_minutes ? whRows[0].total_minutes / 60 : 0;
+
+      const stats = statsRows[0];
+      const scoreAvgs = avgRows[0];
+
+      // データがない場合はスキップ
+      if (!stats.total_calls && evalRows.length === 0) {
+        sheets.push({
+          userId: op.id,
+          name: op.name,
+          sheet: null,
+          message: 'この期間のデータがありません',
+        });
+        continue;
+      }
+
+      // AI生成
+      const sheet = await evaluateStatusSheet({
+        name: op.name,
+        dateFrom,
+        dateTo,
+        workHours,
+        stats: {
+          totalCalls: stats.total_calls || 0,
+          effectiveConnections: stats.effective_connections || 0,
+          personConnections: stats.person_connections || 0,
+          projects: stats.projects || 0,
+        },
+        evaluations: evalRows,
+        scoreAvgs: {
+          overall: scoreAvgs.overall || 0,
+          opening: scoreAvgs.opening || 0,
+          clarity: scoreAvgs.clarity || 0,
+          hearing: scoreAvgs.hearing || 0,
+          rebuttal: scoreAvgs.rebuttal || 0,
+          closing: scoreAvgs.closing || 0,
+        },
+      });
+
+      // DBに保存（既存があればUPDATE、なければINSERT）
+      const [existing] = await pool.query(
+        'SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
+        [op.id]
+      );
+      if (existing.length > 0) {
+        await pool.execute(
+          `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
+          [dateFrom, dateTo, JSON.stringify(sheet.current_status), JSON.stringify(sheet.training_plan), JSON.stringify(sheet.next_steps), req.user.id, existing[0].id]
+        );
+      } else {
+        await pool.execute(
+          `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status), JSON.stringify(sheet.training_plan), JSON.stringify(sheet.next_steps), req.user.id]
+        );
+      }
+
+      sheets.push({
+        userId: op.id,
+        name: op.name,
+        sheet,
+      });
+    }
+
+    return ApiResponse.success(res, {
+      period,
+      dateFrom,
+      dateTo,
+      sheets,
+    });
+  } catch (err) {
+    logger.error('ステータスシート生成エラー:', err.message, err.stack);
+    return res.status(500).json({
+      success: false,
+      message: `ステータスシート生成エラー: ${err.message}`,
+    });
+  }
+};
+
+/**
+ * GET /api/ai/analysis/status-sheets
+ * 保存済みステータスシート一覧取得
+ */
+const getStatusSheets = async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ss.id, ss.user_id, u.name as user_name, ss.period_from, ss.period_to,
+              ss.current_status, ss.training_plan, ss.next_steps,
+              ss.created_at, ss.updated_at, cb.name as created_by_name
+       FROM status_sheets ss
+       JOIN users u ON ss.user_id = u.id
+       JOIN users cb ON ss.created_by = cb.id
+       ORDER BY ss.updated_at DESC`
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/ai/analysis/status-sheets/:userId
+ * 特定オペレーターの最新ステータスシート取得
+ */
+const getStatusSheet = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await pool.query(
+      `SELECT ss.id, ss.user_id, u.name as user_name, ss.period_from, ss.period_to,
+              ss.current_status, ss.training_plan, ss.next_steps,
+              ss.created_at, ss.updated_at
+       FROM status_sheets ss
+       JOIN users u ON ss.user_id = u.id
+       WHERE ss.user_id = ?
+       ORDER BY ss.updated_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+    if (rows.length === 0) {
+      return ApiResponse.success(res, null);
+    }
+    return ApiResponse.success(res, rows[0]);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/ai/analysis/status-sheets/:id
+ * ステータスシートを手動編集
+ */
+const updateStatusSheet = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { current_status, training_plan, next_steps } = req.body;
+    await pool.execute(
+      `UPDATE status_sheets SET current_status = ?, training_plan = ?, next_steps = ? WHERE id = ?`,
+      [JSON.stringify(current_status), JSON.stringify(training_plan), JSON.stringify(next_steps), id]
+    );
+    return ApiResponse.success(res, { message: '更新しました' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, getStatusSheets, getStatusSheet, updateStatusSheet };

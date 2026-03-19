@@ -135,6 +135,35 @@ app.use(errorHandler);
 // ============================================
 // サーバー起動
 // ============================================
+// 自動マイグレーション
+const pool = require('../config/database');
+const runMigrations = async () => {
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS status_sheets (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NOT NULL,
+        period_from DATE NOT NULL,
+        period_to DATE NOT NULL,
+        current_status JSON NOT NULL,
+        training_plan JSON NOT NULL,
+        next_steps JSON NOT NULL,
+        created_by INT UNSIGNED NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_status_sheets_user (user_id),
+        INDEX idx_status_sheets_period (period_from, period_to),
+        CONSTRAINT fk_status_sheets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_status_sheets_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    logger.info('[Migration] status_sheets テーブル確認完了');
+  } catch (err) {
+    logger.warn('[Migration] status_sheets:', err.message);
+  }
+};
+runMigrations();
+
 app.listen(PORT, () => {
   logger.info(`=================================`);
   logger.info(`AIコールセンターCRM API起動`);

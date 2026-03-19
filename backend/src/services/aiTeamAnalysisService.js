@@ -219,4 +219,120 @@ ${evalSummaries || '（評価データなし）'}`;
   }
 };
 
-module.exports = { evaluateTeamAnalysis, evaluateOperatorCoaching };
+/**
+ * オペレーター育成ステータスシート生成
+ * @param {object} operatorData - { name, dateFrom, dateTo, workHours, stats, evaluations[], scoreAvgs }
+ * @returns {object} ステータスシート
+ */
+const evaluateStatusSheet = async (operatorData) => {
+  try {
+    const systemPrompt = `あなたは法人営業コールセンターの育成担当マネージャーAIです。
+個別オペレーターのパフォーマンスデータとAI評価結果を分析し、育成ステータスシートを作成してください。
+
+【チーム目標値（1時間あたり）】
+- コール数: 20件/h
+- 有効接続: 3件/h
+- 担当者接続: 2件/h
+- アポ獲得効率: 8時間に1件
+- 案件化率目標: 0.61%
+
+出力は必ず以下のJSON形式のみで返してください（余計なテキストは不要）:
+{
+  "current_status": {
+    "summary": "現在の育成状況の総括（2-3文）",
+    "can_do": ["できていること1（具体的な根拠付き）", "できていること2", "できていること3"],
+    "improvements": ["改善が必要な点1（具体的な根拠付き）", "改善が必要な点2", "改善が必要な点3"],
+    "level": "初級/中級/上級のいずれか"
+  },
+  "training_plan": {
+    "short_term": {
+      "period": "今週〜来週",
+      "goals": ["短期目標1", "短期目標2"],
+      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+    },
+    "mid_term": {
+      "period": "1ヶ月以内",
+      "goals": ["中期目標1", "中期目標2"],
+      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+    },
+    "long_term": {
+      "period": "3ヶ月以内",
+      "goals": ["長期目標1", "長期目標2"],
+      "methods": ["具体的なトレーニング方法1", "具体的なトレーニング方法2"]
+    }
+  },
+  "next_steps": [
+    {
+      "action": "具体的にやるべきこと（例：切り返しトークの第3パターンを毎日3回ロープレする）",
+      "reason": "なぜこれをやるべきか",
+      "deadline": "いつまでに",
+      "success_criteria": "達成基準"
+    },
+    {
+      "action": "具体的にやるべきこと2",
+      "reason": "なぜこれをやるべきか",
+      "deadline": "いつまでに",
+      "success_criteria": "達成基準"
+    },
+    {
+      "action": "具体的にやるべきこと3",
+      "reason": "なぜこれをやるべきか",
+      "deadline": "いつまでに",
+      "success_criteria": "達成基準"
+    }
+  ]
+}
+
+ネクストステップはできるだけ具体的に、何を・どのように・いつまでに・どの水準までやるかを明確にしてください。
+抽象的な「頑張る」「意識する」ではなく、実行可能で測定可能なアクションにしてください。`;
+
+    const { name, dateFrom, dateTo, workHours, stats, evaluations, scoreAvgs } = operatorData;
+    const periodLabel = dateFrom === '2000-01-01' ? '全期間' : `${dateFrom} 〜 ${dateTo}`;
+    const convRate = stats.totalCalls > 0 ? ((stats.projects / stats.totalCalls) * 100).toFixed(1) : '0';
+
+    const wh = workHours || 0;
+    let perHourText = '';
+    if (wh > 0) {
+      perHourText = `\n\n時間あたり実績（稼働${wh.toFixed(1)}h）:
+- コール数: ${(stats.totalCalls / wh).toFixed(1)}件/h （目標: 20件/h）
+- 有効接続: ${(stats.effectiveConnections / wh).toFixed(1)}件/h （目標: 3件/h）
+- 担当接続: ${(stats.personConnections / wh).toFixed(1)}件/h （目標: 2件/h）
+- アポ効率: ${stats.projects > 0 ? (wh / stats.projects).toFixed(1) + '時間/件' : 'アポなし'} （目標: 8時間/件）`;
+    }
+
+    const evalSummaries = evaluations.slice(0, 10).map((e, i) =>
+      `${i + 1}. ${e.company_name || '企業'}: ${e.result_code} / スコア${e.overall_score}点 / 良い点:${e.good_points || '-'} / 改善点:${e.improvement_points || '-'}`
+    ).join('\n');
+
+    const userContent = `【オペレーター育成ステータスシート作成依頼 (${periodLabel})】
+
+名前: ${name}
+
+架電統計:
+- 総架電数: ${stats.totalCalls}件
+- 有効接続: ${stats.effectiveConnections}件
+- 担当者接続: ${stats.personConnections}件
+- 案件獲得: ${stats.projects}件 (案件化率: ${convRate}%)${perHourText}
+
+スコア平均:
+- 総合: ${scoreAvgs.overall}
+- 第一声: ${scoreAvgs.opening}
+- 明瞭さ: ${scoreAvgs.clarity}
+- ヒアリング: ${scoreAvgs.hearing}
+- 切り返し: ${scoreAvgs.rebuttal}
+- クロージング: ${scoreAvgs.closing}
+
+【直近の架電評価詳細】
+${evalSummaries || '（評価データなし）'}`;
+
+    const result = await callClaude(systemPrompt, userContent, 2500, 0.3);
+
+    logger.info(`ステータスシート生成完了: name=${name}`);
+    return result;
+  } catch (err) {
+    logger.error('ステータスシート生成エラー:', err);
+    throw new Error(`ステータスシート生成に失敗しました: ${err.message}`);
+  }
+};
+
+module.exports = { evaluateTeamAnalysis, evaluateOperatorCoaching, evaluateStatusSheet };
