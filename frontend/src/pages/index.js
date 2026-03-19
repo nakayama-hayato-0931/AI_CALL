@@ -175,6 +175,9 @@ export default function DashboardPage() {
     toast.success('日報データをコピーしました');
   };
 
+  // オペレーター一覧（管理者のみ）
+  const [perfData, setPerfData] = useState(null);
+
   // AI分析用state
   const [analysisScope, setAnalysisScope] = useState('team');
   const [analysisTargetUserId, setAnalysisTargetUserId] = useState(null);
@@ -251,6 +254,7 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchStats();
     fetchChartData();
+    if (isManager) fetchPerfData();
   }, [kpiPeriod, kpiScope, kpiTargetUserId]);
 
   const fetchStats = async () => {
@@ -290,6 +294,16 @@ export default function DashboardPage() {
       setConnectionTable(connRes.data.data);
     } catch (err) {
       console.error('チャートデータ取得失敗:', err);
+    }
+  };
+
+  const fetchPerfData = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${today}`);
+      if (res.success) setPerfData(res.data);
+    } catch (err) {
+      console.error('オペレーター実績取得失敗:', err);
     }
   };
 
@@ -559,6 +573,90 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* オペレーター実績一覧（管理者/マネージャーのみ） */}
+      {isManager && perfData?.operators && (
+        <div className="card overflow-hidden mb-6">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-800">オペレーター実績</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="table-header text-left">オペレーター</th>
+                  <th className="table-header text-right">稼働時間</th>
+                  <th className="table-header text-right">コール数</th>
+                  <th className="table-header text-right">リコール獲得</th>
+                  <th className="table-header text-right">リコール消化</th>
+                  <th className="table-header text-right">有効接続</th>
+                  <th className="table-header text-right">担当接続</th>
+                  <th className="table-header text-right">案件獲得</th>
+                  <th className="table-header text-right">AI平均</th>
+                  <th className="table-header text-right">案件化率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perfData.operators.map(op => {
+                  const workH = op.work_minutes > 0 ? (op.work_minutes / 60).toFixed(1) : '-';
+                  const convRate = op.total_calls > 0 ? ((op.projects / op.total_calls) * 100).toFixed(1) : '-';
+                  return (
+                    <tr key={op.user_id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                      <td className="table-cell font-medium text-gray-800">{op.name}</td>
+                      <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
+                      <td className="table-cell text-right">{op.total_calls}</td>
+                      <td className="table-cell text-right">{op.recall_gained || 0}</td>
+                      <td className="table-cell text-right">{op.recall_done || 0}</td>
+                      <td className="table-cell text-right">{op.effective_connections}</td>
+                      <td className="table-cell text-right">{op.person_connections}</td>
+                      <td className="table-cell text-right font-semibold text-blue-600">{op.projects}</td>
+                      <td className="table-cell text-right">
+                        {op.avg_ai_score > 0 ? (
+                          <span className={`font-medium ${op.avg_ai_score >= 70 ? 'text-emerald-600' : op.avg_ai_score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                            {op.avg_ai_score}
+                          </span>
+                        ) : <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="table-cell text-right">{convRate !== '-' ? `${convRate}%` : '-'}</td>
+                    </tr>
+                  );
+                })}
+                {/* 合計行 */}
+                {(() => {
+                  const t = perfData.operators.reduce((acc, op) => ({
+                    work_minutes: acc.work_minutes + (op.work_minutes || 0),
+                    total_calls: acc.total_calls + (op.total_calls || 0),
+                    recall_gained: acc.recall_gained + (op.recall_gained || 0),
+                    recall_done: acc.recall_done + (op.recall_done || 0),
+                    effective_connections: acc.effective_connections + (op.effective_connections || 0),
+                    person_connections: acc.person_connections + (op.person_connections || 0),
+                    projects: acc.projects + (op.projects || 0),
+                  }), { work_minutes: 0, total_calls: 0, recall_gained: 0, recall_done: 0, effective_connections: 0, person_connections: 0, projects: 0 });
+                  const totalWorkH = t.work_minutes > 0 ? (t.work_minutes / 60).toFixed(1) : '-';
+                  const totalConv = t.total_calls > 0 ? ((t.projects / t.total_calls) * 100).toFixed(1) : '-';
+                  return (
+                    <tr className="bg-blue-50/50 font-semibold">
+                      <td className="table-cell">合計</td>
+                      <td className="table-cell text-right">{totalWorkH !== '-' ? `${totalWorkH}h` : '-'}</td>
+                      <td className="table-cell text-right">{t.total_calls}</td>
+                      <td className="table-cell text-right">{t.recall_gained}</td>
+                      <td className="table-cell text-right">{t.recall_done}</td>
+                      <td className="table-cell text-right">{t.effective_connections}</td>
+                      <td className="table-cell text-right">{t.person_connections}</td>
+                      <td className="table-cell text-right text-blue-600">{t.projects}</td>
+                      <td className="table-cell text-right">-</td>
+                      <td className="table-cell text-right">{totalConv !== '-' ? `${totalConv}%` : '-'}</td>
+                    </tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+          {perfData.operators.length === 0 && (
+            <div className="text-center py-6 text-gray-400 text-xs">データがありません</div>
+          )}
         </div>
       )}
 

@@ -89,7 +89,6 @@ const icons = {
 // 管理者メニュー（マスター定義）— ここに追加すればマネージャーにも自動反映
 const ADMIN_NAV = [
   { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
-  { href: '/admin/performance', label: 'オペレーター実績', icon: 'performance' },
   { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
   { href: '/admin/call-logs', label: '架電結果ログ', icon: 'log' },
   { href: '/admin/projects', label: '案件管理', icon: 'project' },

@@ -192,6 +192,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
         CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
         CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
         CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects,
+        CAST(SUM(CASE WHEN c.result_code = 'RECALL' THEN 1 ELSE 0 END) AS SIGNED) as recall_gained,
         COALESCE(ROUND(AVG(ae.overall_score), 1), 0) as avg_ai_score,
         COALESCE(ROUND(AVG(ae.opening_score), 1), 0) as avg_opening,
         COALESCE(ROUND(AVG(ae.clarity_score), 1), 0) as avg_clarity,
@@ -206,6 +207,26 @@ const getAllOperatorPerformance = async (req, res, next) => {
       ORDER BY total_calls DESC`,
       [dateFrom, dateTo]
     );
+
+    // リコール消化数と稼働時間を各オペレーターに追加
+    for (const op of rows) {
+      const [recallRows] = await pool.query(
+        `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(completed_at) BETWEEN ? AND ?`,
+        [op.user_id, dateFrom, dateTo]
+      );
+      op.recall_done = recallRows[0]?.cnt || 0;
+
+      const [whRows] = await pool.query(
+        `SELECT SUM(
+           TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+           - COALESCE(break_minutes, 0)
+         ) as total_minutes
+         FROM work_hours
+         WHERE user_id = ? AND date BETWEEN ? AND ?`,
+        [op.user_id, dateFrom, dateTo]
+      );
+      op.work_minutes = whRows[0]?.total_minutes || 0;
+    }
 
     return ApiResponse.success(res, {
       period,
