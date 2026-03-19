@@ -163,18 +163,27 @@ const deleteUser = async (req, res, next) => {
 
     const userName = existing[0].name;
 
-    // 関連データを削除（外部キー制約対応）
-    await pool.execute('DELETE FROM ai_evaluations WHERE user_id = ?', [id]);
-    await pool.execute('DELETE FROM status_sheets WHERE user_id = ?', [id]);
-    await pool.execute('DELETE FROM work_hours WHERE user_id = ?', [id]);
-    await pool.execute('DELETE FROM recall_tasks WHERE user_id = ?', [id]);
-    await pool.execute('DELETE FROM feature_requests WHERE user_id = ?', [id]);
-    // callsは企業情報と紐づくため、user_idをNULLに
-    await pool.execute('UPDATE calls SET user_id = NULL WHERE user_id = ?', [id]);
-    // projectsのoperator参照もNULLに
-    await pool.execute('UPDATE projects SET user_id = NULL WHERE user_id = ?', [id]);
-    // cost_records
-    try { await pool.execute('DELETE FROM cost_records WHERE user_id = ?', [id]); } catch (e) {}
+    // 関連データを安全に削除（テーブルが存在しない場合もスキップ）
+    const safeDel = async (sql, params) => {
+      try { await pool.execute(sql, params); } catch (e) { logger.warn(`削除スキップ: ${e.message}`); }
+    };
+    await safeDel('DELETE FROM ai_evaluations WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM status_sheets WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM status_sheets WHERE created_by = ?', [id]);
+    await safeDel('DELETE FROM work_hours WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM recall_tasks WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM feature_requests WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM cost_records WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM evaluation_batch_logs WHERE user_id = ?', [id]);
+    await safeDel('DELETE FROM priority_assignments WHERE user_id = ?', [id]);
+    // callsのuser_idをNULL許容に変更してからNULLに
+    await safeDel('ALTER TABLE calls MODIFY COLUMN user_id INT UNSIGNED DEFAULT NULL', []);
+    await safeDel('UPDATE calls SET user_id = NULL WHERE user_id = ?', [id]);
+    // projectsのowner_user_idも同様
+    await safeDel('ALTER TABLE projects MODIFY COLUMN owner_user_id INT UNSIGNED DEFAULT NULL', []);
+    await safeDel('UPDATE projects SET owner_user_id = NULL WHERE owner_user_id = ?', [id]);
+    // companiesのロック解除
+    await safeDel('UPDATE companies SET locked_by_user_id = NULL WHERE locked_by_user_id = ?', [id]);
     // ユーザー本体を削除
     await pool.execute('DELETE FROM users WHERE id = ?', [id]);
 
