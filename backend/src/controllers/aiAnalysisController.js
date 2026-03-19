@@ -463,43 +463,54 @@ const generateStatusSheets = async (req, res, next) => {
       }
 
       // AI生成
-      const sheet = await evaluateStatusSheet({
-        name: op.name,
-        dateFrom,
-        dateTo,
-        workHours,
-        stats: {
-          totalCalls: stats.total_calls || 0,
-          effectiveConnections: stats.effective_connections || 0,
-          personConnections: stats.person_connections || 0,
-          projects: stats.projects || 0,
-        },
-        evaluations: evalRows,
-        scoreAvgs: {
-          overall: scoreAvgs.overall || 0,
-          opening: scoreAvgs.opening || 0,
-          clarity: scoreAvgs.clarity || 0,
-          hearing: scoreAvgs.hearing || 0,
-          rebuttal: scoreAvgs.rebuttal || 0,
-          closing: scoreAvgs.closing || 0,
-        },
-      });
+      let sheet;
+      try {
+        sheet = await evaluateStatusSheet({
+          name: op.name,
+          dateFrom,
+          dateTo,
+          workHours,
+          stats: {
+            totalCalls: stats.total_calls || 0,
+            effectiveConnections: stats.effective_connections || 0,
+            personConnections: stats.person_connections || 0,
+            projects: stats.projects || 0,
+          },
+          evaluations: evalRows,
+          scoreAvgs: {
+            overall: scoreAvgs.overall || 0,
+            opening: scoreAvgs.opening || 0,
+            clarity: scoreAvgs.clarity || 0,
+            hearing: scoreAvgs.hearing || 0,
+            rebuttal: scoreAvgs.rebuttal || 0,
+            closing: scoreAvgs.closing || 0,
+          },
+        });
+      } catch (aiErr) {
+        logger.error(`AI生成失敗 (${op.name}):`, aiErr.message);
+        sheets.push({ userId: op.id, name: op.name, sheet: null, message: `AI生成失敗: ${aiErr.message}` });
+        continue;
+      }
 
-      // DBに保存（既存があればUPDATE、なければINSERT）
-      const [existing] = await pool.query(
-        'SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
-        [op.id]
-      );
-      if (existing.length > 0) {
-        await pool.execute(
-          `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
-          [dateFrom, dateTo, JSON.stringify(sheet.current_status), JSON.stringify(sheet.training_plan), JSON.stringify(sheet.next_steps), req.user.id, existing[0].id]
+      // DBに保存
+      try {
+        const [existing] = await pool.query(
+          'SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
+          [op.id]
         );
-      } else {
-        await pool.execute(
-          `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status), JSON.stringify(sheet.training_plan), JSON.stringify(sheet.next_steps), req.user.id]
-        );
+        if (existing.length > 0) {
+          await pool.execute(
+            `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
+            [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), req.user.id, existing[0].id]
+          );
+        } else {
+          await pool.execute(
+            `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), req.user.id]
+          );
+        }
+      } catch (dbErr) {
+        logger.error(`DB保存失敗 (${op.name}):`, dbErr.message);
       }
 
       sheets.push({
