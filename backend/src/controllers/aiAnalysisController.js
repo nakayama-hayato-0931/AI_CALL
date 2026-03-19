@@ -650,6 +650,7 @@ const TRAINING_STEPS = [
   { step_number: 4, step_name: 'コールシステム説明' },
   { step_number: 5, step_name: '架電開始' },
   { step_number: 6, step_name: '改善点フィードバック' },
+  { step_number: 7, step_name: '面談実施' },
 ];
 
 /**

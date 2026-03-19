@@ -77,6 +77,7 @@ const createUser = async (req, res, next) => {
         [4, 'コールシステム説明'],
         [5, '架電開始'],
         [6, '改善点フィードバック'],
+        [7, '面談実施'],
       ];
       for (const [stepNum, stepName] of trainingSteps) {
         try {
