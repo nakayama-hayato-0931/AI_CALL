@@ -14,7 +14,8 @@ export default function StatusSheetsPage() {
   const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [generatingSingle, setGeneratingSingle] = useState(null); // user_id of single generating
+  const [generatingSingle, setGeneratingSingle] = useState(null);
+  const [selectedOperator, setSelectedOperator] = useState('');
   const [expandedUser, setExpandedUser] = useState(null);
 
   // 編集
@@ -195,21 +196,32 @@ export default function StatusSheetsPage() {
           </button>
         </div>
         {operators.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
-            <span className="text-xs text-gray-400">個別生成:</span>
-            {operators.map(op => (
-              <button key={op.id} onClick={() => handleGenerateSingle(op.id, op.name)}
-                disabled={generating || generatingSingle === op.id}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50 flex items-center gap-1.5">
-                {generatingSingle === op.id ? (
+          <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-400 whitespace-nowrap">個別生成:</span>
+            <select value={selectedOperator} onChange={e => setSelectedOperator(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5">
+              <option value="">オペレーターを選択</option>
+              {operators.map(op => (
+                <option key={op.id} value={op.id}>{op.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                const op = operators.find(o => o.id === Number(selectedOperator));
+                if (op) handleGenerateSingle(op.id, op.name);
+              }}
+              disabled={!selectedOperator || generating || generatingSingle}
+              className="text-xs px-4 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              {generatingSingle ? (
+                <>
                   <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                ) : null}
-                {op.name}
-              </button>
-            ))}
+                  生成中...
+                </>
+              ) : '個別生成'}
+            </button>
           </div>
         )}
         {generating && (
