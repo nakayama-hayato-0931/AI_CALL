@@ -295,9 +295,39 @@ const evaluateStatusSheet = async (operatorData) => {
       "methods": ["OJTで実践できる方法1", "OJTで実践できる方法2"]
     }
   },
+  "targets": {
+    "org_targets": {
+      "calls_per_h": "組織全体の時間あたりコール数目標（数値）",
+      "effective_per_h": "有効接続/h目標（数値）",
+      "person_per_h": "担当接続/h目標（数値）",
+      "hours_per_project": "案件1件あたり所要時間目標（数値）",
+      "target_cpa": "目標CPA（円、数値）"
+    },
+    "individual_targets": {
+      "calls_per_h": "この人の時間あたりコール数目標（数値、実績とランクに基づいて設定）",
+      "effective_per_h": "有効接続/h目標（数値）",
+      "person_per_h": "担当接続/h目標（数値）",
+      "hours_per_project": "案件1件あたり所要時間目標（数値）",
+      "target_cpa": "個別目標CPA（円、数値）",
+      "rationale": "この目標を設定した根拠（1文）"
+    }
+  },
+  "scenario": {
+    "current_cpa": "現在のCPA（円、数値 or null）",
+    "target_cpa": "目標CPA（円、数値）",
+    "steps": [
+      {
+        "metric": "改善する指標名（例：コール数/h）",
+        "current": "現在値",
+        "target": "目標値",
+        "impact": "この改善でCPAがどれくらい下がるか"
+      }
+    ],
+    "summary": "改善シナリオの要約（2-3文。どの数値をどう改善すればCPAがいくらになるか）"
+  },
   "next_steps": [
     {
-      "action": "実際の架電で取り組むこと（例：次の架電から担当者名を聞き出す質問を必ず入れる）",
+      "action": "実際の架電で取り組むこと",
       "reason": "なぜこれをやるべきか",
       "deadline": "いつまでに",
       "success_criteria": "達成基準"
@@ -316,6 +346,15 @@ const evaluateStatusSheet = async (operatorData) => {
     }
   ]
 }
+
+【目標値設定のルール】
+- 組織全体目標: チーム全体の実績を踏まえた現実的な目標
+- 個別目標: このオペレーターのランクと実績に基づいて個別設定。初級は低めから、上級は高い水準
+- CPA = 時給1,500円 x 案件1件あたり所要時間
+
+【改善シナリオのルール】
+- 現在の数値からどの指標をいくつ改善するとCPAがいくらになるかを具体的に示す
+- 最大3ステップの改善段階を示す
 
 ネクストステップはOJTで実践できる具体的なアクションにしてください。
 抽象的な「頑張る」「意識する」やロープレは禁止です。`;

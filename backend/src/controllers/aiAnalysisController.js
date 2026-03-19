@@ -463,13 +463,13 @@ const generateSheetForOperator = async (op, dateFrom, dateTo, createdBy) => {
     const [existing] = await pool.query('SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [op.id]);
     if (existing.length > 0) {
       await pool.execute(
-        `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, created_by = ? WHERE id = ?`,
-        [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), createdBy, existing[0].id]
+        `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, targets = ?, scenario = ?, created_by = ? WHERE id = ?`,
+        [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), createdBy, existing[0].id]
       );
     } else {
       await pool.execute(
-        `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), createdBy]
+        `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, targets, scenario, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), createdBy]
       );
     }
   } catch (dbErr) {
@@ -540,7 +540,7 @@ const getStatusSheets = async (req, res, next) => {
     await ensureStatusSheetsTable();
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
-              ss.current_status, ss.training_plan, ss.next_steps,
+              ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
               ss.created_at, ss.updated_at, cb.name as created_by_name
        FROM status_sheets ss
        JOIN users u ON ss.user_id = u.id
@@ -567,7 +567,7 @@ const getStatusSheet = async (req, res, next) => {
     const { userId } = req.params;
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
-              ss.current_status, ss.training_plan, ss.next_steps,
+              ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
               ss.created_at, ss.updated_at
        FROM status_sheets ss
        JOIN users u ON ss.user_id = u.id
@@ -642,4 +642,85 @@ const generateSingleStatusSheet = async (req, res, next) => {
   }
 };
 
-module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet };
+// 研修進捗のデフォルトステップ
+const TRAINING_STEPS = [
+  { step_number: 1, step_name: '座学研修/サービス理解' },
+  { step_number: 2, step_name: 'トークスクリプト読み込み' },
+  { step_number: 3, step_name: 'ロープレ' },
+  { step_number: 4, step_name: 'コールシステム説明' },
+  { step_number: 5, step_name: '架電開始' },
+  { step_number: 6, step_name: '改善点フィードバック' },
+];
+
+/**
+ * GET /api/ai/analysis/training/:userId
+ * 研修進捗取得（初級オペレーター向け）
+ */
+const getTrainingProgress = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await pool.query(
+      'SELECT step_number, step_name, trainer_name, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
+      [userId]
+    );
+
+    // デフォルトステップがなければ初期化
+    if (rows.length === 0) {
+      for (const step of TRAINING_STEPS) {
+        await pool.execute(
+          'INSERT IGNORE INTO operator_training (user_id, step_number, step_name) VALUES (?, ?, ?)',
+          [userId, step.step_number, step.step_name]
+        );
+      }
+      const [newRows] = await pool.query(
+        'SELECT step_number, step_name, trainer_name, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
+        [userId]
+      );
+      return ApiResponse.success(res, newRows);
+    }
+
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    logger.error('研修進捗取得エラー:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/ai/analysis/training/:userId/:stepNumber
+ * 研修ステップ更新（担当者名、完了チェック）
+ */
+const updateTrainingStep = async (req, res, next) => {
+  try {
+    const { userId, stepNumber } = req.params;
+    const { trainer_name, is_completed } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (trainer_name !== undefined) { updates.push('trainer_name = ?'); params.push(trainer_name || null); }
+    if (is_completed !== undefined) {
+      updates.push('is_completed = ?');
+      params.push(is_completed ? 1 : 0);
+      updates.push('completed_at = ?');
+      params.push(is_completed ? new Date() : null);
+    }
+
+    if (updates.length === 0) {
+      return ApiResponse.badRequest(res, '更新する項目がありません');
+    }
+
+    params.push(userId, stepNumber);
+    await pool.execute(
+      `UPDATE operator_training SET ${updates.join(', ')} WHERE user_id = ? AND step_number = ?`,
+      params
+    );
+
+    return ApiResponse.success(res, null, '研修ステップを更新しました');
+  } catch (err) {
+    logger.error('研修ステップ更新エラー:', err.message);
+    next(err);
+  }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep };

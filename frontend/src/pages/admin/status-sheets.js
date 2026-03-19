@@ -22,6 +22,8 @@ export default function StatusSheetsPage() {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState(null);
   const [alertMessage, setAlertMessage] = useState(null);
+  const [trainingData, setTrainingData] = useState({});  // { userId: steps[] }
+  const [trainingLoading, setTrainingLoading] = useState({});
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -140,6 +142,22 @@ export default function StatusSheetsPage() {
     }
   };
 
+  const fetchTraining = async (userId) => {
+    try {
+      setTrainingLoading(prev => ({ ...prev, [userId]: true }));
+      const { data } = await api.get(`/api/ai/analysis/training/${userId}`);
+      if (data.success) setTrainingData(prev => ({ ...prev, [userId]: data.data }));
+    } catch (err) { console.error(err); }
+    finally { setTrainingLoading(prev => ({ ...prev, [userId]: false })); }
+  };
+
+  const handleTrainingUpdate = async (userId, stepNumber, field, value) => {
+    try {
+      await api.put(`/api/ai/analysis/training/${userId}/${stepNumber}`, { [field]: value });
+      fetchTraining(userId);
+    } catch (err) { toast.error('更新に失敗しました'); }
+  };
+
   const parseJSON = (val) => {
     if (typeof val === 'string') {
       try { return JSON.parse(val); } catch { return val; }
@@ -241,14 +259,21 @@ export default function StatusSheetsPage() {
             const cs = parseJSON(sheet.current_status);
             const tp = parseJSON(sheet.training_plan);
             const ns = parseJSON(sheet.next_steps);
+            const targets = parseJSON(sheet.targets);
+            const scenario = parseJSON(sheet.scenario);
             const isExpanded = expandedUser === sheet.user_id;
             const isEditing = editingId === sheet.id;
+            const isBeginnerLevel = sheet.operator_level === '初級';
 
             return (
               <div key={sheet.id} className="card overflow-hidden">
                 {/* ヘッダー */}
                 <button
-                  onClick={() => setExpandedUser(isExpanded ? null : sheet.user_id)}
+                  onClick={() => {
+                    const newId = isExpanded ? null : sheet.user_id;
+                    setExpandedUser(newId);
+                    if (newId && isBeginnerLevel && !trainingData[newId]) fetchTraining(newId);
+                  }}
                   className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -496,6 +521,192 @@ export default function StatusSheetsPage() {
                         </div>
                       )}
                     </div>
+                    {/* 4. 目標値 */}
+                    {targets && (
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                          <span className="w-6 h-6 bg-emerald-500 text-white rounded flex items-center justify-center text-xs font-bold">4</span>
+                          目標値
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* 組織全体目標 */}
+                          {targets.org_targets && (
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                              <p className="text-xs font-bold text-gray-600 mb-3">組織全体目標（時間あたり）</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { label: 'コール数/h', value: targets.org_targets.calls_per_h },
+                                  { label: '有効接続/h', value: targets.org_targets.effective_per_h },
+                                  { label: '担当接続/h', value: targets.org_targets.person_per_h },
+                                  { label: '案件1件あたり', value: targets.org_targets.hours_per_project ? `${targets.org_targets.hours_per_project}h` : '-' },
+                                  { label: '目標CPA', value: targets.org_targets.target_cpa ? `\u00a5${Number(targets.org_targets.target_cpa).toLocaleString()}` : '-' },
+                                ].map((item, i) => (
+                                  <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-gray-500">{item.label}</span>
+                                    <span className="font-medium text-gray-800">{item.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* 個別目標 */}
+                          {targets.individual_targets && (
+                            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                              <p className="text-xs font-bold text-blue-700 mb-3">個別目標（{sheet.user_name}）</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { label: 'コール数/h', value: targets.individual_targets.calls_per_h },
+                                  { label: '有効接続/h', value: targets.individual_targets.effective_per_h },
+                                  { label: '担当接続/h', value: targets.individual_targets.person_per_h },
+                                  { label: '案件1件あたり', value: targets.individual_targets.hours_per_project ? `${targets.individual_targets.hours_per_project}h` : '-' },
+                                  { label: '目標CPA', value: targets.individual_targets.target_cpa ? `\u00a5${Number(targets.individual_targets.target_cpa).toLocaleString()}` : '-' },
+                                ].map((item, i) => (
+                                  <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-blue-500">{item.label}</span>
+                                    <span className="font-medium text-blue-800">{item.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {targets.individual_targets.rationale && (
+                                <p className="text-[10px] text-blue-500 mt-2 pt-2 border-t border-blue-100">{targets.individual_targets.rationale}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 5. 改善シナリオ */}
+                    {scenario && (
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                          <span className="w-6 h-6 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">5</span>
+                          数値改善シナリオ
+                        </h3>
+                        <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                          {/* CPA比較 */}
+                          <div className="flex items-center gap-6 mb-4">
+                            <div className="text-center">
+                              <p className="text-[10px] text-gray-500">現在CPA</p>
+                              <p className="text-lg font-bold text-red-600">
+                                {scenario.current_cpa ? `\u00a5${Number(scenario.current_cpa).toLocaleString()}` : '-'}
+                              </p>
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                            <div className="text-center">
+                              <p className="text-[10px] text-gray-500">目標CPA</p>
+                              <p className="text-lg font-bold text-emerald-600">
+                                {scenario.target_cpa ? `\u00a5${Number(scenario.target_cpa).toLocaleString()}` : '-'}
+                              </p>
+                            </div>
+                          </div>
+                          {/* 改善ステップ */}
+                          {scenario.steps && scenario.steps.length > 0 && (
+                            <div className="mb-3">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-orange-200">
+                                    <th className="text-left py-1.5 text-orange-700 font-medium">指標</th>
+                                    <th className="text-center py-1.5 text-orange-700 font-medium">現在</th>
+                                    <th className="text-center py-1.5 text-orange-700 font-medium">目標</th>
+                                    <th className="text-left py-1.5 text-orange-700 font-medium">効果</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {scenario.steps.map((s, i) => (
+                                    <tr key={i} className="border-b border-orange-100">
+                                      <td className="py-1.5 text-gray-700 font-medium">{s.metric}</td>
+                                      <td className="py-1.5 text-center text-gray-600">{s.current}</td>
+                                      <td className="py-1.5 text-center text-emerald-600 font-medium">{s.target}</td>
+                                      <td className="py-1.5 text-gray-600">{s.impact}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          {scenario.summary && (
+                            <p className="text-xs text-gray-700 bg-white/60 rounded p-2">{scenario.summary}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 6. 研修進捗（初級のみ） */}
+                    {isBeginnerLevel && (
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                          <span className="w-6 h-6 bg-teal-500 text-white rounded flex items-center justify-center text-xs font-bold">6</span>
+                          研修進捗
+                        </h3>
+                        {trainingLoading[sheet.user_id] ? (
+                          <div className="flex items-center justify-center py-6">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-500" />
+                          </div>
+                        ) : (
+                          <div className="bg-teal-50 rounded-lg border border-teal-100 overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-teal-100/50 border-b border-teal-200">
+                                  <th className="text-left py-2 px-3 text-teal-700 font-medium w-8">#</th>
+                                  <th className="text-left py-2 px-3 text-teal-700 font-medium">研修内容</th>
+                                  <th className="text-left py-2 px-3 text-teal-700 font-medium">実施担当者</th>
+                                  <th className="text-center py-2 px-3 text-teal-700 font-medium w-16">完了</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(trainingData[sheet.user_id] || []).map((step) => (
+                                  <tr key={step.step_number} className={`border-b border-teal-100 ${step.is_completed ? 'bg-teal-50/50' : 'bg-white'}`}>
+                                    <td className="py-2 px-3 text-teal-600 font-medium">{step.step_number}</td>
+                                    <td className={`py-2 px-3 ${step.is_completed ? 'text-teal-600 line-through' : 'text-gray-700'}`}>
+                                      {step.step_name}
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="text"
+                                        placeholder="担当者名"
+                                        defaultValue={step.trainer_name || ''}
+                                        onBlur={e => {
+                                          if (e.target.value !== (step.trainer_name || '')) {
+                                            handleTrainingUpdate(sheet.user_id, step.step_number, 'trainer_name', e.target.value);
+                                          }
+                                        }}
+                                        className="text-xs border border-teal-200 rounded px-2 py-1 w-full bg-white focus:ring-1 focus:ring-teal-300 focus:border-teal-300 outline-none"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!step.is_completed}
+                                        onChange={e => handleTrainingUpdate(sheet.user_id, step.step_number, 'is_completed', e.target.checked)}
+                                        className="w-4 h-4 text-teal-600 border-teal-300 rounded focus:ring-teal-500 cursor-pointer"
+                                      />
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {(trainingData[sheet.user_id] || []).length > 0 && (
+                              <div className="px-3 py-2 bg-teal-100/30 border-t border-teal-200">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-teal-200 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                      className="bg-teal-500 h-full rounded-full transition-all"
+                                      style={{ width: `${Math.round((trainingData[sheet.user_id].filter(s => s.is_completed).length / trainingData[sheet.user_id].length) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-teal-600 font-medium whitespace-nowrap">
+                                    {trainingData[sheet.user_id].filter(s => s.is_completed).length}/{trainingData[sheet.user_id].length} 完了
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

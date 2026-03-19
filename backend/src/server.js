@@ -166,6 +166,34 @@ const runMigrations = async () => {
     // カラムが既に存在する場合はスキップ
     if (!err.message.includes('Duplicate column')) logger.warn('[Migration] operator_level:', err.message);
   }
+  // 研修進捗テーブル
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS operator_training (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NOT NULL,
+        step_number TINYINT UNSIGNED NOT NULL,
+        step_name VARCHAR(100) NOT NULL,
+        trainer_name VARCHAR(100) DEFAULT NULL,
+        is_completed TINYINT(1) NOT NULL DEFAULT 0,
+        completed_at DATETIME DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_training_user_step (user_id, step_number),
+        CONSTRAINT fk_training_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    logger.info('[Migration] operator_training テーブル確認完了');
+  } catch (err) {
+    logger.warn('[Migration] operator_training:', err.message);
+  }
+  // status_sheetsにtargets/scenarioカラム追加
+  try {
+    await pool.execute(`ALTER TABLE status_sheets ADD COLUMN targets JSON DEFAULT NULL`);
+  } catch (e) {}
+  try {
+    await pool.execute(`ALTER TABLE status_sheets ADD COLUMN scenario JSON DEFAULT NULL`);
+  } catch (e) {}
 };
 runMigrations();
 
