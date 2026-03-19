@@ -426,15 +426,15 @@ export default function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50/80 border-b border-gray-200">
                   <th className="table-header text-left">オペレーター</th>
-                  <th className="table-header text-right">稼働時間</th>
-                  <th className="table-header text-right">コール数</th>
+                  <th className="table-header text-right">稼働</th>
+                  <th className="table-header text-right">コール</th>
                   <th className="table-header text-right">リコール獲得</th>
                   <th className="table-header text-right">リコール消化</th>
                   <th className="table-header text-right">有効接続</th>
                   <th className="table-header text-right">担当接続</th>
-                  <th className="table-header text-right">案件獲得</th>
+                  <th className="table-header text-right">案件</th>
                   <th className="table-header text-right">AI平均</th>
                   <th className="table-header text-right">案件化率</th>
                 </tr>
@@ -447,8 +447,13 @@ export default function DashboardPage() {
                   const convRate = op.total_calls > 0 ? ((op.projects / op.total_calls) * 100).toFixed(1) : '-';
                   const projEff = op.projects > 0 && wh > 0 ? (wh / op.projects).toFixed(1) : '-';
                   return (
-                    <tr key={op.user_id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                      <td className="table-cell font-medium text-gray-800">{op.name}</td>
+                    <tr key={op.user_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
+                      <td className="table-cell">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600 flex-shrink-0">{op.name?.charAt(0)}</div>
+                          <span className="font-medium text-gray-800">{op.name}</span>
+                        </div>
+                      </td>
                       <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
                       <td className="table-cell text-right">{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
@@ -483,8 +488,8 @@ export default function DashboardPage() {
                   const totalConv = t.total_calls > 0 ? ((t.projects / t.total_calls) * 100).toFixed(1) : '-';
                   const totalProjEff = t.projects > 0 && twh > 0 ? (twh / t.projects).toFixed(1) : '-';
                   return (
-                    <tr className="bg-blue-50/50 font-semibold">
-                      <td className="table-cell">合計</td>
+                    <tr className="border-t-2 border-gray-200 bg-gray-50/60 font-semibold">
+                      <td className="table-cell text-gray-700">合計</td>
                       <td className="table-cell text-right">{totalWorkH !== '-' ? `${totalWorkH}h` : '-'}</td>
                       <td className="table-cell text-right">{t.total_calls} <span className="text-[10px] text-gray-400 font-normal">{tph(t.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{t.recall_gained} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_gained)}/h</span></td>
