@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI改善案モックアップ</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
+  .section-divider { border-top: 3px solid #2563eb; margin: 60px 0 40px; padding-top: 20px; }
+  .mockup-label { background: #2563eb; color: white; display: inline-block; padding: 4px 16px; border-radius: 4px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .before-after { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  .before-after-header { padding: 8px 16px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ba-before { background: #fef2f2; color: #dc2626; }
+  .ba-after { background: #f0fdf4; color: #16a34a; }
+  .sparkline { display: inline-block; }
+  .sparkline svg { vertical-align: middle; }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-card { animation: fadeInUp 0.4s ease-out forwards; opacity: 0; }
+  .animate-card:nth-child(1) { animation-delay: 0.05s; }
+  .animate-card:nth-child(2) { animation-delay: 0.1s; }
+  .animate-card:nth-child(3) { animation-delay: 0.15s; }
+  .animate-card:nth-child(4) { animation-delay: 0.2s; }
+  .animate-card:nth-child(5) { animation-delay: 0.25s; }
+  .animate-card:nth-child(6) { animation-delay: 0.3s; }
+  .animate-card:nth-child(7) { animation-delay: 0.35s; }
+
+  .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  .ripple { position: relative; overflow: hidden; }
+  .ripple::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(255,255,255,0.3) 0%, transparent 70%); opacity: 0; transition: opacity 0.3s; }
+  .ripple:active::after { opacity: 1; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+<div class="max-w-6xl mx-auto px-6 py-10">
+
+<!-- Header -->
+<div class="text-center mb-12">
+  <h1 class="text-3xl font-bold text-gray-900 mb-2">AI CallCenter CRM - UI改善案</h1>
+  <p class="text-gray-500">各案のBefore / After モックアップ</p>
+</div>
+
+<!-- ============================================ -->
+<!-- 案1: サイドバー -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案1</span>
+<h2 class="text-xl font-bold mb-2">サイドバー・ナビゲーション強化</h2>
+<p class="text-sm text-gray-500 mb-6">セクション分け + アクティブバー + ユーザーエリア改善</p>
+
+<div class="comparison">
+  <!-- Before -->
+  <div class="before-after">
+    <div class="before-after-header ba-before">Before（現状）</div>
+    <div class="bg-white p-0" style="width:220px;margin:16px auto;">
+      <div class="bg-white border border-gray-200 rounded-xl" style="width:220px;">
+        <div class="p-4 border-b border-gray-100">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-500 rounded-lg"></div>
+            <div><div class="text-sm font-bold">AI CallCenter</div><div class="text-[10px] text-gray-400">CRM System</div></div>
+          </div>
+        </div>
+        <div class="p-2 space-y-0.5 text-[13px]">
+          <div class="flex items-center gap-2.5 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg font-medium">
+            <div class="w-4 h-4 bg-blue-400 rounded"></div>ダッシュボード
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>架電画面
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>リコール管理
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>案件管理
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>AI評価
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>架電結果ログ
+          </div>
+          <div class="flex items-center gap-2.5 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">
+            <div class="w-4 h-4 bg-gray-300 rounded"></div>CPA/案件質分析
+          </div>
+        </div>
+        <div class="p-3 border-t border-gray-100 flex items-center gap-2">
+          <div class="w-7 h-7 bg-gray-200 rounded-full"></div>
+          <div class="text-xs text-gray-500">管理者</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- After -->
+  <div class="before-after">
+    <div class="before-after-header ba-after">After（改善案）</div>
+    <div class="bg-white p-0" style="width:240px;margin:16px auto;">
+      <div class="bg-slate-900 text-white rounded-xl" style="width:240px;">
+        <div class="p-5 border-b border-white/10">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+            </div>
+            <div><div class="text-sm font-semibold tracking-tight">AI CallCenter</div><div class="text-[10px] text-white/40 font-medium">CRM System</div></div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-4 text-[13px]">
+          <!-- Section: メイン業務 -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-semibold text-white/30 uppercase tracking-wider">メイン業務</div>
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2.5 px-3 py-2 bg-blue-600/20 text-blue-300 rounded-lg font-medium border-l-[3px] border-blue-400 -ml-[1px]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/></svg>
+                ダッシュボード
+              </div>
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493"/></svg>
+                架電画面
+              </div>
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                リコール管理
+                <span class="ml-auto text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full font-medium">3</span>
+              </div>
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586"/></svg>
+                案件管理
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: 分析 -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-semibold text-white/30 uppercase tracking-wider">分析</div>
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915"/></svg>
+                AI評価
+              </div>
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6"/></svg>
+                CPA/案件質分析
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: 管理 -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-semibold text-white/30 uppercase tracking-wider">管理</div>
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2.5 px-3 py-2 text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197"/></svg>
+                ユーザー管理
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Area -->
+        <div class="p-4 border-t border-white/10 mt-2">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">管</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-white/90 truncate">管理者</div>
+              <div class="text-[10px] text-white/40">管理者</div>
+            </div>
+            <svg class="w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 案2: KPIカード -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案2</span>
+<h2 class="text-xl font-bold mb-2">KPIカードのビジュアル改善</h2>
+<p class="text-sm text-gray-500 mb-6">前週比 + スパークライン + 目標達成度バー</p>
+
+<div class="comparison">
+  <!-- Before -->
+  <div class="before-after">
+    <div class="before-after-header ba-before">Before（現状）</div>
+    <div class="p-4">
+      <div class="grid grid-cols-4 gap-3">
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div><div class="text-xs text-gray-500">稼働時間</div><div class="text-2xl font-bold mt-1">7.0<span class="text-sm text-gray-400 ml-0.5">時間</span></div><div class="text-[10px] text-gray-400 mt-0.5">平均 7.0h/日</div></div>
+            <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center"><div class="w-4 h-4 bg-blue-500 rounded-full"></div></div>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div><div class="text-xs text-gray-500">コール数</div><div class="text-2xl font-bold mt-1">46<span class="text-sm text-gray-400 ml-0.5">件</span></div><div class="text-[10px] text-gray-400 mt-0.5">6.6/h</div></div>
+            <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center"><div class="w-4 h-4 bg-green-500 rounded-full"></div></div>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div><div class="text-xs text-gray-500">リコール獲得</div><div class="text-2xl font-bold mt-1">7<span class="text-sm text-gray-400 ml-0.5">件</span></div><div class="text-[10px] text-gray-400 mt-0.5">1.0/h</div></div>
+            <div class="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center"><div class="w-4 h-4 bg-emerald-500 rounded-full"></div></div>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div><div class="text-xs text-gray-500">案件獲得</div><div class="text-2xl font-bold mt-1">2<span class="text-sm text-gray-400 ml-0.5">件</span></div><div class="text-[10px] text-gray-400 mt-0.5">3.5h/件</div></div>
+            <div class="w-9 h-9 bg-pink-100 rounded-lg flex items-center justify-center"><div class="w-4 h-4 bg-pink-500 rounded-full"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- After -->
+  <div class="before-after">
+    <div class="before-after-header ba-after">After（改善案）</div>
+    <div class="p-4">
+      <div class="grid grid-cols-4 gap-3">
+        <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <div class="text-xs font-medium text-gray-500">稼働時間</div>
+            <span class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">+0.5h</span>
+          </div>
+          <div class="text-2xl font-bold">7.0<span class="text-sm text-gray-400 ml-0.5 font-medium">h</span></div>
+          <div class="text-[10px] text-gray-400 mt-0.5">平均 7.0h/日</div>
+          <div class="mt-3">
+            <svg viewBox="0 0 120 24" class="w-full h-6 text-blue-400">
+              <polyline fill="none" stroke="currentColor" stroke-width="1.5" points="0,18 20,15 40,12 60,16 80,10 100,8 120,6" />
+              <polyline fill="url(#grad)" stroke="none" points="0,18 20,15 40,12 60,16 80,10 100,8 120,6 120,24 0,24" opacity="0.1" />
+            </svg>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <div class="text-xs font-medium text-gray-500">コール数</div>
+            <span class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">+12%</span>
+          </div>
+          <div class="text-2xl font-bold">46<span class="text-sm text-gray-400 ml-0.5 font-medium">件</span></div>
+          <div class="text-[10px] text-gray-400 mt-0.5">6.6/h (目標: 20/h)</div>
+          <div class="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full bg-blue-500 rounded-full" style="width:33%"></div>
+          </div>
+          <div class="text-[9px] text-gray-400 mt-1 text-right">33%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <div class="text-xs font-medium text-gray-500">有効接続</div>
+            <span class="text-[10px] font-medium text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">-8%</span>
+          </div>
+          <div class="text-2xl font-bold">10<span class="text-sm text-gray-400 ml-0.5 font-medium">件</span></div>
+          <div class="text-[10px] text-gray-400 mt-0.5">1.4/h (目標: 3/h)</div>
+          <div class="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full bg-amber-400 rounded-full" style="width:47%"></div>
+          </div>
+          <div class="text-[9px] text-gray-400 mt-1 text-right">47%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <div class="text-xs font-medium text-gray-500">案件獲得</div>
+            <span class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">+100%</span>
+          </div>
+          <div class="text-2xl font-bold">2<span class="text-sm text-gray-400 ml-0.5 font-medium">件</span></div>
+          <div class="text-[10px] text-gray-400 mt-0.5">3.5h/件 (目標: 8h/件)</div>
+          <div class="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500 rounded-full" style="width:100%"></div>
+          </div>
+          <div class="text-[9px] text-emerald-600 mt-1 text-right font-medium">達成</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- 案3: テーブルデザイン -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案3</span>
+<h2 class="text-xl font-bold mb-2">テーブルの統一デザイン</h2>
+<p class="text-sm text-gray-500 mb-6">ヘッダー改善 + ソートインジケーター + ホバー統一</p>
+
+<div class="comparison">
+  <!-- Before -->
+  <div class="before-after">
+    <div class="before-after-header ba-before">Before（現状）</div>
+    <div class="p-4">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="text-left py-2.5 px-3 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">獲得日</th>
+            <th class="text-left py-2.5 px-3 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">担当OP</th>
+            <th class="text-left py-2.5 px-3 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">企業名</th>
+            <th class="text-left py-2.5 px-3 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-gray-100">
+            <td class="py-3 px-3 text-gray-500">2026/3/17</td>
+            <td class="py-3 px-3">中田 倫哉</td>
+            <td class="py-3 px-3">株式会社 PEBORA</td>
+            <td class="py-3 px-3"><span class="bg-cyan-100 text-cyan-700 text-xs px-2 py-0.5 rounded-full">募集中</span></td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-3 px-3 text-gray-500">2026/3/17</td>
+            <td class="py-3 px-3">中田 倫哉</td>
+            <td class="py-3 px-3">五木食品 株式会社</td>
+            <td class="py-3 px-3"><span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">未設定</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- After -->
+  <div class="before-after">
+    <div class="before-after-header ba-after">After（改善案）</div>
+    <div class="p-4">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b-2 border-gray-200">
+            <th class="text-left py-3 px-3 text-xs text-gray-600 font-semibold">
+              <div class="flex items-center gap-1 cursor-pointer hover:text-gray-900">
+                獲得日
+                <svg class="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+            </th>
+            <th class="text-left py-3 px-3 text-xs text-gray-600 font-semibold">
+              <div class="flex items-center gap-1 cursor-pointer hover:text-gray-900">担当OP</div>
+            </th>
+            <th class="text-left py-3 px-3 text-xs text-gray-600 font-semibold">
+              <div class="flex items-center gap-1 cursor-pointer hover:text-gray-900">企業名</div>
+            </th>
+            <th class="text-left py-3 px-3 text-xs text-gray-600 font-semibold">ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-gray-100 hover:bg-blue-50/40 transition-colors cursor-pointer group">
+            <td class="py-3.5 px-3 text-gray-500">2026/3/17</td>
+            <td class="py-3.5 px-3">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">中</div>
+                中田 倫哉
+              </div>
+            </td>
+            <td class="py-3.5 px-3 font-medium group-hover:text-blue-600 transition-colors">株式会社 PEBORA</td>
+            <td class="py-3.5 px-3">
+              <span class="inline-flex items-center gap-1 bg-cyan-50 text-cyan-700 text-xs px-2.5 py-1 rounded-md font-medium border border-cyan-200/50">
+                <span class="w-1.5 h-1.5 bg-cyan-500 rounded-full"></span>
+                募集中
+              </span>
+            </td>
+          </tr>
+          <tr class="border-b border-gray-100 hover:bg-blue-50/40 transition-colors cursor-pointer group">
+            <td class="py-3.5 px-3 text-gray-500">2026/3/17</td>
+            <td class="py-3.5 px-3">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">中</div>
+                中田 倫哉
+              </div>
+            </td>
+            <td class="py-3.5 px-3 font-medium group-hover:text-blue-600 transition-colors">五木食品 株式会社</td>
+            <td class="py-3.5 px-3">
+              <span class="inline-flex items-center gap-1 bg-gray-50 text-gray-500 text-xs px-2.5 py-1 rounded-md font-medium border border-gray-200/50">
+                <span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                未設定
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- 案4: ステータスカラー -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案4</span>
+<h2 class="text-xl font-bold mb-2">カラーパレットの体系化</h2>
+<p class="text-sm text-gray-500 mb-6">ステータスバッジの色ルールを統一</p>
+
+<div class="bg-white border border-gray-200 rounded-xl p-6">
+  <h3 class="text-sm font-bold text-gray-700 mb-4">ステータスカラー体系</h3>
+  <div class="grid grid-cols-4 gap-4">
+    <div>
+      <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">進行中（青系）</div>
+      <div class="space-y-2">
+        <span class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-xs px-3 py-1.5 rounded-md font-medium border border-blue-200/50"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>募集中</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-xs px-3 py-1.5 rounded-md font-medium border border-blue-200/50"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>書類選考中</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-xs px-3 py-1.5 rounded-md font-medium border border-blue-200/50"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>結果待ち</span>
+      </div>
+    </div>
+    <div>
+      <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">成功（緑系）</div>
+      <div class="space-y-2">
+        <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs px-3 py-1.5 rounded-md font-medium border border-emerald-200/50"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>内定</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs px-3 py-1.5 rounded-md font-medium border border-emerald-200/50"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>面接確定</span>
+      </div>
+    </div>
+    <div>
+      <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">警告（黄/橙系）</div>
+      <div class="space-y-2">
+        <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-md font-medium border border-amber-200/50"><span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>保留</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-orange-50 text-orange-700 text-xs px-3 py-1.5 rounded-md font-medium border border-orange-200/50"><span class="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>内定取消</span>
+      </div>
+    </div>
+    <div>
+      <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">失敗（赤系）</div>
+      <div class="space-y-2">
+        <span class="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-xs px-3 py-1.5 rounded-md font-medium border border-red-200/50"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>不合格</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-xs px-3 py-1.5 rounded-md font-medium border border-red-200/50"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>失注</span>
+        <br>
+        <span class="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-xs px-3 py-1.5 rounded-md font-medium border border-red-200/50"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>書類落ち</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- 案5: フォーム改善 -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案5</span>
+<h2 class="text-xl font-bold mb-2">フォーム・入力UI改善</h2>
+<p class="text-sm text-gray-500 mb-6">プルダウン修正 + バリデーション + 統一スタイル</p>
+
+<div class="comparison">
+  <!-- Before -->
+  <div class="before-after">
+    <div class="before-after-header ba-before">Before（現状）</div>
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">ステータス</label>
+        <select class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48" style="appearance:auto;">
+          <option>全オペレーター</option>
+        </select>
+        <div class="text-[10px] text-red-500 mt-1">* 矢印(▼)が文字と被る</div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">検索</label>
+        <input class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48" placeholder="企業名・電話番号">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">期間</label>
+        <input type="date" class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48">
+      </div>
+    </div>
+  </div>
+
+  <!-- After -->
+  <div class="before-after">
+    <div class="before-after-header ba-after">After（改善案）</div>
+    <div class="p-6 space-y-5">
+      <div class="relative">
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">ステータス</label>
+        <div class="relative">
+          <select class="w-48 border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none pr-9 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition">
+            <option>全オペレーター</option>
+          </select>
+          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+      </div>
+      <div class="relative">
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">検索</label>
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input class="w-48 border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" placeholder="企業名・電話番号">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">期間</label>
+        <input type="date" class="w-48 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition">
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- 案6: ローディング -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案6</span>
+<h2 class="text-xl font-bold mb-2">アニメーション・マイクロインタラクション</h2>
+<p class="text-sm text-gray-500 mb-6">スケルトンローディング + カードアニメーション</p>
+
+<div class="comparison">
+  <!-- Skeleton Loading -->
+  <div class="before-after">
+    <div class="before-after-header" style="background:#e0f2fe;color:#0369a1;">スケルトンローディング</div>
+    <div class="p-4">
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="skeleton h-3 w-16 mb-3"></div>
+          <div class="skeleton h-7 w-20 mb-2"></div>
+          <div class="skeleton h-2 w-12"></div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="skeleton h-3 w-16 mb-3"></div>
+          <div class="skeleton h-7 w-20 mb-2"></div>
+          <div class="skeleton h-2 w-12"></div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="skeleton h-3 w-16 mb-3"></div>
+          <div class="skeleton h-7 w-20 mb-2"></div>
+          <div class="skeleton h-2 w-12"></div>
+        </div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <div class="skeleton h-4 w-full"></div>
+        <div class="skeleton h-4 w-5/6"></div>
+        <div class="skeleton h-4 w-4/6"></div>
+        <div class="skeleton h-4 w-full"></div>
+        <div class="skeleton h-4 w-3/6"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stagger Animation -->
+  <div class="before-after">
+    <div class="before-after-header" style="background:#e0f2fe;color:#0369a1;">スタガーアニメーション</div>
+    <div class="p-4">
+      <div class="grid grid-cols-3 gap-3" id="stagger-demo">
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">稼働時間</div>
+          <div class="text-xl font-bold">7.0h</div>
+        </div>
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">コール数</div>
+          <div class="text-xl font-bold">46件</div>
+        </div>
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">リコール獲得</div>
+          <div class="text-xl font-bold">7件</div>
+        </div>
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">リコール消化</div>
+          <div class="text-xl font-bold">2件</div>
+        </div>
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">有効接続</div>
+          <div class="text-xl font-bold">10件</div>
+        </div>
+        <div class="animate-card bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+          <div class="text-xs text-gray-500 mb-1">案件獲得</div>
+          <div class="text-xl font-bold">2件</div>
+        </div>
+      </div>
+      <button onclick="document.querySelectorAll('.animate-card').forEach(c=>{c.style.animation='none';c.offsetHeight;c.style.animation='';})" class="mt-3 text-xs text-blue-600 hover:text-blue-800">再生</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- 案7: ダッシュボードレイアウト -->
+<!-- ============================================ -->
+<div class="section-divider"></div>
+<span class="mockup-label">案7</span>
+<h2 class="text-xl font-bold mb-2">ダッシュボード全体レイアウト</h2>
+<p class="text-sm text-gray-500 mb-6">情報の優先順位を明確にし、セクション間のメリハリを強化</p>
+
+<div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+  <div class="p-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-lg font-bold text-gray-900">ダッシュボード</h1>
+        <p class="text-xs text-gray-400 mt-0.5">営業活動サマリー</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="flex bg-gray-100 rounded-lg p-0.5">
+          <button class="text-xs px-3 py-1.5 rounded-md bg-white shadow-sm font-medium text-gray-800">日別</button>
+          <button class="text-xs px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700">週別</button>
+          <button class="text-xs px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700">月別</button>
+          <button class="text-xs px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700">累計</button>
+        </div>
+        <div class="flex bg-gray-100 rounded-lg p-0.5 ml-2">
+          <button class="text-xs px-3 py-1.5 rounded-md bg-white shadow-sm font-medium text-gray-800">全体</button>
+          <button class="text-xs px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700">個人別</button>
+        </div>
+        <button class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 ml-1">コピー</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="grid grid-cols-7 gap-3 mb-6">
+      <div class="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-blue-600/70 mb-1">稼働時間</div>
+        <div class="text-lg font-bold text-gray-900">7.0<span class="text-xs text-gray-400 ml-0.5">h</span></div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-gray-500 mb-1">コール数</div>
+        <div class="text-lg font-bold">46<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-gray-400">6.6/h</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-gray-500 mb-1">リコール獲得</div>
+        <div class="text-lg font-bold">7<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-gray-400">1.0/h</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-gray-500 mb-1">リコール消化</div>
+        <div class="text-lg font-bold">2<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-gray-400">0.3/h</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-gray-500 mb-1">有効接続</div>
+        <div class="text-lg font-bold">10<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-gray-400">1.4/h</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-gray-500 mb-1">担当接続</div>
+        <div class="text-lg font-bold">10<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-gray-400">1.4/h</div>
+      </div>
+      <div class="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-xl p-3.5">
+        <div class="text-[10px] font-medium text-emerald-600/70 mb-1">案件獲得</div>
+        <div class="text-lg font-bold text-gray-900">2<span class="text-xs text-gray-400 ml-0.5">件</span></div>
+        <div class="text-[9px] text-emerald-600">3.5h/件</div>
+      </div>
+    </div>
+
+    <!-- Operator Table -->
+    <div class="border border-gray-200 rounded-xl overflow-hidden mb-6">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50/80">
+            <th class="text-left py-2.5 px-4 text-xs font-semibold text-gray-600">オペレーター</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">稼働</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">コール</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">有効接続</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">担当接続</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">案件</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">AI平均</th>
+            <th class="text-right py-2.5 px-4 text-xs font-semibold text-gray-600">案件化率</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100 hover:bg-blue-50/30 transition-colors">
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">中</div>
+                <span class="font-medium">中田 倫哉</span>
+                <span class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">初級</span>
+              </div>
+            </td>
+            <td class="py-3 px-4 text-right">7.0h</td>
+            <td class="py-3 px-4 text-right font-medium">46 <span class="text-[10px] text-gray-400">6.6/h</span></td>
+            <td class="py-3 px-4 text-right">10 <span class="text-[10px] text-gray-400">1.4/h</span></td>
+            <td class="py-3 px-4 text-right">10 <span class="text-[10px] text-gray-400">1.4/h</span></td>
+            <td class="py-3 px-4 text-right font-medium text-blue-600">2 <span class="text-[10px] text-gray-400">3.5h</span></td>
+            <td class="py-3 px-4 text-right"><span class="text-amber-600 font-semibold">44.2</span></td>
+            <td class="py-3 px-4 text-right font-medium">4.3%</td>
+          </tr>
+          <tr class="border-t-2 border-gray-200 bg-gray-50/50 font-semibold">
+            <td class="py-3 px-4 text-gray-700">合計</td>
+            <td class="py-3 px-4 text-right">7.0h</td>
+            <td class="py-3 px-4 text-right">46</td>
+            <td class="py-3 px-4 text-right">10</td>
+            <td class="py-3 px-4 text-right">10</td>
+            <td class="py-3 px-4 text-right text-blue-600">2</td>
+            <td class="py-3 px-4 text-right text-gray-400">-</td>
+            <td class="py-3 px-4 text-right">4.3%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="border border-gray-200 rounded-xl p-5">
+        <h3 class="text-sm font-bold text-gray-800 mb-4">時間帯別コール数</h3>
+        <div class="flex items-end gap-1 h-24">
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:25%"></div>
+            <span class="text-[9px] text-gray-400">9</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:35%"></div>
+            <span class="text-[9px] text-gray-400">10</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:45%"></div>
+            <span class="text-[9px] text-gray-400">11</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-gray-200 rounded-t" style="height:5%"></div>
+            <span class="text-[9px] text-gray-400">12</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-500 rounded-t" style="height:90%"></div>
+            <span class="text-[9px] text-gray-400">13</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:55%"></div>
+            <span class="text-[9px] text-gray-400">14</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:40%"></div>
+            <span class="text-[9px] text-gray-400">15</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-400 rounded-t" style="height:65%"></div>
+            <span class="text-[9px] text-gray-400">16</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-blue-500 rounded-t" style="height:80%"></div>
+            <span class="text-[9px] text-gray-400">17</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-gray-200 rounded-t" style="height:5%"></div>
+            <span class="text-[9px] text-gray-400">18</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-gray-200 rounded-t" style="height:5%"></div>
+            <span class="text-[9px] text-gray-400">19</span>
+          </div>
+        </div>
+      </div>
+      <div class="border border-gray-200 rounded-xl p-5">
+        <h3 class="text-sm font-bold text-gray-800 mb-4">業種別案件化率</h3>
+        <div class="flex items-center justify-center h-24">
+          <div class="relative w-20 h-20">
+            <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#e2e8f0" stroke-width="4" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#3b82f6" stroke-width="4" stroke-dasharray="44 44" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="44 44" stroke-dashoffset="-44" />
+            </svg>
+          </div>
+          <div class="ml-4 space-y-1.5">
+            <div class="flex items-center gap-2 text-xs"><span class="w-2.5 h-2.5 bg-blue-500 rounded-full"></span>食料品製造業 50%</div>
+            <div class="flex items-center gap-2 text-xs"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>飲食店 50%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="text-center mt-12 mb-8 text-sm text-gray-400">
+  --- モックアップ終了 ---
+</div>
+
+</div>
+</body>
+</html>

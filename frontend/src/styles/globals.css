@@ -4,7 +4,7 @@
 
 /* ============================================
    AI CallCenter CRM - グローバルスタイル
-   洗練されたモダンデザイン
+   洗練されたモダンデザイン v2
    ============================================ */
 
 :root {
@@ -30,6 +30,14 @@
   --text: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
+
+  /* サイドバー */
+  --sidebar-bg: #0f172a;
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active: rgba(59, 130, 246, 0.15);
+  --sidebar-text: rgba(255, 255, 255, 0.55);
+  --sidebar-text-active: rgba(255, 255, 255, 0.95);
+  --sidebar-section: rgba(255, 255, 255, 0.25);
 
   /* シャドウ */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -99,7 +107,7 @@
     @apply focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100;
   }
   .input-label {
-    @apply block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5;
+    @apply block text-xs font-medium text-gray-600 mb-1.5;
   }
 
   /* バッジ */
@@ -109,10 +117,29 @@
 
   /* テーブル */
   .table-header {
-    @apply text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider;
+    @apply text-left px-4 py-3 text-xs font-semibold text-gray-600;
   }
   .table-cell {
     @apply px-4 py-3.5 text-sm;
+  }
+
+  /* スケルトンローディング */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* タブグループ */
+  .tab-group {
+    @apply flex bg-gray-100 rounded-lg p-0.5;
+  }
+  .tab-item {
+    @apply text-xs px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all duration-150 cursor-pointer;
+  }
+  .tab-item-active {
+    @apply text-xs px-3 py-1.5 rounded-md bg-white shadow-sm font-medium text-gray-800;
   }
 }
 
@@ -150,12 +177,36 @@
   animation: fadeIn 0.3s ease-out;
 }
 
-/* セレクトボックス（.select-no-arrowは矢印なし） */
+/* スタガーアニメーション */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-stagger > * {
+  animation: fadeInUp 0.35s ease-out both;
+}
+.animate-stagger > *:nth-child(1) { animation-delay: 0.03s; }
+.animate-stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.animate-stagger > *:nth-child(3) { animation-delay: 0.09s; }
+.animate-stagger > *:nth-child(4) { animation-delay: 0.12s; }
+.animate-stagger > *:nth-child(5) { animation-delay: 0.15s; }
+.animate-stagger > *:nth-child(6) { animation-delay: 0.18s; }
+.animate-stagger > *:nth-child(7) { animation-delay: 0.21s; }
+.animate-stagger > *:nth-child(8) { animation-delay: 0.24s; }
+
+/* スケルトンシマー */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* セレクトボックス統一（矢印の被り修正） */
 select:not(.select-no-arrow) {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
-  padding-right: 2rem;
+  background-size: 14px;
+  padding-right: 2.25rem;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -165,4 +216,9 @@ select:not(.select-no-arrow) {
   -moz-appearance: none;
   appearance: none;
   background-image: none;
+}
+
+/* テーブル行ホバー統一 */
+tbody tr {
+  transition: background-color 100ms ease;
 }
