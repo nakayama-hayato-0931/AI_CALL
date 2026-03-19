@@ -151,9 +151,7 @@ const runMigrations = async () => {
         created_by INT UNSIGNED NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status_sheets_user (user_id),
-        CONSTRAINT fk_ss_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_ss_created FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+        INDEX idx_ss_user (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info('[Migration] status_sheets テーブル確認完了');

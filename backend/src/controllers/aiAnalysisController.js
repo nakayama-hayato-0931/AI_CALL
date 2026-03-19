@@ -9,7 +9,9 @@ const { getDateRange } = require('../utils/periodHelper');
 const { evaluateTeamAnalysis, evaluateOperatorCoaching, evaluateStatusSheet } = require('../services/aiTeamAnalysisService');
 
 // status_sheets テーブルを確実に作成
+let statusSheetsTableReady = false;
 const ensureStatusSheetsTable = async () => {
+  if (statusSheetsTableReady) return;
   try {
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS status_sheets (
@@ -23,13 +25,15 @@ const ensureStatusSheetsTable = async () => {
         created_by INT UNSIGNED NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status_sheets_user (user_id),
-        CONSTRAINT fk_ss_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_ss_created FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+        INDEX idx_ss_user (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    statusSheetsTableReady = true;
+    logger.info('[ensureStatusSheetsTable] テーブル準備完了');
   } catch (e) {
     logger.warn('[ensureStatusSheetsTable]', e.message);
+    // テーブルが既に存在する場合も成功扱い
+    if (e.message.includes('already exists')) statusSheetsTableReady = true;
   }
 };
 
