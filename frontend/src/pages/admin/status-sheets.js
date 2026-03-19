@@ -91,7 +91,29 @@ export default function StatusSheetsPage() {
         ...range,
       }, { timeout: 300000 });
       if (data.success) {
-        toast.success('ステータスシートを生成しました');
+        const generated = data.data?.sheets || [];
+        const withSheets = generated.filter(s => s.sheet);
+        if (withSheets.length > 0) {
+          toast.success(`${withSheets.length}件のステータスシートを生成しました`);
+          // POST結果から直接シート表示用データを構築
+          const mapped = withSheets.map(s => ({
+            id: s.userId,
+            user_id: s.userId,
+            user_name: s.name,
+            period_from: data.data.dateFrom,
+            period_to: data.data.dateTo,
+            current_status: s.sheet.current_status,
+            training_plan: s.sheet.training_plan,
+            next_steps: s.sheet.next_steps,
+            updated_at: new Date().toISOString(),
+          }));
+          setSheets(mapped);
+          setExpandedUser(mapped[0]?.user_id || null);
+        } else {
+          const skipped = generated.filter(s => !s.sheet);
+          toast.error(`生成できませんでした: ${skipped.map(s => s.message || 'データなし').join(', ')}`);
+        }
+        // DBからも再取得
         fetchSheets();
       }
     } catch (err) {
