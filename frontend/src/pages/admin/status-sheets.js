@@ -8,22 +8,12 @@ import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
-const PERIODS = [
-  { value: 'weekly', label: '週別' },
-  { value: 'monthly', label: '月別' },
-  { value: 'cumulative', label: '累計' },
-];
-
 export default function StatusSheetsPage() {
   const { user, loading: authLoading } = useAuth();
   const [sheets, setSheets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [expandedUser, setExpandedUser] = useState(null);
-
-  // 生成用パラメータ
-  const [genPeriod, setGenPeriod] = useState('monthly');
-  const [genMonth, setGenMonth] = useState(new Date().toISOString().slice(0, 7));
 
   // 編集
   const [editingId, setEditingId] = useState(null);
@@ -53,43 +43,17 @@ export default function StatusSheetsPage() {
     }
   };
 
-  const calcRange = () => {
-    const pad = (n) => String(n).padStart(2, '0');
-    switch (genPeriod) {
-      case 'weekly': {
-        const now = new Date();
-        const day = now.getDay();
-        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-        const monday = new Date(now.setDate(diff));
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        return {
-          date_from: monday.toISOString().slice(0, 10),
-          date_to: sunday.toISOString().slice(0, 10),
-        };
-      }
-      case 'monthly': {
-        const [year, m] = genMonth.split('-').map(Number);
-        const lastDay = new Date(year, m, 0).getDate();
-        return {
-          date_from: `${year}-${pad(m)}-01`,
-          date_to: `${year}-${pad(m)}-${pad(lastDay)}`,
-        };
-      }
-      case 'cumulative':
-        return { date_from: '2000-01-01', date_to: '2099-12-31' };
-      default:
-        return {};
-    }
-  };
-
   const handleGenerate = async () => {
     try {
       setGenerating(true);
-      const range = calcRange();
+      // 直近2週間固定
+      const now = new Date();
+      const twoWeeksAgo = new Date(now);
+      twoWeeksAgo.setDate(now.getDate() - 14);
       const { data } = await api.post('/api/ai/analysis/status-sheets', {
-        period: genPeriod,
-        ...range,
+        period: 'weekly',
+        date_from: twoWeeksAgo.toISOString().slice(0, 10),
+        date_to: now.toISOString().slice(0, 10),
       }, { timeout: 300000 });
       if (data.success) {
         const generated = data.data?.sheets || [];
@@ -188,18 +152,7 @@ export default function StatusSheetsPage() {
       <div className="card p-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs font-medium text-gray-600">期間:</span>
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-            {PERIODS.map(p => (
-              <button key={p.value} onClick={() => setGenPeriod(p.value)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  genPeriod === p.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}>{p.label}</button>
-            ))}
-          </div>
-          {genPeriod === 'monthly' && (
-            <input type="month" className="input text-sm" value={genMonth}
-              onChange={e => setGenMonth(e.target.value)} />
-          )}
+          <span className="text-xs text-gray-500">直近2週間のAI評価データから生成</span>
           <button onClick={handleGenerate} disabled={generating}
             className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50 ml-auto">
             {generating ? (
