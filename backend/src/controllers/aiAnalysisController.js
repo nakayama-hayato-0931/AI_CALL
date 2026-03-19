@@ -8,6 +8,31 @@ const logger = require('../utils/logger');
 const { getDateRange } = require('../utils/periodHelper');
 const { evaluateTeamAnalysis, evaluateOperatorCoaching, evaluateStatusSheet } = require('../services/aiTeamAnalysisService');
 
+// status_sheets テーブルを確実に作成
+const ensureStatusSheetsTable = async () => {
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS status_sheets (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NOT NULL,
+        period_from DATE NOT NULL,
+        period_to DATE NOT NULL,
+        current_status JSON NOT NULL,
+        training_plan JSON NOT NULL,
+        next_steps JSON NOT NULL,
+        created_by INT UNSIGNED NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_status_sheets_user (user_id),
+        CONSTRAINT fk_ss_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ss_created FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+  } catch (e) {
+    // テーブルが既に存在する場合はスキップ
+  }
+};
+
 /**
  * POST /api/ai/analysis/team
  * チーム全体のAI分析レポート生成
@@ -339,6 +364,7 @@ const getOperatorCoaching = async (req, res, next) => {
  */
 const generateStatusSheets = async (req, res, next) => {
   try {
+    await ensureStatusSheetsTable();
     const { period = 'monthly', date_from, date_to } = req.body;
     let dateFrom, dateTo;
     if (date_from && date_to) {
@@ -500,6 +526,7 @@ const generateStatusSheets = async (req, res, next) => {
  */
 const getStatusSheets = async (req, res, next) => {
   try {
+    await ensureStatusSheetsTable();
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps,
@@ -511,6 +538,7 @@ const getStatusSheets = async (req, res, next) => {
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
+    logger.error('ステータスシート一覧取得エラー:', err.message);
     next(err);
   }
 };

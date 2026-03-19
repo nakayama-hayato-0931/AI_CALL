@@ -97,8 +97,8 @@ const ADMIN_NAV = [
   { href: '/admin/analytics', label: 'CPA/案件質分析', icon: 'performance' },
   { href: '/admin/status-sheets', label: 'ステータスシート', icon: 'ai' },
   { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
-  { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
   { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
+  { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
   { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
 ];
 
