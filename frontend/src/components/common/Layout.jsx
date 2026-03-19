@@ -187,26 +187,26 @@ export default function Layout({ children }) {
       <aside
         className={`${
           sidebarOpen ? 'w-[232px]' : 'w-[68px]'
-        } bg-slate-900 transition-all duration-300 ease-in-out flex flex-col`}
+        } bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 transition-all duration-300 ease-in-out flex flex-col`}
       >
         {/* ロゴエリア */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-white/[0.06]">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-white/[0.12]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0">
               <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
               </svg>
             </div>
             {sidebarOpen && (
               <div className="whitespace-nowrap">
-                <span className="font-semibold text-sm text-white/90 tracking-tight">AI CallCenter</span>
-                <span className="block text-[10px] text-white/30 font-medium -mt-0.5">CRM System</span>
+                <span className="font-semibold text-sm text-white tracking-tight">AI CallCenter</span>
+                <span className="block text-[10px] text-white/50 font-medium -mt-0.5">CRM System</span>
               </div>
             )}
           </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] rounded-md transition-colors flex-shrink-0"
+            className="p-1.5 text-white/40 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors flex-shrink-0"
           >
             {sidebarOpen ? icons.collapse : icons.expand}
           </button>
@@ -217,12 +217,12 @@ export default function Layout({ children }) {
           {sections.map((section, si) => (
             <div key={si}>
               {sidebarOpen && section.label && (
-                <div className="px-3 mb-1.5 text-[10px] font-semibold text-white/25 uppercase tracking-wider">
+                <div className="px-3 mb-1.5 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
                   {section.label}
                 </div>
               )}
               {!sidebarOpen && si > 0 && (
-                <div className="mx-3 mb-2 border-t border-white/[0.06]" />
+                <div className="mx-3 mb-2 border-t border-white/[0.12]" />
               )}
               <div className="space-y-0.5">
                 {section.items.map((item) => {
@@ -235,12 +235,12 @@ export default function Layout({ children }) {
                       href={item.href}
                       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
                         isActive
-                          ? 'bg-blue-500/15 text-blue-300 border-l-[3px] border-blue-400 -ml-[1px]'
-                          : 'text-white/50 hover:text-white/80 hover:bg-white/[0.06]'
+                          ? 'bg-white/20 text-white border-l-[3px] border-white -ml-[1px]'
+                          : 'text-white/60 hover:text-white/90 hover:bg-white/10'
                       }`}
                       title={!sidebarOpen ? item.label : undefined}
                     >
-                      <span className={`flex-shrink-0 ${isActive ? 'text-blue-400' : 'text-white/40'}`}>
+                      <span className={`flex-shrink-0 ${isActive ? 'text-white' : 'text-white/50'}`}>
                         {icons[item.icon]}
                       </span>
                       {sidebarOpen && <span className="truncate">{item.label}</span>}
@@ -253,21 +253,21 @@ export default function Layout({ children }) {
         </nav>
 
         {/* ユーザー情報 */}
-        <div className="border-t border-white/[0.06] p-3">
+        <div className="border-t border-white/[0.12] p-3">
           <div className={`flex items-center gap-2.5 ${sidebarOpen ? '' : 'justify-center'}`}>
             <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${ROLE_COLORS[user.role] || 'from-gray-400 to-gray-600'} flex items-center justify-center flex-shrink-0 text-xs font-bold text-white`}>
               {user.name?.charAt(0)}
             </div>
             {sidebarOpen && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white/85 truncate">{user.name}</p>
-                <p className="text-[10px] text-white/35">{ROLE_LABELS[user.role] || user.role}</p>
+                <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                <p className="text-[10px] text-white/50">{ROLE_LABELS[user.role] || user.role}</p>
               </div>
             )}
             {sidebarOpen && (
               <button
                 onClick={logout}
-                className="p-1.5 text-white/30 hover:text-red-400 hover:bg-white/[0.06] rounded-md transition-colors"
+                className="p-1.5 text-white/40 hover:text-red-300 hover:bg-white/10 rounded-md transition-colors"
                 title="ログアウト"
               >
                 {icons.logout}
