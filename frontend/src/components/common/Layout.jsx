@@ -228,7 +228,7 @@ export default function Layout({ children }) {
                 {section.items.map((item) => {
                   const isActive = item.href === '/'
                     ? router.pathname === '/'
-                    : router.pathname.startsWith(item.href);
+                    : router.pathname === item.href || router.pathname.startsWith(item.href + '/');
                   return (
                     <Link
                       key={item.href}
