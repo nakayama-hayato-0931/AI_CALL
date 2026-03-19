@@ -107,13 +107,13 @@ const getNavSections = (role) => {
           { href: '/admin/analytics', label: 'CPA/案件質分析', icon: 'performance' },
           { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
           { href: '/admin/call-logs', label: '架電結果ログ', icon: 'log' },
-          { href: '/admin/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/status-sheets', label: 'ステータスシート', icon: 'status' },
         ],
       },
       {
         label: '管理',
         items: [
+          { href: '/admin/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
           { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
