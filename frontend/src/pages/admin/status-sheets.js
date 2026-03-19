@@ -35,7 +35,20 @@ export default function StatusSheetsPage() {
   const fetchOperators = async () => {
     try {
       const { data } = await api.get('/api/analytics/operators');
-      if (data.success) setOperators(data.data || []);
+      if (data.success) {
+        const ops = data.data || [];
+        setOperators(ops);
+        // 初級オペレーターの研修データを一括取得
+        const beginners = ops.filter(op => op.operator_level === '初級');
+        for (const op of beginners) {
+          if (!trainingData[op.id]) {
+            try {
+              const { data: td } = await api.get(`/api/ai/analysis/training/${op.id}`);
+              if (td.success) setTrainingData(prev => ({ ...prev, [op.id]: td.data }));
+            } catch (e) {}
+          }
+        }
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -252,6 +265,7 @@ export default function StatusSheetsPage() {
         // シートがあるオペレーターのIDセット
         const sheetUserIds = new Set(sheets.map(s => s.user_id));
         // シートがないオペレーターをダミーエントリとして追加
+        const levelOrder = { '初級': 0, '中級': 1, '上級': 2 };
         const allEntries = [
           ...sheets,
           ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
@@ -269,7 +283,18 @@ export default function StatusSheetsPage() {
             period_to: null,
             _placeholder: true,
           }))
-        ];
+        ].sort((a, b) => {
+          const la = levelOrder[a.operator_level] ?? 99;
+          const lb = levelOrder[b.operator_level] ?? 99;
+          if (la !== lb) return la - lb;
+          // 同じランク内：初級は研修完了数が少ない人を上に
+          if (a.operator_level === '初級') {
+            const aCompleted = (trainingData[a.user_id] || []).filter(s => s.is_completed).length;
+            const bCompleted = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
+            return aCompleted - bCompleted;
+          }
+          return 0;
+        });
         return allEntries.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-sm text-gray-400">オペレーターがいません</p>
