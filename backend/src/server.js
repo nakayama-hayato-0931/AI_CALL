@@ -201,6 +201,10 @@ const runMigrations = async () => {
     }
     logger.info('[Migration] 既存オペレーター研修進捗 初期化完了');
   } catch (err) { logger.warn('[Migration] 研修進捗初期化:', err.message); }
+  // operator_trainingにtraining_dateカラム追加
+  try {
+    await pool.execute(`ALTER TABLE operator_training ADD COLUMN training_date DATE DEFAULT NULL`);
+  } catch (e) {}
   // status_sheetsにtargets/scenarioカラム追加
   try {
     await pool.execute(`ALTER TABLE status_sheets ADD COLUMN targets JSON DEFAULT NULL`);

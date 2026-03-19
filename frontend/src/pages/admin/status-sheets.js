@@ -696,6 +696,7 @@ export default function StatusSheetsPage() {
                                   <th className="text-left py-2 px-3 text-teal-700 font-medium w-8">#</th>
                                   <th className="text-left py-2 px-3 text-teal-700 font-medium">研修内容</th>
                                   <th className="text-left py-2 px-3 text-teal-700 font-medium">実施担当者</th>
+                                  <th className="text-left py-2 px-3 text-teal-700 font-medium w-32">実施日</th>
                                   <th className="text-center py-2 px-3 text-teal-700 font-medium w-16">完了</th>
                                 </tr>
                               </thead>
@@ -714,6 +715,19 @@ export default function StatusSheetsPage() {
                                         onBlur={e => {
                                           if (e.target.value !== (step.trainer_name || '')) {
                                             handleTrainingUpdate(sheet.user_id, step.step_number, 'trainer_name', e.target.value);
+                                          }
+                                        }}
+                                        className="text-xs border border-teal-200 rounded px-2 py-1 w-full bg-white focus:ring-1 focus:ring-teal-300 focus:border-teal-300 outline-none"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="date"
+                                        defaultValue={step.training_date ? step.training_date.slice(0, 10) : ''}
+                                        onBlur={e => {
+                                          const cur = step.training_date ? step.training_date.slice(0, 10) : '';
+                                          if (e.target.value !== cur) {
+                                            handleTrainingUpdate(sheet.user_id, step.step_number, 'training_date', e.target.value || null);
                                           }
                                         }}
                                         className="text-xs border border-teal-200 rounded px-2 py-1 w-full bg-white focus:ring-1 focus:ring-teal-300 focus:border-teal-300 outline-none"

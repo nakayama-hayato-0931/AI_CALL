@@ -660,7 +660,7 @@ const getTrainingProgress = async (req, res, next) => {
   try {
     const { userId } = req.params;
     const [rows] = await pool.query(
-      'SELECT step_number, step_name, trainer_name, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
+      'SELECT step_number, step_name, trainer_name, training_date, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
       [userId]
     );
 
@@ -673,7 +673,7 @@ const getTrainingProgress = async (req, res, next) => {
         );
       }
       const [newRows] = await pool.query(
-        'SELECT step_number, step_name, trainer_name, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
+        'SELECT step_number, step_name, trainer_name, training_date, is_completed, completed_at FROM operator_training WHERE user_id = ? ORDER BY step_number',
         [userId]
       );
       return ApiResponse.success(res, newRows);
@@ -693,12 +693,13 @@ const getTrainingProgress = async (req, res, next) => {
 const updateTrainingStep = async (req, res, next) => {
   try {
     const { userId, stepNumber } = req.params;
-    const { trainer_name, is_completed } = req.body;
+    const { trainer_name, training_date, is_completed } = req.body;
 
     const updates = [];
     const params = [];
 
     if (trainer_name !== undefined) { updates.push('trainer_name = ?'); params.push(trainer_name || null); }
+    if (training_date !== undefined) { updates.push('training_date = ?'); params.push(training_date || null); }
     if (is_completed !== undefined) {
       updates.push('is_completed = ?');
       params.push(is_completed ? 1 : 0);
