@@ -273,7 +273,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role = 'operator' AND u.is_active = 1
       GROUP BY u.id, u.name
-      ORDER BY u.name`,
+      ORDER BY u.id ASC`,
       [dateFrom, dateTo]
     );
 
