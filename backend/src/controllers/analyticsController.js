@@ -243,6 +243,19 @@ const importCostCsv = async (req, res, next) => {
     const lines = content.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return ApiResponse.badRequest(res, 'データがありません');
 
+    // CSVの日付範囲を先に取得し、その範囲の既存データを削除（上書きモード）
+    const dataLines = lines.slice(1);
+    const csvDates = new Set();
+    for (const line of dataLines) {
+      const cols = line.split(',');
+      if (cols[0] && cols[0].match(/^\d{4}-\d{2}-\d{2}$/)) csvDates.add(cols[0]);
+    }
+    if (csvDates.size > 0) {
+      const minDate = [...csvDates].sort()[0];
+      const maxDate = [...csvDates].sort().reverse()[0];
+      await pool.execute('DELETE FROM cost_records WHERE date BETWEEN ? AND ?', [minDate, maxDate]);
+    }
+
     // ユーザー名→IDマッピング
     const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
     const nameMap = new Map();
