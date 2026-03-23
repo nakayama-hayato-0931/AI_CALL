@@ -452,7 +452,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {perfData.operators.map(op => {
-                  const wh = op.work_minutes > 0 ? op.work_minutes / 60 : 0;
+                  const wh = Number(op.work_minutes) > 0 ? Number(op.work_minutes) / 60 : 0;
                   const workH = wh > 0 ? wh.toFixed(1) : '-';
                   const ph = (val) => wh > 0 ? (val / wh).toFixed(1) : '-';
                   const phNum = (val) => wh > 0 ? val / wh : 0;
@@ -500,13 +500,13 @@ export default function DashboardPage() {
                 })}
                 {(() => {
                   const t = perfData.operators.reduce((acc, op) => ({
-                    work_minutes: acc.work_minutes + (op.work_minutes || 0),
-                    total_calls: acc.total_calls + (op.total_calls || 0),
-                    recall_gained: acc.recall_gained + (op.recall_gained || 0),
-                    recall_done: acc.recall_done + (op.recall_done || 0),
-                    effective_connections: acc.effective_connections + (op.effective_connections || 0),
-                    person_connections: acc.person_connections + (op.person_connections || 0),
-                    projects: acc.projects + (op.projects || 0),
+                    work_minutes: acc.work_minutes + Number(op.work_minutes || 0),
+                    total_calls: acc.total_calls + Number(op.total_calls || 0),
+                    recall_gained: acc.recall_gained + Number(op.recall_gained || 0),
+                    recall_done: acc.recall_done + Number(op.recall_done || 0),
+                    effective_connections: acc.effective_connections + Number(op.effective_connections || 0),
+                    person_connections: acc.person_connections + Number(op.person_connections || 0),
+                    projects: acc.projects + Number(op.projects || 0),
                   }), { work_minutes: 0, total_calls: 0, recall_gained: 0, recall_done: 0, effective_connections: 0, person_connections: 0, projects: 0 });
                   const twh = t.work_minutes > 0 ? t.work_minutes / 60 : 0;
                   const totalWorkH = twh > 0 ? twh.toFixed(1) : '-';
