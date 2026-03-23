@@ -113,11 +113,14 @@ const getProjectById = async (req, res, next) => {
     const { id } = req.params;
 
     const [rows] = await pool.execute(
-      `SELECT p.*, c.company_name, c.phone_number, c.industry, c.region, c.address,
-              u.name as owner_name,
-              su.name as sales_name
+      `SELECT p.*,
+              COALESCE(c.company_name, p.legacy_company_name) as company_name,
+              COALESCE(c.phone_number, p.legacy_phone) as phone_number,
+              c.industry, c.region, c.address,
+              COALESCE(u.name, p.legacy_operator_name) as owner_name,
+              COALESCE(su.name, p.legacy_sales_name) as sales_name
        FROM projects p
-       JOIN companies c ON p.company_id = c.id
+       LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users u ON p.owner_user_id = u.id
        LEFT JOIN users su ON p.sales_user_id = su.id
        WHERE p.id = ?`,
@@ -128,15 +131,19 @@ const getProjectById = async (req, res, next) => {
       return ApiResponse.notFound(res, '案件が見つかりません');
     }
 
-    // 関連通話履歴（transcript含む）
-    const [callHistory] = await pool.execute(
-      `SELECT cl.*, u.name as operator_name
-       FROM calls cl
-       LEFT JOIN users u ON cl.user_id = u.id
-       WHERE cl.company_id = ?
-       ORDER BY cl.call_started_at DESC`,
-      [rows[0].company_id]
-    );
+    // 関連通話履歴（transcript含む）- 移行前案件はcompany_idがないので空配列
+    let callHistory = [];
+    if (rows[0].company_id) {
+      const [calls] = await pool.execute(
+        `SELECT cl.*, u.name as operator_name
+         FROM calls cl
+         LEFT JOIN users u ON cl.user_id = u.id
+         WHERE cl.company_id = ?
+         ORDER BY cl.call_started_at DESC`,
+        [rows[0].company_id]
+      );
+      callHistory = calls;
+    }
 
     return ApiResponse.success(res, {
       project: rows[0],
