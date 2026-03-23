@@ -241,6 +241,8 @@ const runMigrations = async () => {
   // past_cpa_dataに日付範囲カラム追加（週別対応）
   try { await pool.execute(`ALTER TABLE past_cpa_data ADD COLUMN date_from DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE past_cpa_data ADD COLUMN date_to DATE DEFAULT NULL`); } catch (e) {}
+  // UNIQUE KEY削除（月別と週別が同じyear-month-userで重複するため）
+  try { await pool.execute(`ALTER TABLE past_cpa_data DROP INDEX uq_past_period_user`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_work_hours DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_calls_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_effective_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
