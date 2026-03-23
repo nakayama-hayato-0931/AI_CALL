@@ -178,7 +178,7 @@ const getQualityMetrics = async (req, res, next) => {
          CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
          CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
-         CAST(SUM(CASE WHEN p.document_screening = 'not_required' THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
+         CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
          CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
        FROM projects p
        WHERE DATE(p.created_at) BETWEEN ? AND ? ${userCond}`,
@@ -499,7 +499,7 @@ const getCpaAll = async (req, res, next) => {
         CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
         CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
         CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
-       FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+       FROM projects p WHERE DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
       [dateFrom, dateTo]
     );
     const projMap = new Map(projAll.map(r => [r.user_id, r]));
@@ -674,9 +674,9 @@ const getQualityAll = async (req, res, next) => {
         CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
         CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
         CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
-        CAST(SUM(CASE WHEN p.document_screening = 'not_required' THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
+        CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
         CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
-       FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+       FROM projects p WHERE DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
       [dateFrom, dateTo]
     );
     const qMap = new Map(rows.map(r => [r.user_id, r]));
