@@ -564,7 +564,7 @@ const importLegacyProjects = async (req, res, next) => {
       const onlineOk = parseBool(row['オンライン\n面接OK']);
       const interviewType = onlineOk ? 'online' : null;
       const noScreening = parseBool(row['書類選考\n無し']);
-      const docScreening = noScreening ? 'なし' : null;
+      const docScreening = noScreening ? 'not_required' : null;
       const mailSent = parseBool(row['メール\n送付']);
       const mailReplied = parseBool(row['メール\n返信']);
       const phoneDone = parseBool(row['電話確認']);
