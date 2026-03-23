@@ -41,18 +41,33 @@ const getCpaMetrics = async (req, res, next) => {
       whParams.push(targetUserId);
     }
 
-    // コスト（CSVインポート出勤記録 × 時給）
+    // コスト（CSVインポート出勤記録 × 時給 + 交通費）
     const [costRows] = await pool.query(
       `SELECT COALESCE(SUM(
         TIMESTAMPDIFF(MINUTE, CONCAT(cr.date, ' ', cr.start_time), CONCAT(cr.date, ' ', cr.end_time))
         - COALESCE(cr.break_minutes, 0)
-      ), 0) as total_minutes
+      ), 0) as total_minutes,
+      COUNT(DISTINCT cr.date) as work_days
        FROM cost_records cr
        WHERE cr.date BETWEEN ? AND ? ${whUserCond.replace(/wh\./g, 'cr.')}`,
       whParams
     );
     const totalMinutes = Number(costRows[0].total_minutes) || 0;
-    const cost = Math.round(totalMinutes / 60 * HOURLY_RATE);
+    let cost = Math.round(totalMinutes / 60 * HOURLY_RATE);
+    // 交通費加算（個人指定時のみ）
+    if (targetUserId) {
+      const [uRows] = await pool.query('SELECT commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE id = ?', [targetUserId]);
+      if (uRows.length > 0) {
+        const u = uRows[0];
+        if (u.commute_type === 'teiki') {
+          const d1 = new Date(dateFrom), d2 = new Date(dateTo);
+          const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
+          cost += (u.commute_teiki_monthly || 0) * Math.min(months, 12);
+        } else if (u.commute_type === 'daily') {
+          cost += (u.commute_daily_amount || 0) * Number(costRows[0].work_days || 0);
+        }
+      }
+    }
 
     // コール数
     const [callRows] = await pool.query(
@@ -414,19 +429,38 @@ const getCpaAll = async (req, res, next) => {
     if (!range) return ApiResponse.badRequest(res, '無効な期間です');
     const { dateFrom, dateTo } = range;
 
-    // アクティブオペレーター
+    // アクティブオペレーター（交通費情報含む）
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
+      "SELECT id, name, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
     );
 
     // コスト（全員分一括）
     const [costAll] = await pool.query(
       `SELECT cr.user_id,
-        COALESCE(SUM(TIMESTAMPDIFF(MINUTE, CONCAT(cr.date,' ',cr.start_time), CONCAT(cr.date,' ',cr.end_time)) - COALESCE(cr.break_minutes,0)), 0) as total_minutes
+        COALESCE(SUM(TIMESTAMPDIFF(MINUTE, CONCAT(cr.date,' ',cr.start_time), CONCAT(cr.date,' ',cr.end_time)) - COALESCE(cr.break_minutes,0)), 0) as total_minutes,
+        COUNT(DISTINCT cr.date) as work_days
        FROM cost_records cr WHERE cr.date BETWEEN ? AND ? GROUP BY cr.user_id`,
       [dateFrom, dateTo]
     );
-    const costMap = new Map(costAll.map(r => [r.user_id, Math.round(Number(r.total_minutes) / 60 * HOURLY_RATE)]));
+    // コスト = 人件費 + 交通費
+    const costMap = new Map();
+    for (const r of costAll) {
+      const laborCost = Math.round(Number(r.total_minutes) / 60 * HOURLY_RATE);
+      const u = users.find(u => u.id === r.user_id);
+      let commuteCost = 0;
+      if (u) {
+        if (u.commute_type === 'teiki') {
+          // 定期券: 期間に応じて按分（月額 × 期間月数）
+          const d1 = new Date(dateFrom), d2 = new Date(dateTo);
+          const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
+          commuteCost = (u.commute_teiki_monthly || 0) * Math.min(months, 12);
+        } else if (u.commute_type === 'daily') {
+          // 1日あたり: 稼働日数 × 日額
+          commuteCost = (u.commute_daily_amount || 0) * Number(r.work_days || 0);
+        }
+      }
+      costMap.set(r.user_id, laborCost + commuteCost);
+    }
 
     // コール数（全員分一括）
     const [callAll] = await pool.query(

@@ -47,6 +47,11 @@ export default function AdminUsers() {
       if (editingUser) {
         const payload = { name: form.name, email: form.email, role: form.role };
         if (form.password) payload.password = form.password;
+        if (form.role === 'operator' || editingUser.role === 'operator') {
+          payload.commute_type = form.commute_type || null;
+          payload.commute_teiki_monthly = form.commute_type === 'teiki' && form.commute_teiki_monthly ? Number(form.commute_teiki_monthly) : null;
+          payload.commute_daily_amount = form.commute_type === 'daily' && form.commute_daily_amount ? Number(form.commute_daily_amount) : null;
+        }
         await api.put(`/api/admin/users/${editingUser.id}`, payload);
         toast.success('ユーザーを更新しました');
       } else {
@@ -64,7 +69,12 @@ export default function AdminUsers() {
 
   const handleEdit = (u) => {
     setEditingUser(u);
-    setForm({ name: u.name, email: u.email || '', password: '', role: u.role });
+    setForm({
+      name: u.name, email: u.email || '', password: '', role: u.role,
+      commute_type: u.commute_type || '',
+      commute_teiki_monthly: u.commute_teiki_monthly || '',
+      commute_daily_amount: u.commute_daily_amount || '',
+    });
     setShowForm(true);
   };
 
@@ -175,6 +185,52 @@ export default function AdminUsers() {
                 {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
+            {/* 交通費（オペレーターのみ） */}
+            {(form.role === 'operator') && (
+              <div className="col-span-2 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <p className="text-xs font-bold text-gray-600 mb-3">交通費</p>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input type="radio" name="commute_type" value="teiki"
+                        checked={form.commute_type === 'teiki'}
+                        onChange={() => setForm({...form, commute_type: 'teiki'})}
+                        className="text-blue-600" />
+                      定期券（月額）
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input type="radio" name="commute_type" value="daily"
+                        checked={form.commute_type === 'daily'}
+                        onChange={() => setForm({...form, commute_type: 'daily'})}
+                        className="text-blue-600" />
+                      1日あたり
+                    </label>
+                    {form.commute_type && (
+                      <button type="button" onClick={() => setForm({...form, commute_type: '', commute_teiki_monthly: '', commute_daily_amount: ''})}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 ml-1">クリア</button>
+                    )}
+                  </div>
+                  {form.commute_type === 'teiki' && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">月額:</span>
+                      <input type="number" className="input text-xs w-28" placeholder="15000"
+                        value={form.commute_teiki_monthly}
+                        onChange={e => setForm({...form, commute_teiki_monthly: e.target.value})} />
+                      <span className="text-xs text-gray-400">円</span>
+                    </div>
+                  )}
+                  {form.commute_type === 'daily' && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">1日往復:</span>
+                      <input type="number" className="input text-xs w-28" placeholder="1000"
+                        value={form.commute_daily_amount}
+                        onChange={e => setForm({...form, commute_daily_amount: e.target.value})} />
+                      <span className="text-xs text-gray-400">円</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="col-span-2 flex gap-2">
               <button type="submit" className="btn-primary text-sm">{editingUser ? '更新' : '作成'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditingUser(null); }} className="btn-secondary text-sm">キャンセル</button>
@@ -191,6 +247,7 @@ export default function AdminUsers() {
               <th className="table-header">メール</th>
               <th className="table-header">ロール</th>
               <th className="table-header">ランク</th>
+              <th className="table-header">交通費</th>
               <th className="table-header">ステータス</th>
               <th className="table-header">作成日</th>
               <th className="table-header">操作</th>
@@ -216,6 +273,13 @@ export default function AdminUsers() {
                       <option value="上級">上級</option>
                     </select>
                   ) : <span className="text-gray-300 text-xs">-</span>}
+                </td>
+                <td className="table-cell text-xs text-gray-500">
+                  {u.role === 'operator' && u.commute_type ? (
+                    u.commute_type === 'teiki'
+                      ? `定期 ¥${Number(u.commute_teiki_monthly || 0).toLocaleString()}/月`
+                      : `¥${Number(u.commute_daily_amount || 0).toLocaleString()}/日`
+                  ) : <span className="text-gray-300">-</span>}
                 </td>
                 <td className="table-cell">
                   <button onClick={() => handleToggleActive(u)} className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>

@@ -17,7 +17,7 @@ const { getDateRange } = require('../utils/periodHelper');
 const getUsers = async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, email, role, is_active, operator_level, created_at, updated_at FROM users ORDER BY created_at DESC'
+      'SELECT id, name, email, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -108,7 +108,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, is_active, operator_level } = req.body;
+    const { name, email, password, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount } = req.body;
 
     const [existing] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -142,6 +142,9 @@ const updateUser = async (req, res, next) => {
     if (role !== undefined) { updates.push('role = ?'); params.push(role); }
     if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active); }
     if (operator_level !== undefined) { updates.push('operator_level = ?'); params.push(operator_level || null); }
+    if (commute_type !== undefined) { updates.push('commute_type = ?'); params.push(commute_type || null); }
+    if (commute_teiki_monthly !== undefined) { updates.push('commute_teiki_monthly = ?'); params.push(commute_teiki_monthly != null ? Number(commute_teiki_monthly) : null); }
+    if (commute_daily_amount !== undefined) { updates.push('commute_daily_amount = ?'); params.push(commute_daily_amount != null ? Number(commute_daily_amount) : null); }
 
     if (password) {
       const passwordHash = await bcrypt.hash(password, 10);
