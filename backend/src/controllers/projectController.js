@@ -423,18 +423,26 @@ const importLegacyProjects = async (req, res, next) => {
     } else if (['xls', 'xlsx'].includes(ext)) {
       const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      records = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      records = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
     } else {
       return ApiResponse.badRequest(res, 'CSV/XLS/XLSX形式のみ対応');
     }
 
     if (records.length === 0) return ApiResponse.badRequest(res, 'データがありません');
 
-    // カラム名の改行を統一（\r\n → \n）、値をString化
+    // カラム名の改行を統一（\r\n → \n）、値をString化（Date型は日付文字列に）
     records = records.map(row => {
       const normalized = {};
       for (const [key, val] of Object.entries(row)) {
-        normalized[key.replace(/\r\n/g, '\n')] = val != null ? String(val) : '';
+        let strVal = '';
+        if (val != null) {
+          if (val instanceof Date) {
+            strVal = val.toISOString().slice(0, 10);
+          } else {
+            strVal = String(val);
+          }
+        }
+        normalized[key.replace(/\r\n/g, '\n')] = strVal;
       }
       return normalized;
     });
@@ -458,13 +466,19 @@ const importLegacyProjects = async (req, res, next) => {
 
     // Excel serial number → date
     const excelSerialToDate = (val) => {
-      if (!val || String(val).trim() === '') return null;
+      if (!val && val !== 0) return null;
       const s = String(val).trim();
-      // Already a date string
+      if (!s || s === 'nan' || s === 'undefined') return null;
+      // Already a date string (YYYY-MM-DD or YYYY/M/D)
       if (s.includes('-') && s.length >= 8) {
         const d = new Date(s);
         return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
       }
+      if (s.includes('/')) {
+        const d = new Date(s.split('\n')[0].trim());
+        return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+      }
+      // Try to parse as serial number
       const num = parseInt(parseFloat(s));
       if (isNaN(num) || num < 1 || num > 100000) return null;
       const base = new Date(1899, 11, 30);
@@ -491,7 +505,14 @@ const importLegacyProjects = async (req, res, next) => {
 
     for (const row of records) {
       // カラム名はExcelの実際のヘッダーに対応（改行含む）
-      let companyName = (row['会社名'] || '').trim().replace(/^[^\n]*@[^\n]*\n?/, '').replace(/\n/g, ' ').trim();
+      let rawCn = String(row['会社名'] || '').trim();
+      // emailプレフィックスが最初の行にある場合のみ除去
+      if (rawCn.includes('@') && rawCn.includes('\n')) {
+        const lines = rawCn.split('\n');
+        if (lines[0].includes('@')) lines.shift();
+        rawCn = lines.join('\n');
+      }
+      let companyName = rawCn.replace(/\n/g, ' ').trim();
       if (!companyName) { skipped++; continue; }
       // 【ヒトキワ】【グーナビ】等を先頭から末尾に移動
       const tagMatch = companyName.match(/^(【[^】]+】)\s*/);
