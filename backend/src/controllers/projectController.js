@@ -406,7 +406,8 @@ const importLegacyProjects = async (req, res, next) => {
   try {
     if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
 
-    const csvParse = require('csv-parse/sync');
+    let csvParse;
+    try { csvParse = require('csv-parse/sync'); } catch(e) { csvParse = null; }
     const XLSX = require('xlsx');
     let records = [];
 
@@ -423,6 +424,15 @@ const importLegacyProjects = async (req, res, next) => {
     }
 
     if (records.length === 0) return ApiResponse.badRequest(res, 'データがありません');
+
+    // カラム名の改行を統一（\r\n → \n）
+    records = records.map(row => {
+      const normalized = {};
+      for (const [key, val] of Object.entries(row)) {
+        normalized[key.replace(/\r\n/g, '\n')] = val;
+      }
+      return normalized;
+    });
 
     // ステータスマッピング
     const statusMap = {
@@ -576,8 +586,8 @@ const importLegacyProjects = async (req, res, next) => {
 
     return ApiResponse.success(res, { imported, skipped, total: records.length }, `${imported}件の移行前案件をインポートしました`);
   } catch (err) {
-    logger.error('移行前案件インポートエラー:', err);
-    next(err);
+    logger.error('移行前案件インポートエラー:', err.message, err.stack);
+    return res.status(500).json({ success: false, message: `インポートエラー: ${err.message}` });
   }
 };
 
