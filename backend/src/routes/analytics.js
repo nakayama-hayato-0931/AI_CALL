@@ -7,6 +7,7 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, getCpaAll, getQualityAll } = require('../controllers/analyticsController');
 const { authenticate, requireManager } = require('../middlewares/auth');
+const pool = require('../../config/database');
 
 router.use(authenticate);
 router.use(requireManager);
