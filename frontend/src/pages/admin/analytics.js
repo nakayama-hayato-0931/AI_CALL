@@ -17,6 +17,7 @@ for (let y = 2025; y <= 2027; y++) {
   }
 }
 
+// 土曜〜金曜を1週間とする
 const getWeeksInMonth = (ym) => {
   const [y, m] = ym.split('-').map(Number);
   const firstDay = new Date(y, m - 1, 1);
@@ -24,12 +25,18 @@ const getWeeksInMonth = (ym) => {
   const weeks = [];
   let start = new Date(firstDay);
   while (start <= lastDay) {
+    // 金曜(5)までの日数を計算（土曜開始→金曜終了）
+    const dayOfWeek = start.getDay(); // 0=Sun,...,5=Fri,6=Sat
+    let daysToFriday = (5 - dayOfWeek + 7) % 7;
+    if (daysToFriday === 0 && dayOfWeek !== 5) daysToFriday = 7;
+    if (dayOfWeek === 5) daysToFriday = 0;
     const end = new Date(start);
-    end.setDate(start.getDate() + (6 - ((start.getDay() + 6) % 7)));
+    end.setDate(start.getDate() + daysToFriday);
     if (end > lastDay) end.setTime(lastDay.getTime());
     weeks.push({
       label: `${start.getMonth() + 1}/${start.getDate()}〜${end.getMonth() + 1}/${end.getDate()}`,
-      date: start.toISOString().slice(0, 10),
+      dateFrom: start.toISOString().slice(0, 10),
+      dateTo: end.toISOString().slice(0, 10),
     });
     const next = new Date(end);
     next.setDate(end.getDate() + 1);
@@ -84,7 +91,7 @@ export default function AnalyticsPage() {
         const weeks = getWeeksInMonth(selectedMonth);
         const results = await Promise.all(
           weeks.map(async (w) => {
-            const params = { period: 'weekly', date: w.date };
+            const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo };
             const [cpaRes, qualRes] = await Promise.all([
               api.get('/api/analytics/cpa-all', { params }),
               api.get('/api/analytics/quality-all', { params }),

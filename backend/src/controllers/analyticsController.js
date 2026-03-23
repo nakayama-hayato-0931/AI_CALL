@@ -436,11 +436,18 @@ const importCostPdf = async (req, res, next) => {
  */
 const getCpaAll = async (req, res, next) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const period = req.query.period || 'monthly';
-    const range = getDateRange(period, date);
-    if (!range) return ApiResponse.badRequest(res, '無効な期間です');
-    const { dateFrom, dateTo } = range;
+    let dateFrom, dateTo;
+    if (req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const date = req.query.date || new Date().toISOString().slice(0, 10);
+      const range = getDateRange(period, date);
+      if (!range) return ApiResponse.badRequest(res, '無効な期間です');
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     // アクティブオペレーター（交通費情報含む）
     const [users] = await pool.execute(
@@ -631,11 +638,18 @@ const getCpaAll = async (req, res, next) => {
  */
 const getQualityAll = async (req, res, next) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const period = req.query.period || 'monthly';
-    const range = getDateRange(period, date);
-    if (!range) return ApiResponse.badRequest(res, '無効な期間です');
-    const { dateFrom, dateTo } = range;
+    let dateFrom, dateTo;
+    if (req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const date = req.query.date || new Date().toISOString().slice(0, 10);
+      const range = getDateRange(period, date);
+      if (!range) return ApiResponse.badRequest(res, '無効な期間です');
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     const [users] = await pool.execute(
       "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
