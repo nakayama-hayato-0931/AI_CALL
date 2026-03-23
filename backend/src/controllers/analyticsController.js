@@ -556,7 +556,7 @@ const getCpaAll = async (req, res, next) => {
           naitei: Number(pr.naitei) || 0, fugokaku: Number(pr.fugokaku) || 0,
           barashi: Number(pr.barashi) || 0, ip: Number(pr.ip) || 0, er: Number(pr.er) || 0,
         };
-        if (pr.user_id === null) {
+        if (!pr.user_id || pr.user_id === 0) {
           // チーム全体
           pastCost = pd.cost; pastCalls = pd.calls; pastProjects = pd.projects;
           pastInterviews = pd.interviews; pastNaitei = pd.naitei; pastFugokaku = pd.fugokaku;
