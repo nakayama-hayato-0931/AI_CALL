@@ -28,6 +28,7 @@ export default function AdminUsers() {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'operator' });
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmCheck, setDeleteConfirmCheck] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin') { router.push('/'); return; }
@@ -125,7 +126,7 @@ export default function AdminUsers() {
     <Layout>
       {/* 完全削除確認モーダル */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !deleting && setDeleteTarget(null)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => { if (!deleting) { setDeleteTarget(null); setDeleteConfirmCheck(false); } }}>
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
@@ -135,21 +136,25 @@ export default function AdminUsers() {
               </div>
               <h3 className="text-sm font-bold text-gray-900">ユーザーの完全削除</h3>
             </div>
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-gray-600 mb-3">
               <span className="font-bold text-red-600">{deleteTarget.name}</span> を完全に削除します。
             </p>
-            <p className="text-xs text-gray-500 mb-1">この操作は取り消せません。以下のデータも削除されます:</p>
-            <ul className="text-xs text-gray-500 mb-4 ml-4 list-disc space-y-0.5">
-              <li>AI評価データ</li>
-              <li>ステータスシート</li>
-              <li>稼働時間・出勤記録</li>
-              <li>リコール予定</li>
-            </ul>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                このアカウントに紐づく全てのデータが削除されます。基本はアカウントを無効にする運用を推奨します。
+              </p>
+            </div>
+            <label className="flex items-start gap-2 mb-4 cursor-pointer">
+              <input type="checkbox" checked={deleteConfirmCheck}
+                onChange={e => setDeleteConfirmCheck(e.target.checked)}
+                className="w-4 h-4 mt-0.5 text-red-600 border-gray-300 rounded" />
+              <span className="text-xs text-gray-600">それでも削除します</span>
+            </label>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+              <button onClick={() => { setDeleteTarget(null); setDeleteConfirmCheck(false); }} disabled={deleting}
                 className="btn-secondary text-sm">キャンセル</button>
-              <button onClick={handleDeleteConfirm} disabled={deleting}
-                className="btn-danger text-sm flex items-center gap-1.5">
+              <button onClick={handleDeleteConfirm} disabled={deleting || !deleteConfirmCheck}
+                className="text-sm px-4 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                 {deleting ? (
                   <>
                     <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
@@ -242,9 +247,17 @@ export default function AdminUsers() {
               </div>
             )}
             {/* 目標値はステータスシートページで設定 */}
-            <div className="col-span-2 flex gap-2">
-              <button type="submit" className="btn-primary text-sm">{editingUser ? '更新' : '作成'}</button>
-              <button type="button" onClick={() => { setShowForm(false); setEditingUser(null); }} className="btn-secondary text-sm">キャンセル</button>
+            <div className="col-span-2 flex items-center justify-between">
+              <div className="flex gap-2">
+                <button type="submit" className="btn-primary text-sm">{editingUser ? '更新' : '作成'}</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingUser(null); }} className="btn-secondary text-sm">キャンセル</button>
+              </div>
+              {editingUser && editingUser.id !== user.id && (
+                <button type="button" onClick={() => { setDeleteTarget(editingUser); setDeleteConfirmCheck(false); }}
+                  className="text-[11px] text-red-300 hover:text-red-500 transition-colors">
+                  アカウントを削除
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -299,12 +312,7 @@ export default function AdminUsers() {
                 </td>
                 <td className="table-cell text-gray-400">{new Date(u.created_at).toLocaleDateString('ja-JP')}</td>
                 <td className="table-cell">
-                  <div className="flex gap-1">
-                    <button onClick={() => handleEdit(u)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編集</button>
-                    {u.id !== user.id && (
-                      <button onClick={() => setDeleteTarget(u)} className="text-red-500 hover:text-red-700 text-xs font-medium ml-2">削除</button>
-                    )}
-                  </div>
+                  <button onClick={() => handleEdit(u)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編集</button>
                 </td>
               </tr>
             ))}
