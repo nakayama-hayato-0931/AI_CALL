@@ -243,6 +243,30 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_effective_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_person_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_project_hours DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
+  // 過去CPAデータテーブル
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS past_cpa_data (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        period_label VARCHAR(50) NOT NULL,
+        period_year INT NOT NULL,
+        period_month INT NOT NULL,
+        user_id INT UNSIGNED DEFAULT NULL,
+        cost INT NOT NULL DEFAULT 0,
+        call_count INT NOT NULL DEFAULT 0,
+        project_count INT NOT NULL DEFAULT 0,
+        interview_count INT NOT NULL DEFAULT 0,
+        naitei_count INT NOT NULL DEFAULT 0,
+        fugokaku_count INT NOT NULL DEFAULT 0,
+        barashi_lost_count INT NOT NULL DEFAULT 0,
+        initial_payment INT NOT NULL DEFAULT 0,
+        expected_revenue INT NOT NULL DEFAULT 0,
+        roas DECIMAL(6,4) DEFAULT NULL,
+        UNIQUE KEY uq_past_period_user (period_year, period_month, user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    logger.info('[Migration] past_cpa_data テーブル確認完了');
+  } catch (e) { logger.warn('[Migration] past_cpa_data:', e.message); }
 };
 runMigrations();
 

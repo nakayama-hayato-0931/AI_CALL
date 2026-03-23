@@ -532,12 +532,37 @@ const getCpaAll = async (req, res, next) => {
       ...buildRow(costMap.get(u.id) || 0, callMap.get(u.id) || 0, projMap.get(u.id), finMap.get(u.id)),
     }));
 
+    // 過去CPAデータを合算（チーム全体のみ、user_id IS NULL = 全体行）
+    let pastCost = 0, pastCalls = 0, pastProjects = 0, pastInterviews = 0;
+    let pastNaitei = 0, pastFugokaku = 0, pastBarashiLost = 0, pastIp = 0, pastEr = 0;
+    try {
+      const [pastRows] = await pool.query(
+        `SELECT SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
+                SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
+                SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
+                SUM(initial_payment) as ip, SUM(expected_revenue) as er
+         FROM past_cpa_data WHERE user_id IS NULL`
+      );
+      if (pastRows[0]) {
+        pastCost = Number(pastRows[0].cost) || 0;
+        pastCalls = Number(pastRows[0].calls) || 0;
+        pastProjects = Number(pastRows[0].projects) || 0;
+        pastInterviews = Number(pastRows[0].interviews) || 0;
+        pastNaitei = Number(pastRows[0].naitei) || 0;
+        pastFugokaku = Number(pastRows[0].fugokaku) || 0;
+        pastBarashiLost = Number(pastRows[0].barashi) || 0;
+        pastIp = Number(pastRows[0].ip) || 0;
+        pastEr = Number(pastRows[0].er) || 0;
+      }
+    } catch (e) { /* table may not exist yet */ }
+
     const team = {
       name: '全体',
-      ...buildRow(teamCost, teamCalls, {
-        project_count: teamProjects, interview_count: teamInterviews,
-        naitei_count: teamNaitei, fugokaku_count: teamFugokaku, barashi_lost_count: teamBarashiLost,
-      }, { ip: teamIp, er: teamEr }),
+      ...buildRow(teamCost + pastCost, teamCalls + pastCalls, {
+        project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
+        naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,
+      }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
+      pastDataIncluded: pastCost > 0,
     };
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
