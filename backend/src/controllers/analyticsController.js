@@ -559,19 +559,25 @@ const getCpaAll = async (req, res, next) => {
       const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
       const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
 
+      // 週別表示(custom)なら週別データ(date_from有り)のみ、月別/累計なら月別データ(date_from無し)のみ
+      const useWeeklyPast = (period === 'custom');
       const [pastAll] = await pool.query(
-        `SELECT user_id, SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
-                SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
-                SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
-                SUM(initial_payment) as ip, SUM(expected_revenue) as er
-         FROM past_cpa_data
-         WHERE (
-           (date_from IS NOT NULL AND date_from <= ? AND date_to >= ?)
-           OR
-           (date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?)
-         )
-         GROUP BY user_id`,
-        [dateTo, dateFrom, fromYM, toYM]
+        useWeeklyPast
+          ? `SELECT user_id, SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
+                    SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
+                    SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
+                    SUM(initial_payment) as ip, SUM(expected_revenue) as er
+             FROM past_cpa_data
+             WHERE date_from IS NOT NULL AND date_from <= ? AND date_to >= ?
+             GROUP BY user_id`
+          : `SELECT user_id, SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
+                    SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
+                    SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
+                    SUM(initial_payment) as ip, SUM(expected_revenue) as er
+             FROM past_cpa_data
+             WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?
+             GROUP BY user_id`,
+        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
       );
       for (const pr of pastAll) {
         const pd = {
