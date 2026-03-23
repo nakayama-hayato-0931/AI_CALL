@@ -532,29 +532,75 @@ const getCpaAll = async (req, res, next) => {
       ...buildRow(costMap.get(u.id) || 0, callMap.get(u.id) || 0, projMap.get(u.id), finMap.get(u.id)),
     }));
 
-    // 過去CPAデータを合算（チーム全体のみ、user_id IS NULL = 全体行）
+    // 過去CPAデータを合算（期間でフィルタ）
     let pastCost = 0, pastCalls = 0, pastProjects = 0, pastInterviews = 0;
     let pastNaitei = 0, pastFugokaku = 0, pastBarashiLost = 0, pastIp = 0, pastEr = 0;
+    const pastByUser = new Map(); // user_id -> past data
     try {
-      const [pastRows] = await pool.query(
-        `SELECT SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
+      // 期間フィルタ: dateFrom/dateToの年月に該当する過去データのみ
+      const fromDate = new Date(dateFrom);
+      const toDate = new Date(dateTo);
+      const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
+      const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
+
+      const [pastAll] = await pool.query(
+        `SELECT user_id, SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
                 SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
                 SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
                 SUM(initial_payment) as ip, SUM(expected_revenue) as er
-         FROM past_cpa_data WHERE user_id IS NULL`
+         FROM past_cpa_data
+         WHERE (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?
+         GROUP BY user_id`,
+        [fromYM, toYM]
       );
-      if (pastRows[0]) {
-        pastCost = Number(pastRows[0].cost) || 0;
-        pastCalls = Number(pastRows[0].calls) || 0;
-        pastProjects = Number(pastRows[0].projects) || 0;
-        pastInterviews = Number(pastRows[0].interviews) || 0;
-        pastNaitei = Number(pastRows[0].naitei) || 0;
-        pastFugokaku = Number(pastRows[0].fugokaku) || 0;
-        pastBarashiLost = Number(pastRows[0].barashi) || 0;
-        pastIp = Number(pastRows[0].ip) || 0;
-        pastEr = Number(pastRows[0].er) || 0;
+      for (const pr of pastAll) {
+        const pd = {
+          cost: Number(pr.cost) || 0, calls: Number(pr.calls) || 0,
+          projects: Number(pr.projects) || 0, interviews: Number(pr.interviews) || 0,
+          naitei: Number(pr.naitei) || 0, fugokaku: Number(pr.fugokaku) || 0,
+          barashi: Number(pr.barashi) || 0, ip: Number(pr.ip) || 0, er: Number(pr.er) || 0,
+        };
+        if (pr.user_id === null) {
+          // チーム全体
+          pastCost = pd.cost; pastCalls = pd.calls; pastProjects = pd.projects;
+          pastInterviews = pd.interviews; pastNaitei = pd.naitei; pastFugokaku = pd.fugokaku;
+          pastBarashiLost = pd.barashi; pastIp = pd.ip; pastEr = pd.er;
+        } else {
+          // 個人
+          pastByUser.set(pr.user_id, pd);
+        }
       }
     } catch (e) { /* table may not exist yet */ }
+
+    // 個人にも過去データを加算
+    const operators = users.map(u => {
+      const past = pastByUser.get(u.id);
+      const curCost = costMap.get(u.id) || 0;
+      const curCalls = callMap.get(u.id) || 0;
+      const curProj = projMap.get(u.id);
+      const curFin = finMap.get(u.id);
+      if (past) {
+        return {
+          userId: u.id, name: u.name,
+          ...buildRow(
+            curCost + past.cost,
+            curCalls + past.calls,
+            {
+              project_count: (curProj ? Number(curProj.project_count) : 0) + past.projects,
+              interview_count: (curProj ? Number(curProj.interview_count) : 0) + past.interviews,
+              naitei_count: (curProj ? Number(curProj.naitei_count) : 0) + past.naitei,
+              fugokaku_count: (curProj ? Number(curProj.fugokaku_count) : 0) + past.fugokaku,
+              barashi_lost_count: (curProj ? Number(curProj.barashi_lost_count) : 0) + past.barashi,
+            },
+            { ip: (curFin ? curFin.ip : 0) + past.ip, er: (curFin ? curFin.er : 0) + past.er }
+          ),
+        };
+      }
+      return {
+        userId: u.id, name: u.name,
+        ...buildRow(curCost, curCalls, curProj, curFin),
+      };
+    });
 
     const team = {
       name: '全体',
@@ -562,7 +608,6 @@ const getCpaAll = async (req, res, next) => {
         project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
         naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,
       }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
-      pastDataIncluded: pastCost > 0,
     };
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
