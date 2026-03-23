@@ -526,12 +526,6 @@ const getCpaAll = async (req, res, next) => {
       };
     };
 
-    const operators = users.map(u => ({
-      userId: u.id,
-      name: u.name,
-      ...buildRow(costMap.get(u.id) || 0, callMap.get(u.id) || 0, projMap.get(u.id), finMap.get(u.id)),
-    }));
-
     // 過去CPAデータを合算（期間でフィルタ）
     let pastCost = 0, pastCalls = 0, pastProjects = 0, pastInterviews = 0;
     let pastNaitei = 0, pastFugokaku = 0, pastBarashiLost = 0, pastIp = 0, pastEr = 0;
