@@ -19,6 +19,17 @@ const lockFilterSQL = `
 `;
 
 /**
+ * 1時間以内に架電した企業を除外するフィルタ
+ */
+const recentCallFilterSQL = `
+  AND c.id NOT IN (
+    SELECT DISTINCT cl.company_id FROM calls cl
+    WHERE cl.user_id = ? AND cl.call_started_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+    AND cl.result_code IS NOT NULL
+  )
+`;
+
+/**
  * GET /api/companies
  * 企業一覧取得 (ページネーション対応)
  */
@@ -501,11 +512,12 @@ const getCallList = async (req, res, next) => {
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
          ${lockFilterSQL}
+         ${recentCallFilterSQL}
          ${irFilter}
          ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
-      [userId, now, userId, ...modeFilterParams, LIST_SIZE]
+      [userId, now, userId, userId, ...modeFilterParams, LIST_SIZE]
     );
     targets.push(...recallRows);
     excludeIds = targets.map(t => t.id);
@@ -528,13 +540,14 @@ const getCallList = async (req, res, next) => {
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
          ${lrFilter}
          ${lockFilterSQL}
+         ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, ...modeFilterParams, ...excludeIds, remaining2]
+      [userId, currentTime, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining2]
     );
     targets.push(...goldenRows);
     excludeIds = targets.map(t => t.id);
@@ -554,13 +567,14 @@ const getCallList = async (req, res, next) => {
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          ${lockFilterSQL}
+         ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);
@@ -582,13 +596,14 @@ const getCallList = async (req, res, next) => {
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${lockFilterSQL}
+         ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining4]
+      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining4]
     );
     targets.push(...retryRows);
     excludeIds = targets.map(t => t.id);
@@ -611,13 +626,14 @@ const getCallList = async (req, res, next) => {
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
          AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
          ${lockFilterSQL}
+         ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining5]
+      [userId, userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining5]
     );
     targets.push(...ngRetryRows);
 

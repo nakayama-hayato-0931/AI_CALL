@@ -140,4 +140,32 @@ const cancelRecall = async (req, res, next) => {
   }
 };
 
-module.exports = { getRecalls, completeRecall, cancelRecall };
+/**
+ * PUT /api/recalls/:id/reschedule
+ * リコール日時変更
+ */
+const rescheduleRecall = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { recall_at } = req.body;
+
+    if (!recall_at) {
+      return ApiResponse.badRequest(res, 'リコール日時を指定してください');
+    }
+
+    const [result] = await pool.execute(
+      `UPDATE recall_tasks SET recall_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'`,
+      [recall_at, id, req.user.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return ApiResponse.notFound(res, 'リコールタスクが見つかりません');
+    }
+
+    return ApiResponse.success(res, null, 'リコール日時を変更しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getRecalls, completeRecall, cancelRecall, rescheduleRecall };

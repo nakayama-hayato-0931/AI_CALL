@@ -13,6 +13,8 @@ export default function RecallsPage() {
   const [activeTab, setActiveTab] = useState('today');
   const [loading, setLoading] = useState(true);
   const [expandedTranscript, setExpandedTranscript] = useState(null);
+  const [editingRecall, setEditingRecall] = useState(null);
+  const [editDateTime, setEditDateTime] = useState('');
 
   const fetchRecalls = async () => {
     try {
@@ -47,6 +49,19 @@ export default function RecallsPage() {
       fetchRecalls();
     } catch (err) {
       toast.error('キャンセルに失敗しました');
+    }
+  };
+
+  const handleReschedule = async (id) => {
+    if (!editDateTime) { toast.error('日時を選択してください'); return; }
+    try {
+      await api.put(`/api/recalls/${id}/reschedule`, { recall_at: editDateTime });
+      toast.success('リコール日時を変更しました');
+      setEditingRecall(null);
+      setEditDateTime('');
+      fetchRecalls();
+    } catch (err) {
+      toast.error('日時変更に失敗しました');
     }
   };
 
@@ -163,30 +178,32 @@ export default function RecallsPage() {
                   <td className="table-cell text-center">
                     {recall.source_type === 'interested' ? (
                       <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-medium rounded-full">興味あり</span>
+                    ) : editingRecall === recall.id ? (
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <input type="datetime-local" value={editDateTime}
+                          onChange={e => setEditDateTime(e.target.value)}
+                          className="text-xs border border-blue-300 rounded px-2 py-1" />
+                        <button onClick={() => handleReschedule(recall.id)}
+                          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">保存</button>
+                        <button onClick={() => { setEditingRecall(null); setEditDateTime(''); }}
+                          className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded hover:bg-gray-200">戻る</button>
+                      </div>
                     ) : recall.source_type === 'future_recall' ? (
                       <div className="flex items-center justify-center gap-2">
                         <span className="px-2.5 py-1 bg-purple-50 text-purple-600 text-xs font-medium rounded-full">予定</span>
-                        <button
-                          onClick={() => handleCancel(recall.id)}
-                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors"
-                        >
-                          取消
-                        </button>
+                        <button onClick={() => { setEditingRecall(recall.id); setEditDateTime(recall.recall_at ? new Date(recall.recall_at).toISOString().slice(0, 16) : ''); }}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-md hover:bg-blue-100 transition-colors">変更</button>
+                        <button onClick={() => handleCancel(recall.id)}
+                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors">取消</button>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleComplete(recall.id)}
-                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-md hover:bg-emerald-100 transition-colors"
-                        >
-                          完了
-                        </button>
-                        <button
-                          onClick={() => handleCancel(recall.id)}
-                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors"
-                        >
-                          取消
-                        </button>
+                        <button onClick={() => handleComplete(recall.id)}
+                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-md hover:bg-emerald-100 transition-colors">完了</button>
+                        <button onClick={() => { setEditingRecall(recall.id); setEditDateTime(recall.recall_at ? new Date(recall.recall_at).toISOString().slice(0, 16) : ''); }}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-md hover:bg-blue-100 transition-colors">変更</button>
+                        <button onClick={() => handleCancel(recall.id)}
+                          className="px-3 py-1.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors">取消</button>
                       </div>
                     )}
                   </td>
