@@ -594,14 +594,14 @@ export default function DashboardPage() {
                       </td>
                     </tr>
                     {/* 目標値行 */}
-                    <tr className="bg-blue-50/40 border-t border-blue-100">
-                      <td className="table-cell text-right text-[10px] text-blue-500">目標</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">15/h</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">-</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">-</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">3/h</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">1.5/h</td>
-                      <td className="table-cell text-right text-[10px] text-blue-500">12h以内/件</td>
+                    <tr className="bg-blue-50/50 border-t border-blue-100">
+                      <td className="table-cell text-right"><span className="text-xs font-medium text-blue-400">目標</span></td>
+                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">15</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                      <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
+                      <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
+                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">3</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">1.5</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">12h</span><span className="text-xs text-blue-400 ml-0.5">以内/件</span></td>
                     </tr>
                   </tbody>
                 </table>
