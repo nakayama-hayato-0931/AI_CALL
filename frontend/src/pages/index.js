@@ -593,6 +593,16 @@ export default function DashboardPage() {
                         <span className="font-bold text-sm text-blue-600">{stats?.projectCount || 0}</span>
                       </td>
                     </tr>
+                    {/* 目標値行 */}
+                    <tr className="bg-blue-50/40 border-t border-blue-100">
+                      <td className="table-cell text-right text-[10px] text-blue-500">目標</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">15/h</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">-</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">-</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">3/h</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">1.5/h</td>
+                      <td className="table-cell text-right text-[10px] text-blue-500">12h以内/件</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
