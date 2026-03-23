@@ -344,6 +344,31 @@ export default function StatusSheetsPage() {
                         'bg-amber-100 text-amber-700'
                       }`}>{sheet.operator_level}</span>
                     )}
+                    {/* 初級: 研修進捗サマリー */}
+                    {isBeginnerLevel && trainingData[sheet.user_id] && (() => {
+                      const steps = trainingData[sheet.user_id];
+                      const completed = steps.filter(s => s.is_completed).length;
+                      const total = steps.length;
+                      const nextStep = steps.find(s => !s.is_completed);
+                      return (
+                        <div className="flex items-center gap-2 ml-1">
+                          <div className="flex items-center gap-1">
+                            <div className="w-16 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-teal-500 h-full rounded-full transition-all" style={{ width: `${(completed / total) * 100}%` }} />
+                            </div>
+                            <span className="text-[10px] text-teal-600 font-medium">{completed}/{total}</span>
+                          </div>
+                          {nextStep && (
+                            <span className="text-[10px] text-gray-400">
+                              Next: <span className="text-gray-600 font-medium">{nextStep.step_number}. {nextStep.step_name}</span>
+                            </span>
+                          )}
+                          {completed === total && (
+                            <span className="text-[10px] text-emerald-600 font-medium">研修完了</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
