@@ -426,51 +426,113 @@ const importLegacyProjects = async (req, res, next) => {
 
     // ステータスマッピング
     const statusMap = {
-      '募集中': 'BOSHUCHU', '書類選考中': 'SHORUI_CHU', '書類落ち': 'SHORUI_OCHI',
+      '募集中': 'BOSHUCHU', '書類選考中': 'SHORUI_CHU', '書類落ち': 'SHORUI_OCHI', '書類選考落ち': 'SHORUI_OCHI',
       '面接確定': 'MENSETSU_KAKUTEI', '結果待ち': 'KEKKA_MACHI', '内定': 'NAITEI',
       '内定取消': 'NAITEI_TORIKESHI', '不合格': 'FUGOKAKU', '失注': 'LOST',
-      'バラシ': 'BARASHI', '保留': 'HORYU', '既存なし': 'KISON_NASHI', '戻し': 'MODOSHI', '戻り': 'MODORI',
+      'バラシ': 'BARASHI', '保留': 'HORYU', '既存なし': 'KISON_NASHI', '戻し': 'MODOSHI', '戻り': 'MODORI', '戻し戻り': 'MODORI',
     };
-    const interviewMap = { 'オンライン': 'online', '対面': 'in_person', 'online': 'online', 'in_person': 'in_person' };
-    const docMap = { 'あり': 'required', 'なし': 'not_required', '有': 'required', '無': 'not_required' };
+
+    // 苗字→フルネーム マッピング
+    const operatorNameMap = {
+      '中田': '中田 倫哉', '中田 ※': '中田 倫哉',
+      '吉田': '吉田 拓矢', '吉田(坂圦)': '吉田 拓矢',
+      '常': '常 委', '渡邊': '渡邊 樹', '佐藤': '佐藤 綾香',
+      '兒玉': '兒玉 良美', '寺西': '寺西 リナ', '小林': '小林 あや',
+      '中嶋': '中嶋 太一', '海瀬': '海瀬 裕太', '森川': '森川 葵',
+    };
+
+    // Excel serial number → date
+    const excelSerialToDate = (val) => {
+      if (!val || String(val).trim() === '') return null;
+      const s = String(val).trim();
+      // Already a date string
+      if (s.includes('-') && s.length >= 8) {
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+      }
+      const num = parseInt(parseFloat(s));
+      if (isNaN(num) || num < 1 || num > 100000) return null;
+      const base = new Date(1899, 11, 30);
+      base.setDate(base.getDate() + num);
+      return base.toISOString().slice(0, 10);
+    };
+
+    const parseBool = (val) => {
+      if (!val) return 0;
+      const s = String(val).trim().toLowerCase();
+      return ['true', '1', 'yes', '○', 'o'].includes(s) ? 1 : 0;
+    };
+
+    // 既存legacy案件を削除（再インポート用）
+    await pool.execute('DELETE FROM projects WHERE is_legacy = 1');
 
     let imported = 0;
     let skipped = 0;
 
     for (const row of records) {
-      const companyName = row['企業名'] || row['会社名'] || '';
-      const phone = row['電話番号'] || row['電話'] || '';
-      if (!companyName && !phone) { skipped++; continue; }
+      // カラム名はExcelの実際のヘッダーに対応（改行含む）
+      const companyName = (row['会社名'] || '').trim().replace(/^[^\n]*@[^\n]*\n?/, '').replace(/\n/g, ' ').trim();
+      if (!companyName) { skipped++; continue; }
 
-      const dateStr = row['日付'] || row['獲得日'] || row['作成日'] || '';
-      const operatorName = row['担当OP'] || row['オペレーター'] || row['担当者'] || '';
-      const salesName = row['担当営業'] || row['営業'] || '';
-      const jobNumber = row['求人番号'] || row['求人No'] || '';
-      const statusStr = row['ステータス'] || '';
-      const interviewDateStr = row['面接日'] || '';
-      const interviewTypeStr = row['面接方法'] || row['面接種別'] || '';
-      const docStr = row['書類選考'] || '';
-      const memo = row['メモ'] || row['備考'] || '';
-      const mailSent = row['メール送付'] === '済' || row['メール送付'] === '1' ? 1 : 0;
-      const phoneDone = row['電話確認'] === '済' || row['電話確認'] === '1' ? 1 : 0;
+      const dateStr = row['案件獲得日'] || '';
+      const legacyDate = excelSerialToDate(dateStr);
+      if (!legacyDate) { skipped++; continue; }
+
+      // オペレーター名（苗字→フルネーム変換）
+      const rawOp = (row['架電担当'] || '').trim();
+      const operatorName = operatorNameMap[rawOp] || rawOp;
+      const salesName = (row['営業担当者'] || '').trim();
+      const statusStr = (row['状況'] || '').trim();
+      const phone = (row['かけた電話番号'] || '').trim();
+
+      // 面接日パース
+      const rawIntDate = row['面接日'] || '';
+      const rawIntTime = row['開始時間'] || '';
+      let interviewDate = null;
+      const intDateParsed = excelSerialToDate(rawIntDate);
+      if (intDateParsed) {
+        let timeStr = '00:00:00';
+        const ts = String(rawIntTime || '').trim();
+        const tm = ts.match(/(\d{1,2})[：:](\d{2})/);
+        if (tm) timeStr = `${tm[1].padStart(2,'0')}:${tm[2]}:00`;
+        interviewDate = `${intDateParsed} ${timeStr}`;
+      }
+
+      const onlineOk = parseBool(row['オンライン\n面接OK']);
+      const interviewType = onlineOk ? 'online' : null;
+      const noScreening = parseBool(row['書類選考\n無し']);
+      const docScreening = noScreening ? 'なし' : null;
+      const mailSent = parseBool(row['メール\n送付']);
+      const mailReplied = parseBool(row['メール\n返信']);
+      const phoneDone = parseBool(row['電話確認']);
+      const logConfirmed = parseBool(row['ログ確認']);
+      const jobPosted = parseBool(row['求人済']);
+      const preConfirmed = parseBool(row['事前確認']);
+      const dashboardInput = (row['ダッシュボード\n入力'] || '').trim();
+      const dashboardChecked = dashboardInput ? 1 : 0;
+      const jobNumber = dashboardInput || null;
+
+      // 企業担当者・連絡先
+      const contactPerson = (row['担当者'] || '').trim().replace(/\n/g, ' ') || null;
+      const contactInfo = (row['連絡先(電話番号とメールアドレス)'] || '').trim().replace(/\n/g, ', ') || null;
+
+      // メモ組立
+      const memoParts = [];
+      const impression = (row['担当者の印象\n連絡可能時間帯'] || '').trim();
+      if (impression) memoParts.push(`【担当者印象】${impression.replace(/\n/g, ' ')}`);
+      const remarks = (row['備考'] || '').trim();
+      if (remarks) memoParts.push(`【備考】${remarks}`);
+      const salesMemo = (row['採用人数、状況、営業メモ'] || '').trim();
+      if (salesMemo) memoParts.push(`【営業メモ】${salesMemo.replace(/\n/g, ' ')}`);
+      const temp = (row['温度感'] || '').trim();
+      if (temp) memoParts.push(`【温度感】${temp}`);
+      const industry = (row['業種'] || '').trim();
+      if (industry) memoParts.push(`【業種】${industry}`);
+      const memo = memoParts.length > 0 ? memoParts.join('\n') : null;
 
       const status = statusMap[statusStr] || 'BOSHUCHU';
-      const interviewType = interviewMap[interviewTypeStr] || null;
-      const docScreening = docMap[docStr] || null;
 
-      // 日付パース
-      let legacyDate = null;
-      if (dateStr) {
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) legacyDate = d.toISOString().slice(0, 10);
-      }
-      let interviewDate = null;
-      if (interviewDateStr) {
-        const d = new Date(interviewDateStr);
-        if (!isNaN(d.getTime())) interviewDate = d.toISOString().slice(0, 19).replace('T', ' ');
-      }
-
-      // オペレーターID検索（見つからなければNULL、名前をlegacyに保存）
+      // オペレーターID検索
       let ownerId = null;
       if (operatorName) {
         const [userRows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [operatorName]);
@@ -480,22 +542,36 @@ const importLegacyProjects = async (req, res, next) => {
       // 営業ID検索
       let salesId = null;
       if (salesName) {
-        const [salesRows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [salesName]);
+        const [salesRows] = await pool.query('SELECT id FROM users WHERE name LIKE ? LIMIT 1', [`${salesName.split(' ')[0]}%`]);
         if (salesRows.length > 0) salesId = salesRows[0].id;
       }
 
-      await pool.execute(
-        `INSERT INTO projects (company_id, owner_user_id, sales_user_id, job_number, status, interview_date, interview_type, document_screening, mail_sent, phone_confirmed, memo, is_legacy, legacy_company_name, legacy_phone, legacy_date, legacy_operator_name, legacy_sales_name, created_at)
-         VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
-        [
-          ownerId, salesId, jobNumber || null, status, interviewDate, interviewType, docScreening,
-          mailSent, phoneDone, memo || null,
-          companyName, phone || null, legacyDate,
-          operatorName || null, salesName || null,
-          legacyDate ? `${legacyDate} 00:00:00` : new Date().toISOString().slice(0, 19).replace('T', ' ')
-        ]
-      );
-      imported++;
+      try {
+        await pool.execute(
+          `INSERT INTO projects (company_id, owner_user_id, sales_user_id, job_number, status,
+            interview_date, interview_type, document_screening,
+            mail_sent, mail_replied, phone_confirmed, memo, is_legacy,
+            legacy_company_name, legacy_phone, legacy_date,
+            legacy_operator_name, legacy_sales_name,
+            log_confirmed, job_posted, pre_confirmed,
+            contact_person, contact_info, dashboard_checked,
+            created_at)
+           VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            ownerId, salesId, jobNumber, status, interviewDate, interviewType, docScreening,
+            mailSent, mailReplied, phoneDone, memo,
+            companyName, phone || null, legacyDate,
+            operatorName || null, salesName || null,
+            logConfirmed, jobPosted, preConfirmed,
+            contactPerson, contactInfo, dashboardChecked,
+            `${legacyDate} 00:00:00`
+          ]
+        );
+        imported++;
+      } catch (e) {
+        logger.warn(`移行インポートスキップ行: ${e.message}`);
+        skipped++;
+      }
     }
 
     return ApiResponse.success(res, { imported, skipped, total: records.length }, `${imported}件の移行前案件をインポートしました`);
