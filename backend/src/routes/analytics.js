@@ -63,4 +63,23 @@ router.post('/import-past-quality', requireManager, async (req, res) => {
   }
 });
 
+// PUT /api/analytics/update-past-cpa - 過去CPAデータ個別更新
+router.put('/update-past-cpa', requireManager, async (req, res) => {
+  try {
+    const { label, updates } = req.body;
+    if (!label || !updates) return res.status(400).json({ success: false, message: 'label and updates required' });
+    const sets = [];
+    const params = [];
+    for (const [key, val] of Object.entries(updates)) {
+      sets.push(`${key} = ?`);
+      params.push(val);
+    }
+    params.push(label);
+    await pool.execute(`UPDATE past_cpa_data SET ${sets.join(', ')} WHERE period_label = ?`, params);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
