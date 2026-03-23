@@ -580,13 +580,11 @@ const getCpaAll = async (req, res, next) => {
         useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
       );
       for (const pr of pastAll) {
-        // past_cpa_dataからはコストとコール数のみ使用
-        // 案件数・面接数・内定数等はprojectsテーブル（移行前含む）から取得するため除外
         const pd = {
           cost: Number(pr.cost) || 0, calls: Number(pr.calls) || 0,
-          projects: 0, interviews: 0,
-          naitei: 0, fugokaku: 0,
-          barashi: 0, ip: 0, er: 0,
+          projects: Number(pr.projects) || 0, interviews: Number(pr.interviews) || 0,
+          naitei: Number(pr.naitei) || 0, fugokaku: Number(pr.fugokaku) || 0,
+          barashi: Number(pr.barashi) || 0, ip: Number(pr.ip) || 0, er: Number(pr.er) || 0,
         };
         if (!pr.user_id || pr.user_id === 0) {
           // チーム全体
