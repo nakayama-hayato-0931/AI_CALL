@@ -473,6 +473,11 @@ const importLegacyProjects = async (req, res, next) => {
       return ['true', '1', 'yes', '○', 'o'].includes(s) ? 1 : 0;
     };
 
+    // ユーザーIDキャッシュを事前構築
+    const [allUsers] = await pool.query('SELECT id, name FROM users WHERE is_active = 1');
+    const userIdByName = {};
+    allUsers.forEach(u => { userIdByName[u.name] = u.id; });
+
     // 既存legacy案件を削除（再インポート用）
     await pool.execute('DELETE FROM projects WHERE is_legacy = 1');
 
@@ -542,18 +547,15 @@ const importLegacyProjects = async (req, res, next) => {
 
       const status = statusMap[statusStr] || 'BOSHUCHU';
 
-      // オペレーターID検索
-      let ownerId = null;
-      if (operatorName) {
-        const [userRows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [operatorName]);
-        if (userRows.length > 0) ownerId = userRows[0].id;
-      }
+      // オペレーターID（キャッシュから）
+      const ownerId = operatorName ? (userIdByName[operatorName] || null) : null;
 
-      // 営業ID検索
+      // 営業ID（名前の先頭一致で検索）
       let salesId = null;
       if (salesName) {
-        const [salesRows] = await pool.query('SELECT id FROM users WHERE name LIKE ? LIMIT 1', [`${salesName.split(' ')[0]}%`]);
-        if (salesRows.length > 0) salesId = salesRows[0].id;
+        const salesFirst = salesName.split(' ')[0];
+        const found = allUsers.find(u => u.name.startsWith(salesFirst));
+        if (found) salesId = found.id;
       }
 
       try {
