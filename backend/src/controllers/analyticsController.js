@@ -697,10 +697,28 @@ const getQualityAll = async (req, res, next) => {
       };
     };
 
+    // 過去案件質データ合算
+    const useWeeklyPast = (period === 'custom');
+    const fromDate = new Date(dateFrom);
+    const toDate = new Date(dateTo);
+    const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
+    const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
+    let pastQ = null;
+    try {
+      const [pastRows] = await pool.query(
+        useWeeklyPast
+          ? `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NOT NULL AND date_from <= ? AND date_to >= ?`
+          : `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?`,
+        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+      );
+      if (pastRows.length > 0 && pastRows[0].total) pastQ = pastRows[0];
+    } catch (e) { /* skip */ }
+
     // チーム全体
     const allR = {};
     for (const f of ['total','lost','waiting_contact','interview_set','interview_done','barashi','online_interview','no_screening','screening_failed']) {
       allR[f] = rows.reduce((s, r) => s + Number(r[f]), 0);
+      if (pastQ && pastQ[f] != null) allR[f] += Number(pastQ[f]);
     }
     const team = { name: '全体', ...buildQ(allR) };
     const operators = users.map(u => ({ userId: u.id, name: u.name, ...buildQ(qMap.get(u.id)) }));

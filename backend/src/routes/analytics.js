@@ -42,4 +42,24 @@ router.post('/import-past-cpa', async (req, res) => {
   }
 });
 
+// POST /api/analytics/import-past-quality - 過去案件質データインポート
+router.post('/import-past-quality', requireManager, async (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !records.length) return res.status(400).json({ success: false, message: 'No records' });
+    await pool.execute('DELETE FROM past_quality_data');
+    let inserted = 0;
+    for (const r of records) {
+      await pool.execute(
+        `INSERT INTO past_quality_data (period_label, period_year, period_month, date_from, date_to, total_projects, lost, waiting_contact, interview_confirmed, interview_done, barashi, online_interview, no_screening, screening_failed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [r.label, r.year, r.month, r.date_from || null, r.date_to || null, r.total || 0, r.lost || 0, r.waiting_contact || 0, r.interview_confirmed || 0, r.interview_done || 0, r.barashi || 0, r.online_interview || 0, r.no_screening || 0, r.screening_failed || 0]
+      );
+      inserted++;
+    }
+    res.json({ success: true, data: { inserted } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

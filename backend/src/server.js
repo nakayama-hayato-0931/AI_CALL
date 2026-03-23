@@ -272,6 +272,30 @@ const runMigrations = async () => {
     `);
     logger.info('[Migration] past_cpa_data テーブル確認完了');
   } catch (e) { logger.warn('[Migration] past_cpa_data:', e.message); }
+  // 過去案件質データテーブル
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS past_quality_data (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        period_label VARCHAR(50) NOT NULL,
+        period_year INT NOT NULL,
+        period_month INT NOT NULL,
+        date_from DATE DEFAULT NULL,
+        date_to DATE DEFAULT NULL,
+        total_projects INT NOT NULL DEFAULT 0,
+        lost INT NOT NULL DEFAULT 0,
+        waiting_contact INT NOT NULL DEFAULT 0,
+        interview_confirmed INT NOT NULL DEFAULT 0,
+        interview_done INT NOT NULL DEFAULT 0,
+        barashi INT NOT NULL DEFAULT 0,
+        online_interview INT NOT NULL DEFAULT 0,
+        no_screening INT NOT NULL DEFAULT 0,
+        screening_failed INT NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    logger.info('[Migration] past_quality_data テーブル確認完了');
+  } catch (e) { logger.warn('[Migration] past_quality_data:', e.message); }
 };
 runMigrations();
 
