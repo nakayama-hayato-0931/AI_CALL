@@ -592,7 +592,8 @@ const importLegacyProjects = async (req, res, next) => {
       if (temp) memoParts.push(`【温度感】${temp}`);
       const industry = (row['業種'] || '').trim();
       if (industry) memoParts.push(`【業種】${industry}`);
-      const memo = memoParts.length > 0 ? memoParts.join('\n') : null;
+      let memo = memoParts.length > 0 ? memoParts.join('\n') : null;
+      if (memo && memo.length > 60000) memo = memo.slice(0, 60000);
 
       const status = statusMap[statusStr] || 'BOSHUCHU';
 
