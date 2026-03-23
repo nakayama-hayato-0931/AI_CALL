@@ -497,6 +497,9 @@ const importLegacyProjects = async (req, res, next) => {
     const userIdByName = {};
     allUsers.forEach(u => { userIdByName[u.name] = u.id; });
 
+    // memoカラムをTEXTに拡張（VARCHARだと長いメモが入らない）
+    try { await pool.execute('ALTER TABLE projects MODIFY COLUMN memo TEXT'); } catch (e) {}
+
     // 既存legacy案件を削除（再インポート用）
     await pool.execute('DELETE FROM projects WHERE is_legacy = 1');
 
