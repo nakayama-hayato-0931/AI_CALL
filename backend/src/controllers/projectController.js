@@ -491,8 +491,14 @@ const importLegacyProjects = async (req, res, next) => {
 
     for (const row of records) {
       // カラム名はExcelの実際のヘッダーに対応（改行含む）
-      const companyName = (row['会社名'] || '').trim().replace(/^[^\n]*@[^\n]*\n?/, '').replace(/\n/g, ' ').trim();
+      let companyName = (row['会社名'] || '').trim().replace(/^[^\n]*@[^\n]*\n?/, '').replace(/\n/g, ' ').trim();
       if (!companyName) { skipped++; continue; }
+      // 【ヒトキワ】【グーナビ】等を先頭から末尾に移動
+      const tagMatch = companyName.match(/^(【[^】]+】)\s*/);
+      if (tagMatch) {
+        companyName = companyName.replace(tagMatch[0], '').trim() + ' ' + tagMatch[1];
+        companyName = companyName.trim();
+      }
 
       const dateStr = row['案件獲得日'] || '';
       const legacyDate = excelSerialToDate(dateStr);
@@ -506,15 +512,30 @@ const importLegacyProjects = async (req, res, next) => {
       const phone = (row['かけた電話番号'] || '').trim();
 
       // 面接日パース
-      const rawIntDate = row['面接日'] || '';
-      const rawIntTime = row['開始時間'] || '';
+      // 面接日パース（日付+時刻が混在）
+      const rawIntDate = (row['面接日'] || '').trim();
+      const rawIntTime = (row['開始時間'] || '').trim();
       let interviewDate = null;
-      const intDateParsed = excelSerialToDate(rawIntDate);
+      // 面接日列自体に時刻が含まれている場合 (例: "2025/4/14\n15:00予定")
+      let datePart = rawIntDate;
+      let timePart = rawIntTime;
+      if (rawIntDate.includes('\n')) {
+        const lines = rawIntDate.split('\n');
+        datePart = lines[0].trim();
+        if (!timePart && lines[1]) timePart = lines[1].trim();
+      }
+      const intDateParsed = excelSerialToDate(datePart);
       if (intDateParsed) {
         let timeStr = '00:00:00';
-        const ts = String(rawIntTime || '').trim();
-        const tm = ts.match(/(\d{1,2})[：:](\d{2})/);
-        if (tm) timeStr = `${tm[1].padStart(2,'0')}:${tm[2]}:00`;
+        // 時刻を面接日列or開始時間列からパース
+        const allTimeText = (timePart || '').replace(/予定|～|〜|　/g, '').trim();
+        const tm = allTimeText.match(/(\d{1,2})[：:](\d{2})/);
+        if (tm) {
+          timeStr = `${tm[1].padStart(2,'0')}:${tm[2]}:00`;
+        } else {
+          const tmH = allTimeText.match(/(\d{1,2})時/);
+          if (tmH) timeStr = `${tmH[1].padStart(2,'0')}:00:00`;
+        }
         interviewDate = `${intDateParsed} ${timeStr}`;
       }
 
@@ -530,7 +551,8 @@ const importLegacyProjects = async (req, res, next) => {
       const preConfirmed = parseBool(row['事前確認']);
       const dashboardInput = (row['ダッシュボード\n入力'] || '').trim();
       const dashboardChecked = dashboardInput ? 1 : 0;
-      const jobNumber = dashboardInput || null;
+      // 求人番号: 専用列があればそちら優先、なければダッシュボード入力列
+      const jobNumber = (row['求人番号'] || '').trim() || dashboardInput || null;
 
       // 企業担当者・連絡先
       const contactPerson = (row['担当者'] || '').trim().replace(/\n/g, ' ') || null;
