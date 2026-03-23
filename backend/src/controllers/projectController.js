@@ -596,7 +596,7 @@ const importLegacyProjects = async (req, res, next) => {
       const industry = (row['業種'] || '').trim();
       if (industry) memoParts.push(`【業種】${industry}`);
       let memo = memoParts.length > 0 ? memoParts.join('\n') : null;
-      if (memo && memo.length > 60000) memo = memo.slice(0, 60000);
+      if (memo && memo.length > 5000) memo = memo.slice(0, 5000) + '...(省略)';
 
       const status = statusMap[statusStr] || 'BOSHUCHU';
 
