@@ -502,6 +502,7 @@ const importLegacyProjects = async (req, res, next) => {
 
     let imported = 0;
     let skipped = 0;
+    const skipReasons = [];
 
     for (const row of records) {
       // カラム名はExcelの実際のヘッダーに対応（改行含む）
@@ -513,7 +514,7 @@ const importLegacyProjects = async (req, res, next) => {
         rawCn = lines.join('\n');
       }
       let companyName = rawCn.replace(/\n/g, ' ').trim();
-      if (!companyName) { skipped++; continue; }
+      if (!companyName) { skipped++; skipReasons.push({ reason: 'no_company', raw: String(row['会社名'] || '').slice(0, 50) }); continue; }
       // 【ヒトキワ】【グーナビ】等を先頭から末尾に移動
       const tagMatch = companyName.match(/^(【[^】]+】)\s*/);
       if (tagMatch) {
@@ -523,7 +524,7 @@ const importLegacyProjects = async (req, res, next) => {
 
       const dateStr = row['案件獲得日'] || '';
       const legacyDate = excelSerialToDate(dateStr);
-      if (!legacyDate) { skipped++; continue; }
+      if (!legacyDate) { skipped++; skipReasons.push({ reason: 'no_date', raw: String(dateStr).slice(0, 50), company: companyName.slice(0, 30) }); continue; }
 
       // オペレーター名（苗字→フルネーム変換）
       const rawOp = (row['架電担当'] || '').trim();
@@ -631,10 +632,11 @@ const importLegacyProjects = async (req, res, next) => {
       } catch (e) {
         logger.warn(`移行インポートスキップ行: ${e.message}`);
         skipped++;
+        skipReasons.push({ reason: 'db_error', error: e.message.slice(0, 100), company: companyName.slice(0, 30) });
       }
     }
 
-    return ApiResponse.success(res, { imported, skipped, total: records.length }, `${imported}件の移行前案件をインポートしました`);
+    return ApiResponse.success(res, { imported, skipped, total: records.length, skipReasons: skipReasons.slice(0, 20) }, `${imported}件の移行前案件をインポートしました`);
   } catch (err) {
     logger.error('移行前案件インポートエラー:', err.message, err.stack);
     return res.status(500).json({ success: false, message: `インポートエラー: ${err.message}` });
