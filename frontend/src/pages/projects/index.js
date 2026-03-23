@@ -296,6 +296,9 @@ export default function ProjectsPage() {
               <table className="w-full text-sm table-fixed">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="table-header text-center" style={{width:'35px'}}>ログ</th>
+                    <th className="table-header text-center" style={{width:'35px'}}>求人</th>
+                    <th className="table-header text-center" style={{width:'35px'}}>事前</th>
                     <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('created_at')}>
                       獲得日<SortIcon col="created_at" />
                     </th>
@@ -322,6 +325,18 @@ export default function ProjectsPage() {
                     return (
                       <tr key={p.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
                         onClick={() => router.push(`/projects/${p.id}`)}>
+                        <td className="table-cell text-center">
+                          <input type="checkbox" checked={!!p.log_confirmed} disabled
+                            className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded opacity-60" />
+                        </td>
+                        <td className="table-cell text-center">
+                          <input type="checkbox" checked={!!p.job_posted} disabled
+                            className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded opacity-60" />
+                        </td>
+                        <td className="table-cell text-center">
+                          <input type="checkbox" checked={!!p.pre_confirmed} disabled
+                            className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded opacity-60" />
+                        </td>
                         <td className="table-cell text-gray-500 whitespace-nowrap">
                           {new Date(p.created_at).toLocaleDateString('ja-JP')}
                         </td>
