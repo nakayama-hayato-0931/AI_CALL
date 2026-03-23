@@ -227,6 +227,10 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN log_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN job_posted TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN pre_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  // 企業担当者・連絡先・ダッシュボード記入チェック
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_person VARCHAR(100) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_info VARCHAR(255) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN dashboard_checked TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
 };
 runMigrations();
 

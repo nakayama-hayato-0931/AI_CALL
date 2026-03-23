@@ -29,6 +29,9 @@ export default function ProjectModal({ projectId, onClose }) {
     mail_replied: false,
     phone_confirmed: false,
     memo: '',
+    contact_person: '',
+    contact_info: '',
+    dashboard_checked: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -99,6 +102,7 @@ export default function ProjectModal({ projectId, onClose }) {
                 { label: 'メール送信済', field: 'mail_sent' },
                 { label: 'メール返信済', field: 'mail_replied' },
                 { label: '電話確認済', field: 'phone_confirmed' },
+                { label: 'ダッシュボード記入済', field: 'dashboard_checked' },
               ].map(item => (
                 <label key={item.field} className="flex items-center gap-2 text-sm cursor-pointer group">
                   <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
@@ -115,6 +119,21 @@ export default function ProjectModal({ projectId, onClose }) {
                   <span className="text-gray-700">{item.label}</span>
                 </label>
               ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="input-label">企業担当者</label>
+                <input type="text" value={form.contact_person}
+                  onChange={e => setForm({...form, contact_person: e.target.value})}
+                  className="input" placeholder="担当者名" />
+              </div>
+              <div>
+                <label className="input-label">担当連絡先</label>
+                <input type="text" value={form.contact_info}
+                  onChange={e => setForm({...form, contact_info: e.target.value})}
+                  className="input" placeholder="電話番号・メール等" />
+              </div>
             </div>
 
             <div>

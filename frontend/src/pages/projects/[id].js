@@ -38,6 +38,7 @@ export default function ProjectDetailPage() {
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '',
     document_screening: '', mail_sent: false, phone_confirmed: false, job_number: '', memo: '',
+    contact_person: '', contact_info: '', dashboard_checked: false,
   });
   const [companyForm, setCompanyForm] = useState({
     company_name: '', industry: '', address: '',
@@ -135,6 +136,9 @@ export default function ProjectDetailPage() {
         phone_confirmed: !!p.phone_confirmed,
         job_number: p.job_number || '',
         memo: p.memo || '',
+        contact_person: p.contact_person || '',
+        contact_info: p.contact_info || '',
+        dashboard_checked: !!p.dashboard_checked,
       });
       setCompanyForm({
         company_name: p.company_name || '',
@@ -346,6 +350,39 @@ export default function ProjectDetailPage() {
                     className="input"
                     placeholder="求人番号を入力"
                   />
+                </div>
+
+                <div>
+                  <label className="input-label">企業担当者</label>
+                  <input
+                    type="text"
+                    value={form.contact_person}
+                    onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
+                    className="input"
+                    placeholder="担当者名"
+                  />
+                </div>
+
+                <div>
+                  <label className="input-label">担当連絡先</label>
+                  <input
+                    type="text"
+                    value={form.contact_info}
+                    onChange={(e) => setForm({ ...form, contact_info: e.target.value })}
+                    className="input"
+                    placeholder="電話番号・メールアドレス等"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 py-2">
+                  <input
+                    type="checkbox"
+                    id="dashboard_checked"
+                    checked={form.dashboard_checked}
+                    onChange={(e) => setForm({ ...form, dashboard_checked: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded cursor-pointer"
+                  />
+                  <label htmlFor="dashboard_checked" className="text-sm text-gray-700 cursor-pointer">ダッシュボード記入済</label>
                 </div>
 
                 <div>
