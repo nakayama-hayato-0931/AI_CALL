@@ -223,6 +223,10 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_date DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_operator_name VARCHAR(100) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_sales_name VARCHAR(100) DEFAULT NULL`); } catch (e) {}
+  // projectsにチェックボックスカラム追加
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN log_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN job_posted TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN pre_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
 };
 runMigrations();
 

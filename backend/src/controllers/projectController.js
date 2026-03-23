@@ -160,6 +160,9 @@ const updateProject = async (req, res, next) => {
       status,
       memo,
       sales_user_id,
+      log_confirmed,
+      job_posted,
+      pre_confirmed,
       // 企業情報の編集フィールド
       company_name,
       industry,
@@ -191,6 +194,9 @@ const updateProject = async (req, res, next) => {
     if (status !== undefined) { updates.push('status = ?'); updateParams.push(status || null); }
     if (memo !== undefined) { updates.push('memo = ?'); updateParams.push(memo || null); }
     if (sales_user_id !== undefined) { updates.push('sales_user_id = ?'); updateParams.push(sales_user_id || null); }
+    if (log_confirmed !== undefined) { updates.push('log_confirmed = ?'); updateParams.push(log_confirmed ? 1 : 0); }
+    if (job_posted !== undefined) { updates.push('job_posted = ?'); updateParams.push(job_posted ? 1 : 0); }
+    if (pre_confirmed !== undefined) { updates.push('pre_confirmed = ?'); updateParams.push(pre_confirmed ? 1 : 0); }
 
     if (updates.length === 0 && !company_name && industry === undefined && region === undefined && address === undefined) {
       return ApiResponse.badRequest(res, '更新項目がありません');
