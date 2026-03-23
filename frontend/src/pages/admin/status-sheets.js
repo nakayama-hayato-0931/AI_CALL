@@ -26,6 +26,7 @@ export default function StatusSheetsPage() {
   const [trainingLoading, setTrainingLoading] = useState({});
   const [editingTargets, setEditingTargets] = useState(null); // userId being edited
   const [targetForm, setTargetForm] = useState({});
+  const [sortedEntries, setSortedEntries] = useState([]);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -156,6 +157,32 @@ export default function StatusSheetsPage() {
       setAlertMessage('更新に失敗しました。');
     }
   };
+
+  // ソート済みエントリをsheets/operators/trainingData変更時に計算
+  useEffect(() => {
+    if (!operators.length) return;
+    const sheetUserIds = new Set(sheets.map(s => s.user_id));
+    const levelOrder = { '初級': 0, '中級': 1, '上級': 2 };
+    const entries = [
+      ...sheets,
+      ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
+        id: null, user_id: op.id, user_name: op.name, operator_level: op.operator_level || null,
+        current_status: null, training_plan: null, next_steps: null, targets: null, scenario: null,
+        updated_at: null, period_from: null, period_to: null, _placeholder: true,
+      }))
+    ].sort((a, b) => {
+      const la = levelOrder[a.operator_level] ?? 99;
+      const lb = levelOrder[b.operator_level] ?? 99;
+      if (la !== lb) return la - lb;
+      if (a.operator_level === '初級') {
+        const aC = (trainingData[a.user_id] || []).filter(s => s.is_completed).length;
+        const bC = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
+        return aC - bC;
+      }
+      return 0;
+    });
+    setSortedEntries(entries);
+  }, [sheets, operators, trainingData]);
 
   const handleStartTargetEdit = (userId) => {
     const op = operators.find(o => o.id === userId) || {};
@@ -293,46 +320,13 @@ export default function StatusSheetsPage() {
 
       {/* ステータスシート一覧（シートがないオペレーターも含む） */}
       {(() => {
-        // シートがあるオペレーターのIDセット
-        const sheetUserIds = new Set(sheets.map(s => s.user_id));
-        // シートがないオペレーターをダミーエントリとして追加
-        const levelOrder = { '初級': 0, '中級': 1, '上級': 2 };
-        const allEntries = [
-          ...sheets,
-          ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
-            id: null,
-            user_id: op.id,
-            user_name: op.name,
-            operator_level: op.operator_level || null,
-            current_status: null,
-            training_plan: null,
-            next_steps: null,
-            targets: null,
-            scenario: null,
-            updated_at: null,
-            period_from: null,
-            period_to: null,
-            _placeholder: true,
-          }))
-        ].sort((a, b) => {
-          const la = levelOrder[a.operator_level] ?? 99;
-          const lb = levelOrder[b.operator_level] ?? 99;
-          if (la !== lb) return la - lb;
-          // 同じランク内：初級は研修完了数が少ない人を上に
-          if (a.operator_level === '初級') {
-            const aCompleted = (trainingData[a.user_id] || []).filter(s => s.is_completed).length;
-            const bCompleted = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
-            return aCompleted - bCompleted;
-          }
-          return 0;
-        });
-        return allEntries.length === 0 ? (
+        return sortedEntries.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-sm text-gray-400">オペレーターがいません</p>
           </div>
         ) : (
         <div className="space-y-3">
-          {allEntries.map(sheet => {
+          {sortedEntries.map(sheet => {
             const cs = parseJSON(sheet.current_status);
             const tp = parseJSON(sheet.training_plan);
             const ns = parseJSON(sheet.next_steps);
@@ -440,8 +434,8 @@ export default function StatusSheetsPage() {
                       {editingTargets === sheet.user_id ? (
                         <div className="grid grid-cols-5 gap-2">
                           {[
-                            { key: 'target_work_hours', label: '稼働(h/日)', ph: '8.0' },
-                            { key: 'target_calls_per_h', label: 'コール(/h)', ph: '15' },
+                            { key: 'target_work_hours', label: '稼働(h/月)', ph: '80' },
+                            { key: 'target_calls_per_h', label: 'コール(/h)', ph: '18' },
                             { key: 'target_effective_per_h', label: '有効接続(/h)', ph: '3.0' },
                             { key: 'target_person_per_h', label: '担当接続(/h)', ph: '1.5' },
                             { key: 'target_project_hours', label: '案件(h以内/件)', ph: '12' },
@@ -459,8 +453,8 @@ export default function StatusSheetsPage() {
                           {(() => {
                             const op = operators.find(o => o.id === sheet.user_id) || {};
                             return [
-                              { label: '稼働', val: op.target_work_hours, unit: 'h/日', def: 8 },
-                              { label: 'コール', val: op.target_calls_per_h, unit: '/h', def: 15 },
+                              { label: '稼働', val: op.target_work_hours, unit: 'h/月', def: 80 },
+                              { label: 'コール', val: op.target_calls_per_h, unit: '/h', def: 18 },
                               { label: '有効接続', val: op.target_effective_per_h, unit: '/h', def: 3 },
                               { label: '担当接続', val: op.target_person_per_h, unit: '/h', def: 1.5 },
                               { label: '案件', val: op.target_project_hours, unit: 'h以内', def: 12 },

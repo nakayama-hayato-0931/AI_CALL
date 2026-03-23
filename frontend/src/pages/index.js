@@ -430,7 +430,7 @@ export default function DashboardPage() {
           <div className="overflow-x-auto">
             {/* 目標値の凡例 */}
             <div className="flex items-center gap-4 px-3 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] text-gray-400">
-              <span>目標/h: コール15 / 有効接続3 / 担当接続1.5 / 案件12h以内</span>
+              <span>目標/h: コール18 / 有効接続3 / 担当接続1.5 / 案件12h以内</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>達成</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>80%以上</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>80%未満</span>
@@ -481,7 +481,7 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
-                      <td className={`table-cell text-right ${targetColor(phNum(op.total_calls), 15)}`}>{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
+                      <td className={`table-cell text-right ${targetColor(phNum(op.total_calls), 18)}`}>{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_done || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_done || 0)}/h</span></td>
                       <td className={`table-cell text-right ${targetColor(phNum(op.effective_connections), 3)}`}>{op.effective_connections} <span className="text-[10px] text-gray-400">{ph(op.effective_connections)}/h</span></td>
@@ -595,14 +595,14 @@ export default function DashboardPage() {
                     </tr>
                     {/* 目標値行（個別目標 or デフォルト） */}
                     {(() => {
-                      const tw = user?.target_work_hours || 8;
-                      const tc = user?.target_calls_per_h || 15;
+                      const tw = user?.target_work_hours || 80;
+                      const tc = user?.target_calls_per_h || 18;
                       const te = user?.target_effective_per_h || 3;
                       const tp = user?.target_person_per_h || 1.5;
                       const tpj = user?.target_project_hours || 12;
                       return (
                         <tr className="bg-blue-50/50 border-t border-blue-100">
-                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tw}</span><span className="text-xs text-blue-400 ml-0.5">h</span></td>
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tw}</span><span className="text-xs text-blue-400 ml-0.5">h/月</span></td>
                           <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tc}</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
                           <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
                           <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
