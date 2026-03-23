@@ -593,16 +593,25 @@ export default function DashboardPage() {
                         <span className="font-bold text-sm text-blue-600">{stats?.projectCount || 0}</span>
                       </td>
                     </tr>
-                    {/* 目標値行 */}
-                    <tr className="bg-blue-50/50 border-t border-blue-100">
-                      <td className="table-cell text-right"><span className="text-xs font-medium text-blue-400">目標</span></td>
-                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">15</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
-                      <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
-                      <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
-                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">3</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
-                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">1.5</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
-                      <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">12h</span><span className="text-xs text-blue-400 ml-0.5">以内/件</span></td>
-                    </tr>
+                    {/* 目標値行（個別目標 or デフォルト） */}
+                    {(() => {
+                      const tw = user?.target_work_hours || 8;
+                      const tc = user?.target_calls_per_h || 15;
+                      const te = user?.target_effective_per_h || 3;
+                      const tp = user?.target_person_per_h || 1.5;
+                      const tpj = user?.target_project_hours || 12;
+                      return (
+                        <tr className="bg-blue-50/50 border-t border-blue-100">
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tw}</span><span className="text-xs text-blue-400 ml-0.5">h</span></td>
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tc}</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                          <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
+                          <td className="table-cell text-right"><span className="text-xs text-blue-300">-</span></td>
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{te}</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tp}</span><span className="text-xs text-blue-400 ml-0.5">/h</span></td>
+                          <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tpj}h</span><span className="text-xs text-blue-400 ml-0.5">以内/件</span></td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>

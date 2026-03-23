@@ -77,7 +77,7 @@ const login = async (req, res, next) => {
 const getMe = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, role, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
 

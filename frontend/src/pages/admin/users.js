@@ -51,6 +51,11 @@ export default function AdminUsers() {
           payload.commute_type = form.commute_type || null;
           payload.commute_teiki_monthly = form.commute_type === 'teiki' && form.commute_teiki_monthly ? Number(form.commute_teiki_monthly) : null;
           payload.commute_daily_amount = form.commute_type === 'daily' && form.commute_daily_amount ? Number(form.commute_daily_amount) : null;
+          payload.target_work_hours = form.target_work_hours !== '' ? Number(form.target_work_hours) : null;
+          payload.target_calls_per_h = form.target_calls_per_h !== '' ? Number(form.target_calls_per_h) : null;
+          payload.target_effective_per_h = form.target_effective_per_h !== '' ? Number(form.target_effective_per_h) : null;
+          payload.target_person_per_h = form.target_person_per_h !== '' ? Number(form.target_person_per_h) : null;
+          payload.target_project_hours = form.target_project_hours !== '' ? Number(form.target_project_hours) : null;
         }
         await api.put(`/api/admin/users/${editingUser.id}`, payload);
         toast.success('ユーザーを更新しました');
@@ -74,6 +79,11 @@ export default function AdminUsers() {
       commute_type: u.commute_type || '',
       commute_teiki_monthly: u.commute_teiki_monthly || '',
       commute_daily_amount: u.commute_daily_amount || '',
+      target_work_hours: u.target_work_hours || '',
+      target_calls_per_h: u.target_calls_per_h || '',
+      target_effective_per_h: u.target_effective_per_h || '',
+      target_person_per_h: u.target_person_per_h || '',
+      target_project_hours: u.target_project_hours || '',
     });
     setShowForm(true);
   };
@@ -229,6 +239,45 @@ export default function AdminUsers() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {/* 目標値（オペレーターのみ） */}
+            {(form.role === 'operator') && (
+              <div className="col-span-2 bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <p className="text-xs font-bold text-blue-700 mb-3">目標値（個別設定）</p>
+                <div className="grid grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-[10px] text-blue-500 mb-1 block">稼働時間(h/日)</label>
+                    <input type="number" step="0.5" className="input text-xs" placeholder="8.0"
+                      value={form.target_work_hours}
+                      onChange={e => setForm({...form, target_work_hours: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-blue-500 mb-1 block">コール数(/h)</label>
+                    <input type="number" step="0.5" className="input text-xs" placeholder="15"
+                      value={form.target_calls_per_h}
+                      onChange={e => setForm({...form, target_calls_per_h: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-blue-500 mb-1 block">有効接続(/h)</label>
+                    <input type="number" step="0.1" className="input text-xs" placeholder="3.0"
+                      value={form.target_effective_per_h}
+                      onChange={e => setForm({...form, target_effective_per_h: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-blue-500 mb-1 block">担当接続(/h)</label>
+                    <input type="number" step="0.1" className="input text-xs" placeholder="1.5"
+                      value={form.target_person_per_h}
+                      onChange={e => setForm({...form, target_person_per_h: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-blue-500 mb-1 block">案件(h以内/件)</label>
+                    <input type="number" step="0.5" className="input text-xs" placeholder="12"
+                      value={form.target_project_hours}
+                      onChange={e => setForm({...form, target_project_hours: e.target.value})} />
+                  </div>
+                </div>
+                <p className="text-[10px] text-blue-400 mt-2">未入力の場合はデフォルト目標値が適用されます</p>
               </div>
             )}
             <div className="col-span-2 flex gap-2">

@@ -237,6 +237,12 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_type ENUM('teiki','daily') DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_teiki_monthly INT UNSIGNED DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_daily_amount INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  // 目標値カラム追加
+  try { await pool.execute(`ALTER TABLE users ADD COLUMN target_work_hours DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE users ADD COLUMN target_calls_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE users ADD COLUMN target_effective_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE users ADD COLUMN target_person_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE users ADD COLUMN target_project_hours DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
 };
 runMigrations();
 

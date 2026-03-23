@@ -17,7 +17,7 @@ const { getDateRange } = require('../utils/periodHelper');
 const getUsers = async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, email, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, created_at, updated_at FROM users ORDER BY created_at DESC'
+      'SELECT id, name, email, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -108,7 +108,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount } = req.body;
+    const { name, email, password, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours } = req.body;
 
     const [existing] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -145,6 +145,11 @@ const updateUser = async (req, res, next) => {
     if (commute_type !== undefined) { updates.push('commute_type = ?'); params.push(commute_type || null); }
     if (commute_teiki_monthly !== undefined) { updates.push('commute_teiki_monthly = ?'); params.push(commute_teiki_monthly != null ? Number(commute_teiki_monthly) : null); }
     if (commute_daily_amount !== undefined) { updates.push('commute_daily_amount = ?'); params.push(commute_daily_amount != null ? Number(commute_daily_amount) : null); }
+    if (target_work_hours !== undefined) { updates.push('target_work_hours = ?'); params.push(target_work_hours != null && target_work_hours !== '' ? Number(target_work_hours) : null); }
+    if (target_calls_per_h !== undefined) { updates.push('target_calls_per_h = ?'); params.push(target_calls_per_h != null && target_calls_per_h !== '' ? Number(target_calls_per_h) : null); }
+    if (target_effective_per_h !== undefined) { updates.push('target_effective_per_h = ?'); params.push(target_effective_per_h != null && target_effective_per_h !== '' ? Number(target_effective_per_h) : null); }
+    if (target_person_per_h !== undefined) { updates.push('target_person_per_h = ?'); params.push(target_person_per_h != null && target_person_per_h !== '' ? Number(target_person_per_h) : null); }
+    if (target_project_hours !== undefined) { updates.push('target_project_hours = ?'); params.push(target_project_hours != null && target_project_hours !== '' ? Number(target_project_hours) : null); }
 
     if (password) {
       const passwordHash = await bcrypt.hash(password, 10);
