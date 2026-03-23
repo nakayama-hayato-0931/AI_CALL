@@ -425,11 +425,11 @@ const importLegacyProjects = async (req, res, next) => {
 
     if (records.length === 0) return ApiResponse.badRequest(res, 'データがありません');
 
-    // カラム名の改行を統一（\r\n → \n）
+    // カラム名の改行を統一（\r\n → \n）、値をString化
     records = records.map(row => {
       const normalized = {};
       for (const [key, val] of Object.entries(row)) {
-        normalized[key.replace(/\r\n/g, '\n')] = val;
+        normalized[key.replace(/\r\n/g, '\n')] = val != null ? String(val) : '';
       }
       return normalized;
     });
