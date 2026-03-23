@@ -479,7 +479,7 @@ const getCpaAll = async (req, res, next) => {
         CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
         CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
         CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
-       FROM projects p WHERE DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+       FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
       [dateFrom, dateTo]
     );
     const projMap = new Map(projAll.map(r => [r.user_id, r]));
@@ -489,7 +489,7 @@ const getCpaAll = async (req, res, next) => {
       `SELECT p.owner_user_id as user_id,
         COALESCE(SUM(ph.initial_payment), 0) as ip, COALESCE(SUM(ph.expected_revenue), 0) as er
        FROM project_hires ph JOIN projects p ON ph.project_id = p.id
-       WHERE DATE(p.created_at) BETWEEN ? AND ? AND ph.is_cancelled = 0
+       WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? AND ph.is_cancelled = 0
        GROUP BY p.owner_user_id`,
       [dateFrom, dateTo]
     );
@@ -639,7 +639,7 @@ const getQualityAll = async (req, res, next) => {
         CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
         CAST(SUM(CASE WHEN p.document_screening = 'not_required' THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
         CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
-       FROM projects p WHERE DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+       FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
       [dateFrom, dateTo]
     );
     const qMap = new Map(rows.map(r => [r.user_id, r]));
