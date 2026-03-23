@@ -241,45 +241,7 @@ export default function AdminUsers() {
                 </div>
               </div>
             )}
-            {/* 目標値（オペレーターのみ） */}
-            {(form.role === 'operator') && (
-              <div className="col-span-2 bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <p className="text-xs font-bold text-blue-700 mb-3">目標値（個別設定）</p>
-                <div className="grid grid-cols-5 gap-3">
-                  <div>
-                    <label className="text-[10px] text-blue-500 mb-1 block">稼働時間(h/日)</label>
-                    <input type="number" step="0.5" className="input text-xs" placeholder="8.0"
-                      value={form.target_work_hours}
-                      onChange={e => setForm({...form, target_work_hours: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-blue-500 mb-1 block">コール数(/h)</label>
-                    <input type="number" step="0.5" className="input text-xs" placeholder="15"
-                      value={form.target_calls_per_h}
-                      onChange={e => setForm({...form, target_calls_per_h: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-blue-500 mb-1 block">有効接続(/h)</label>
-                    <input type="number" step="0.1" className="input text-xs" placeholder="3.0"
-                      value={form.target_effective_per_h}
-                      onChange={e => setForm({...form, target_effective_per_h: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-blue-500 mb-1 block">担当接続(/h)</label>
-                    <input type="number" step="0.1" className="input text-xs" placeholder="1.5"
-                      value={form.target_person_per_h}
-                      onChange={e => setForm({...form, target_person_per_h: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-blue-500 mb-1 block">案件(h以内/件)</label>
-                    <input type="number" step="0.5" className="input text-xs" placeholder="12"
-                      value={form.target_project_hours}
-                      onChange={e => setForm({...form, target_project_hours: e.target.value})} />
-                  </div>
-                </div>
-                <p className="text-[10px] text-blue-400 mt-2">未入力の場合はデフォルト目標値が適用されます</p>
-              </div>
-            )}
+            {/* 目標値はステータスシートページで設定 */}
             <div className="col-span-2 flex gap-2">
               <button type="submit" className="btn-primary text-sm">{editingUser ? '更新' : '作成'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditingUser(null); }} className="btn-secondary text-sm">キャンセル</button>

@@ -24,6 +24,8 @@ export default function StatusSheetsPage() {
   const [alertMessage, setAlertMessage] = useState(null);
   const [trainingData, setTrainingData] = useState({});  // { userId: steps[] }
   const [trainingLoading, setTrainingLoading] = useState({});
+  const [editingTargets, setEditingTargets] = useState(null); // userId being edited
+  const [targetForm, setTargetForm] = useState({});
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -152,6 +154,35 @@ export default function StatusSheetsPage() {
       fetchSheets();
     } catch (err) {
       setAlertMessage('更新に失敗しました。');
+    }
+  };
+
+  const handleStartTargetEdit = (userId) => {
+    const op = operators.find(o => o.id === userId) || {};
+    setEditingTargets(userId);
+    setTargetForm({
+      target_work_hours: op.target_work_hours || '',
+      target_calls_per_h: op.target_calls_per_h || '',
+      target_effective_per_h: op.target_effective_per_h || '',
+      target_person_per_h: op.target_person_per_h || '',
+      target_project_hours: op.target_project_hours || '',
+    });
+  };
+
+  const handleSaveTargets = async (userId) => {
+    try {
+      await api.put(`/api/admin/users/${userId}`, {
+        target_work_hours: targetForm.target_work_hours !== '' ? Number(targetForm.target_work_hours) : null,
+        target_calls_per_h: targetForm.target_calls_per_h !== '' ? Number(targetForm.target_calls_per_h) : null,
+        target_effective_per_h: targetForm.target_effective_per_h !== '' ? Number(targetForm.target_effective_per_h) : null,
+        target_person_per_h: targetForm.target_person_per_h !== '' ? Number(targetForm.target_person_per_h) : null,
+        target_project_hours: targetForm.target_project_hours !== '' ? Number(targetForm.target_project_hours) : null,
+      });
+      toast.success('目標値を保存しました');
+      setEditingTargets(null);
+      fetchOperators();
+    } catch (err) {
+      toast.error('目標値の保存に失敗しました');
     }
   };
 
@@ -393,6 +424,58 @@ export default function StatusSheetsPage() {
                         </div>
                       </>
                     )}
+                    {/* 目標値設定 */}
+                    <div className="bg-indigo-50 rounded-lg border border-indigo-100 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-indigo-700">個別目標値</p>
+                        {editingTargets === sheet.user_id ? (
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditingTargets(null)} className="text-[10px] text-gray-500 hover:text-gray-700 px-2 py-1 rounded border">キャンセル</button>
+                            <button onClick={() => handleSaveTargets(sheet.user_id)} className="text-[10px] bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">保存</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => handleStartTargetEdit(sheet.user_id)} className="text-[10px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-100">設定</button>
+                        )}
+                      </div>
+                      {editingTargets === sheet.user_id ? (
+                        <div className="grid grid-cols-5 gap-2">
+                          {[
+                            { key: 'target_work_hours', label: '稼働(h/日)', ph: '8.0' },
+                            { key: 'target_calls_per_h', label: 'コール(/h)', ph: '15' },
+                            { key: 'target_effective_per_h', label: '有効接続(/h)', ph: '3.0' },
+                            { key: 'target_person_per_h', label: '担当接続(/h)', ph: '1.5' },
+                            { key: 'target_project_hours', label: '案件(h以内/件)', ph: '12' },
+                          ].map(f => (
+                            <div key={f.key}>
+                              <label className="text-[10px] text-indigo-500 block mb-0.5">{f.label}</label>
+                              <input type="number" step="0.5" className="w-full text-xs border border-indigo-200 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-indigo-300 outline-none"
+                                placeholder={f.ph} value={targetForm[f.key] || ''}
+                                onChange={e => setTargetForm(prev => ({...prev, [f.key]: e.target.value}))} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-5 gap-2 text-center">
+                          {(() => {
+                            const op = operators.find(o => o.id === sheet.user_id) || {};
+                            return [
+                              { label: '稼働', val: op.target_work_hours, unit: 'h/日', def: 8 },
+                              { label: 'コール', val: op.target_calls_per_h, unit: '/h', def: 15 },
+                              { label: '有効接続', val: op.target_effective_per_h, unit: '/h', def: 3 },
+                              { label: '担当接続', val: op.target_person_per_h, unit: '/h', def: 1.5 },
+                              { label: '案件', val: op.target_project_hours, unit: 'h以内', def: 12 },
+                            ].map((t, i) => (
+                              <div key={i}>
+                                <p className="text-[10px] text-indigo-400">{t.label}</p>
+                                <p className="text-sm font-semibold text-indigo-700">{t.val || <span className="text-indigo-300">{t.def}</span>}<span className="text-[10px] text-indigo-400 ml-0.5">{t.unit}</span></p>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                      <p className="text-[9px] text-indigo-300 mt-1.5">薄い数字はデフォルト値です。設定すると個別目標がオペレーターのダッシュボードに反映されます。</p>
+                    </div>
+
                     {/* 編集ボタン（シートがある場合のみ） */}
                     {!isPlaceholder && (
                       <div className="flex justify-end gap-2">

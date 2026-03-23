@@ -222,7 +222,7 @@ const getQualityMetrics = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name, operator_level FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
+      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -559,7 +559,7 @@ const getQualityAll = async (req, res, next) => {
     const { dateFrom, dateTo } = range;
 
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
+      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
     );
 
     const [rows] = await pool.query(
