@@ -18,6 +18,8 @@ for (let y = 2025; y <= 2027; y++) {
 }
 
 // 土曜〜金曜を1週間とする
+const pad2 = (n) => String(n).padStart(2, '0');
+const toLocalDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 const getWeeksInMonth = (ym) => {
   const [y, m] = ym.split('-').map(Number);
   const firstDay = new Date(y, m - 1, 1);
@@ -35,8 +37,8 @@ const getWeeksInMonth = (ym) => {
     if (end > lastDay) end.setTime(lastDay.getTime());
     weeks.push({
       label: `${start.getMonth() + 1}/${start.getDate()}〜${end.getMonth() + 1}/${end.getDate()}`,
-      dateFrom: start.toISOString().slice(0, 10),
-      dateTo: end.toISOString().slice(0, 10),
+      dateFrom: toLocalDate(start),
+      dateTo: toLocalDate(end),
     });
     const next = new Date(end);
     next.setDate(end.getDate() + 1);
