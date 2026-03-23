@@ -290,9 +290,6 @@ export default function SalesProjects() {
           <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header text-center" style={{width:'35px'}}>ログ</th>
-                <th className="table-header text-center" style={{width:'35px'}}>求人</th>
-                <th className="table-header text-center" style={{width:'35px'}}>事前</th>
                 <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('created_at')}>
                   獲得日<SortIcon col="created_at" />
                 </th>
@@ -311,6 +308,9 @@ export default function SalesProjects() {
                 <th className="table-header" style={{width:'60px'}}>電話確認</th>
                 <th className="table-header" style={{width:'110px'}}>電話番号</th>
                 <th className="table-header" style={{width:'70px'}}>通話ログ</th>
+                <th className="table-header text-center" style={{width:'35px'}}>ログ確認</th>
+                <th className="table-header text-center" style={{width:'35px'}}>求人済</th>
+                <th className="table-header text-center" style={{width:'35px'}}>事前確認</th>
               </tr>
             </thead>
             <tbody>
@@ -319,21 +319,6 @@ export default function SalesProjects() {
                 return (
                   <tr key={p.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
                     onClick={() => router.push(`/projects/${p.id}`)}>
-                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={!!p.log_confirmed}
-                        onChange={e => handleCheckboxToggle(p.id, 'log_confirmed', e.target.checked)}
-                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
-                    </td>
-                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={!!p.job_posted}
-                        onChange={e => handleCheckboxToggle(p.id, 'job_posted', e.target.checked)}
-                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
-                    </td>
-                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={!!p.pre_confirmed}
-                        onChange={e => handleCheckboxToggle(p.id, 'pre_confirmed', e.target.checked)}
-                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
-                    </td>
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {new Date(p.created_at).toLocaleDateString('ja-JP')}
                     </td>
@@ -396,6 +381,21 @@ export default function SalesProjects() {
                       >
                         表示
                       </button>
+                    </td>
+                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={!!p.log_confirmed}
+                        onChange={e => handleCheckboxToggle(p.id, 'log_confirmed', e.target.checked)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
+                    </td>
+                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={!!p.job_posted}
+                        onChange={e => handleCheckboxToggle(p.id, 'job_posted', e.target.checked)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
+                    </td>
+                    <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={!!p.pre_confirmed}
+                        onChange={e => handleCheckboxToggle(p.id, 'pre_confirmed', e.target.checked)}
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
                     </td>
                   </tr>
                 );
