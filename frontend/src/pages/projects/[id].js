@@ -327,8 +327,8 @@ export default function ProjectDetailPage() {
                     onChange={(e) => {
                       const newStatus = e.target.value;
                       setForm({ ...form, status: newStatus });
-                      // 内定選択時にモーダルを自動表示（オペレーター以外）
-                      if (newStatus === 'NAITEI' && !isOperator) {
+                      // 内定選択時にモーダルを自動表示（オペレーター以外、2026年3月以降の案件のみ）
+                      if (newStatus === 'NAITEI' && !isOperator && project?.created_at && new Date(project.created_at) >= new Date('2026-03-01')) {
                         setTimeout(() => openHireModal(), 100);
                       }
                     }}

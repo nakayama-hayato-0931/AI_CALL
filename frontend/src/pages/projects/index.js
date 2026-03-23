@@ -176,8 +176,8 @@ export default function ProjectsPage() {
       const proj = projects.find(p => p.id === projectId);
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus } : p));
       toast.success('ステータスを更新しました');
-      // 内定に変更したらモーダル表示
-      if (newStatus === 'NAITEI') {
+      // 内定に変更したらモーダル表示（2026年3月以降の案件のみ）
+      if (newStatus === 'NAITEI' && proj?.created_at && new Date(proj.created_at) >= new Date('2026-03-01')) {
         openHireModal(projectId, proj?.company_name || '');
       }
     } catch (err) {
