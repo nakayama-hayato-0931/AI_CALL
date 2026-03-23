@@ -451,7 +451,7 @@ const getCpaAll = async (req, res, next) => {
 
     // アクティブオペレーター（交通費情報含む）
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY name"
+      "SELECT id, name, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
     );
 
     // コスト（全員分一括）
