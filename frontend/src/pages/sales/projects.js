@@ -76,6 +76,7 @@ export default function SalesProjects() {
 
   // 担当営業
   const [salesUsers, setSalesUsers] = useState([]);
+  const [selectedSalesUser, setSelectedSalesUser] = useState('');
 
   // 通話ログモーダル
   const [callLogModal, setCallLogModal] = useState(null);
@@ -98,12 +99,13 @@ export default function SalesProjects() {
       fetchProjects();
       fetchSalesUsers();
     }
-  }, [user, status, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
+  }, [user, status, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
 
   const fetchProjects = async () => {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
       if (status) params.append('status', status);
+      if (selectedSalesUser) params.append('sales_user_id', selectedSalesUser);
       if (myOnly) params.append('my_only', '1');
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
@@ -264,6 +266,13 @@ export default function SalesProjects() {
           <label className="input-label">ステータス</label>
           <select className="input text-sm" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
             {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="input-label">担当営業</label>
+          <select className="input text-sm" value={selectedSalesUser} onChange={e => { setSelectedSalesUser(e.target.value); setPage(1); }}>
+            <option value="">全員</option>
+            {salesUsers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}
           </select>
         </div>
         <div>

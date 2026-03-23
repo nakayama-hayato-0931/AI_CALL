@@ -10,14 +10,14 @@ const { findTranscriptsBatch } = require('../services/googleSheetsService');
 /**
  * GET /api/projects
  * 案件一覧 (最新順・ページネーション)
- * クエリパラメータ: status, owner_user_id, date_from, date_to, sort_by, sort_order
+ * クエリパラメータ: status, owner_user_id, sales_user_id, date_from, date_to, sort_by, sort_order
  */
 const getProjects = async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { status, owner_user_id, date_from, date_to, sort_by, sort_order, is_legacy } = req.query;
+    const { status, owner_user_id, sales_user_id, date_from, date_to, sort_by, sort_order, is_legacy } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -37,6 +37,11 @@ const getProjects = async (req, res, next) => {
     } else if (owner_user_id) {
       whereClauses.push('p.owner_user_id = ?');
       params.push(owner_user_id);
+    }
+
+    if (sales_user_id) {
+      whereClauses.push('p.sales_user_id = ?');
+      params.push(sales_user_id);
     }
 
     if (status) {
