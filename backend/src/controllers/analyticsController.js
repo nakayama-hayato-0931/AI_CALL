@@ -526,11 +526,13 @@ const getCpaAll = async (req, res, next) => {
       };
     };
 
-    // 過去CPAデータを合算（期間でフィルタ）
+    // 過去CPAデータを合算（月別・累計のみ。週別は過去データなし）
     let pastCost = 0, pastCalls = 0, pastProjects = 0, pastInterviews = 0;
     let pastNaitei = 0, pastFugokaku = 0, pastBarashiLost = 0, pastIp = 0, pastEr = 0;
     const pastByUser = new Map(); // user_id -> past data
+    const includePastData = (period === 'monthly' || period === 'cumulative');
     try {
+      if (!includePastData) throw new Error('skip');
       // 期間フィルタ: dateFrom/dateToの年月に該当する過去データのみ
       const fromDate = new Date(dateFrom);
       const toDate = new Date(dateTo);
