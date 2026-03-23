@@ -238,6 +238,9 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_teiki_monthly INT UNSIGNED DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_daily_amount INT UNSIGNED DEFAULT NULL`); } catch (e) {}
   // 目標値カラム追加
+  // past_cpa_dataに日付範囲カラム追加（週別対応）
+  try { await pool.execute(`ALTER TABLE past_cpa_data ADD COLUMN date_from DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE past_cpa_data ADD COLUMN date_to DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_work_hours DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_calls_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN target_effective_per_h DECIMAL(4,1) DEFAULT NULL`); } catch (e) {}

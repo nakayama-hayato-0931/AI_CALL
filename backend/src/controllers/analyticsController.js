@@ -550,10 +550,10 @@ const getCpaAll = async (req, res, next) => {
     let pastCost = 0, pastCalls = 0, pastProjects = 0, pastInterviews = 0;
     let pastNaitei = 0, pastFugokaku = 0, pastBarashiLost = 0, pastIp = 0, pastEr = 0;
     const pastByUser = new Map(); // user_id -> past data
-    const includePastData = (period === 'monthly' || period === 'cumulative');
     try {
-      if (!includePastData) throw new Error('skip');
-      // 期間フィルタ: dateFrom/dateToの年月に該当する過去データのみ
+      // 過去データフィルタ:
+      // - date_fromがある行（週別データ）: 日付範囲の重なりでフィルタ
+      // - date_fromがない行（月別データ）: 年月でフィルタ
       const fromDate = new Date(dateFrom);
       const toDate = new Date(dateTo);
       const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
@@ -565,9 +565,13 @@ const getCpaAll = async (req, res, next) => {
                 SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
                 SUM(initial_payment) as ip, SUM(expected_revenue) as er
          FROM past_cpa_data
-         WHERE (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?
+         WHERE (
+           (date_from IS NOT NULL AND date_from <= ? AND date_to >= ?)
+           OR
+           (date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?)
+         )
          GROUP BY user_id`,
-        [fromYM, toYM]
+        [dateTo, dateFrom, fromYM, toYM]
       );
       for (const pr of pastAll) {
         const pd = {
