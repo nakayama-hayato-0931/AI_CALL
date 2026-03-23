@@ -75,6 +75,11 @@ export default function AdminProjects() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('current'); // 'current' or 'legacy'
+
+  // 移行前インポート
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   // 担当営業
   const [salesUsers, setSalesUsers] = useState([]);
@@ -101,13 +106,34 @@ export default function AdminProjects() {
 
   useEffect(() => {
     if (user) fetchProjects();
-  }, [user, status, ownerId, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
+  }, [user, status, ownerId, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab]);
 
   const fetchOperators = async () => {
     try {
       const { data } = await api.get('/api/admin/users');
       if (data.success) setOperators(data.data.filter(u => u.role === 'operator'));
     } catch (err) { /* ignore */ }
+  };
+
+  const handleImportLegacy = async () => {
+    if (!importFile) return;
+    try {
+      setImporting(true);
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const { data } = await api.post('/api/projects/import-legacy', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (data.success) {
+        toast.success(data.message || `${data.data.imported}件インポートしました`);
+        setImportFile(null);
+        fetchProjects();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'インポートに失敗しました');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const fetchSalesUsers = async () => {
@@ -120,6 +146,7 @@ export default function AdminProjects() {
   const fetchProjects = async () => {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
+      if (activeTab === 'legacy') params.append('is_legacy', '1');
       if (status) params.append('status', status);
       if (myOnly) params.append('my_only', '1');
       else if (ownerId) params.append('owner_user_id', ownerId);
@@ -250,7 +277,7 @@ export default function AdminProjects() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">案件管理</h1>
         <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -258,6 +285,34 @@ export default function AdminProjects() {
           }`}>
           {myOnly ? '自分の案件のみ' : '全員の案件'}
         </button>
+      </div>
+
+      {/* タブ切り替え */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          <button onClick={() => { setActiveTab('current'); setPage(1); }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'current' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            現在の案件
+          </button>
+          <button onClick={() => { setActiveTab('legacy'); setPage(1); }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'legacy' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            移行前
+          </button>
+        </div>
+
+        {/* 移行前タブのインポート */}
+        {activeTab === 'legacy' && (
+          <div className="flex items-center gap-2 ml-auto">
+            <input type="file" accept=".csv,.xls,.xlsx"
+              onChange={e => setImportFile(e.target.files?.[0] || null)}
+              className="text-xs file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-50 file:text-blue-600 file:font-medium file:cursor-pointer" />
+            <button onClick={handleImportLegacy} disabled={!importFile || importing}
+              className="btn-primary text-xs disabled:opacity-40">
+              {importing ? 'インポート中...' : 'CSVインポート'}
+            </button>
+            <span className="text-[10px] text-gray-400">日付,担当OP,企業名,電話番号,求人番号,担当営業,ステータス,面接日,面接方法,書類選考,メモ</span>
+          </div>
+        )}
       </div>
 
       {/* フィルター */}

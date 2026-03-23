@@ -17,10 +17,17 @@ const getProjects = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { status, owner_user_id, date_from, date_to, sort_by, sort_order } = req.query;
+    const { status, owner_user_id, date_from, date_to, sort_by, sort_order, is_legacy } = req.query;
 
     let whereClauses = [];
     let params = [];
+
+    // legacy フィルタ（デフォルトは通常案件のみ）
+    if (is_legacy === '1') {
+      whereClauses.push('p.is_legacy = 1');
+    } else {
+      whereClauses.push('p.is_legacy = 0');
+    }
 
     // my_only=1 で自分の案件のみフィルタ (全ロール共通)
     const { my_only } = req.query;
@@ -58,17 +65,18 @@ const getProjects = async (req, res, next) => {
 
     const [countRows] = await pool.execute(
       `SELECT COUNT(*) as total FROM projects p
-       JOIN companies c ON p.company_id = c.id
+       LEFT JOIN companies c ON p.company_id = c.id
        ${whereStr}`,
       params
     );
 
     const [rows] = await pool.execute(
-      `SELECT p.*, c.company_name, c.phone_number, c.industry,
-              u.name as owner_name,
-              su.name as sales_name
+      `SELECT p.*, COALESCE(c.company_name, p.legacy_company_name) as company_name,
+              COALESCE(c.phone_number, p.legacy_phone) as phone_number, c.industry,
+              COALESCE(u.name, p.legacy_operator_name) as owner_name,
+              COALESCE(su.name, p.legacy_sales_name) as sales_name
        FROM projects p
-       JOIN companies c ON p.company_id = c.id
+       LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users u ON p.owner_user_id = u.id
        LEFT JOIN users su ON p.sales_user_id = su.id
        ${whereStr}
@@ -377,4 +385,112 @@ const saveProjectHires = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires };
+/**
+ * POST /api/projects/import-legacy
+ * 移行前案件のCSVインポート
+ * CSVフォーマット: 日付,担当OP,企業名,電話番号,求人番号,担当営業,ステータス,面接日,面接方法,書類選考,メモ
+ */
+const importLegacyProjects = async (req, res, next) => {
+  try {
+    if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
+
+    const csvParse = require('csv-parse/sync');
+    const XLSX = require('xlsx');
+    let records = [];
+
+    const ext = req.file.originalname.split('.').pop().toLowerCase();
+    if (ext === 'csv') {
+      const content = req.file.buffer.toString('utf-8');
+      records = csvParse.parse(content, { columns: true, skip_empty_lines: true, bom: true });
+    } else if (['xls', 'xlsx'].includes(ext)) {
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      records = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    } else {
+      return ApiResponse.badRequest(res, 'CSV/XLS/XLSX形式のみ対応');
+    }
+
+    if (records.length === 0) return ApiResponse.badRequest(res, 'データがありません');
+
+    // ステータスマッピング
+    const statusMap = {
+      '募集中': 'BOSHUCHU', '書類選考中': 'SHORUI_CHU', '書類落ち': 'SHORUI_OCHI',
+      '面接確定': 'MENSETSU_KAKUTEI', '結果待ち': 'KEKKA_MACHI', '内定': 'NAITEI',
+      '内定取消': 'NAITEI_TORIKESHI', '不合格': 'FUGOKAKU', '失注': 'LOST',
+      'バラシ': 'BARASHI', '保留': 'HORYU', '既存なし': 'KISON_NASHI', '戻し': 'MODOSHI', '戻り': 'MODORI',
+    };
+    const interviewMap = { 'オンライン': 'online', '対面': 'in_person', 'online': 'online', 'in_person': 'in_person' };
+    const docMap = { 'あり': 'required', 'なし': 'not_required', '有': 'required', '無': 'not_required' };
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const row of records) {
+      const companyName = row['企業名'] || row['会社名'] || '';
+      const phone = row['電話番号'] || row['電話'] || '';
+      if (!companyName && !phone) { skipped++; continue; }
+
+      const dateStr = row['日付'] || row['獲得日'] || row['作成日'] || '';
+      const operatorName = row['担当OP'] || row['オペレーター'] || row['担当者'] || '';
+      const salesName = row['担当営業'] || row['営業'] || '';
+      const jobNumber = row['求人番号'] || row['求人No'] || '';
+      const statusStr = row['ステータス'] || '';
+      const interviewDateStr = row['面接日'] || '';
+      const interviewTypeStr = row['面接方法'] || row['面接種別'] || '';
+      const docStr = row['書類選考'] || '';
+      const memo = row['メモ'] || row['備考'] || '';
+      const mailSent = row['メール送付'] === '済' || row['メール送付'] === '1' ? 1 : 0;
+      const phoneDone = row['電話確認'] === '済' || row['電話確認'] === '1' ? 1 : 0;
+
+      const status = statusMap[statusStr] || 'BOSHUCHU';
+      const interviewType = interviewMap[interviewTypeStr] || null;
+      const docScreening = docMap[docStr] || null;
+
+      // 日付パース
+      let legacyDate = null;
+      if (dateStr) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) legacyDate = d.toISOString().slice(0, 10);
+      }
+      let interviewDate = null;
+      if (interviewDateStr) {
+        const d = new Date(interviewDateStr);
+        if (!isNaN(d.getTime())) interviewDate = d.toISOString().slice(0, 19).replace('T', ' ');
+      }
+
+      // オペレーターID検索（見つからなければNULL、名前をlegacyに保存）
+      let ownerId = null;
+      if (operatorName) {
+        const [userRows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [operatorName]);
+        if (userRows.length > 0) ownerId = userRows[0].id;
+      }
+
+      // 営業ID検索
+      let salesId = null;
+      if (salesName) {
+        const [salesRows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [salesName]);
+        if (salesRows.length > 0) salesId = salesRows[0].id;
+      }
+
+      await pool.execute(
+        `INSERT INTO projects (company_id, owner_user_id, sales_user_id, job_number, status, interview_date, interview_type, document_screening, mail_sent, phone_confirmed, memo, is_legacy, legacy_company_name, legacy_phone, legacy_date, legacy_operator_name, legacy_sales_name, created_at)
+         VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+        [
+          ownerId, salesId, jobNumber || null, status, interviewDate, interviewType, docScreening,
+          mailSent, phoneDone, memo || null,
+          companyName, phone || null, legacyDate,
+          operatorName || null, salesName || null,
+          legacyDate ? `${legacyDate} 00:00:00` : new Date().toISOString().slice(0, 19).replace('T', ' ')
+        ]
+      );
+      imported++;
+    }
+
+    return ApiResponse.success(res, { imported, skipped, total: records.length }, `${imported}件の移行前案件をインポートしました`);
+  } catch (err) {
+    logger.error('移行前案件インポートエラー:', err);
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects };

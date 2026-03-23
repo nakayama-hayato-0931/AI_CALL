@@ -3,13 +3,18 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires } = require('../controllers/projectController');
-const { authenticate } = require('../middlewares/auth');
+const { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects } = require('../controllers/projectController');
+const { authenticate, requireManager } = require('../middlewares/auth');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.use(authenticate);
 
 // GET /api/projects - 案件一覧
 router.get('/', getProjects);
+
+// POST /api/projects/import-legacy - 移行前案件インポート
+router.post('/import-legacy', requireManager, upload.single('file'), importLegacyProjects);
 
 // GET /api/projects/sales-users - 営業ユーザー一覧
 router.get('/sales-users', getSalesUsers);

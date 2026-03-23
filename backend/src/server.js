@@ -212,6 +212,17 @@ const runMigrations = async () => {
   try {
     await pool.execute(`ALTER TABLE status_sheets ADD COLUMN scenario JSON DEFAULT NULL`);
   } catch (e) {}
+  // projectsのcompany_idをNULL許可に（移行前案件用）
+  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN company_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  // owner_user_idもNULL許可
+  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN owner_user_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  // projectsにis_legacy + legacy用カラム追加
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN is_legacy TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_company_name VARCHAR(255) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_phone VARCHAR(50) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_date DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_operator_name VARCHAR(100) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN legacy_sales_name VARCHAR(100) DEFAULT NULL`); } catch (e) {}
 };
 runMigrations();
 
