@@ -233,14 +233,28 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN pre_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   // memoカラムをTEXTに拡張
   try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN memo TEXT`); } catch (e) {}
-  // mail_sent, mail_replied, phone_confirmed を DATE型に変更（NULL許可）
-  // まず既存の0/1値をNULLに変換してからALTER
-  try { await pool.execute(`UPDATE projects SET mail_sent = NULL WHERE mail_sent = 0`); } catch (e) {}
-  try { await pool.execute(`UPDATE projects SET mail_replied = NULL WHERE mail_replied = 0`); } catch (e) {}
-  try { await pool.execute(`UPDATE projects SET phone_confirmed = NULL WHERE phone_confirmed = 0`); } catch (e) {}
-  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_sent DATE NULL DEFAULT NULL`); } catch (e) {}
-  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_replied DATE NULL DEFAULT NULL`); } catch (e) {}
-  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN phone_confirmed DATE NULL DEFAULT NULL`); } catch (e) {}
+  // mail_sent, mail_replied, phone_confirmed をDATE型に変更
+  // TINYINT→DATE変更は直接できないので、一旦VARCHAR経由
+  try {
+    // Check current column type
+    const [cols] = await pool.query(`SHOW COLUMNS FROM projects WHERE Field IN ('mail_sent','mail_replied','phone_confirmed')`);
+    const needsConversion = cols.some(c => c.Type && !c.Type.includes('date'));
+    if (needsConversion) {
+      // Step 1: convert to VARCHAR (preserves data)
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_sent VARCHAR(20) NULL DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_replied VARCHAR(20) NULL DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN phone_confirmed VARCHAR(20) NULL DEFAULT NULL`);
+      // Step 2: clear invalid values (0, 1, empty)
+      await pool.execute(`UPDATE projects SET mail_sent = NULL WHERE mail_sent IN ('0', '1', '')`);
+      await pool.execute(`UPDATE projects SET mail_replied = NULL WHERE mail_replied IN ('0', '1', '')`);
+      await pool.execute(`UPDATE projects SET phone_confirmed = NULL WHERE phone_confirmed IN ('0', '1', '')`);
+      // Step 3: convert to DATE
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_sent DATE NULL DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_replied DATE NULL DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE projects MODIFY COLUMN phone_confirmed DATE NULL DEFAULT NULL`);
+      logger.info('[Migration] mail_sent/mail_replied/phone_confirmed をDATE型に変更完了');
+    }
+  } catch (e) { logger.warn('[Migration] DATE変更:', e.message); }
   // 企業担当者・連絡先・ダッシュボード記入チェック
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_person VARCHAR(100) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_info VARCHAR(255) DEFAULT NULL`); } catch (e) {}
