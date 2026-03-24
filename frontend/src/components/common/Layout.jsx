@@ -152,6 +152,7 @@ const getNavSections = (role) => {
         { href: '/logs', label: 'AI評価', icon: 'ai' },
         { href: '/call-results', label: '架電結果', icon: 'log' },
         { href: '/csv-import', label: '架電リスト', icon: 'csv' },
+        { href: '/status-sheet', label: 'ステータスシート', icon: 'status' },
         { href: '/requests', label: 'メッセージ', icon: 'request' },
       ],
     },

@@ -166,6 +166,10 @@ const runMigrations = async () => {
     // カラムが既に存在する場合はスキップ
     if (!err.message.includes('Duplicate column')) logger.warn('[Migration] operator_level:', err.message);
   }
+  // operator_levelにリーダー追加
+  try { await pool.execute(`ALTER TABLE users MODIFY COLUMN operator_level ENUM('初級','中級','上級','リーダー') DEFAULT NULL`); } catch (e) {}
+  // status_sheetsに公開フラグ追加
+  try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN is_published TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   // 研修進捗テーブル
   try {
     await pool.execute(`

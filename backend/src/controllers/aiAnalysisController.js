@@ -541,7 +541,7 @@ const getStatusSheets = async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
-              ss.created_at, ss.updated_at, cb.name as created_by_name
+              ss.is_published, ss.created_at, ss.updated_at, cb.name as created_by_name
        FROM status_sheets ss
        JOIN users u ON ss.user_id = u.id
        JOIN users cb ON ss.created_by = cb.id
@@ -725,4 +725,81 @@ const updateTrainingStep = async (req, res, next) => {
   }
 };
 
-module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep };
+/**
+ * GET /api/ai/analysis/my-status-sheet
+ * オペレーター: 自分の公開済みステータスシート取得
+ */
+const getMyStatusSheet = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await pool.query(
+      `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
+              ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
+              ss.is_published, ss.created_at, ss.updated_at
+       FROM status_sheets ss
+       JOIN users u ON ss.user_id = u.id
+       WHERE ss.user_id = ? AND ss.is_published = 1
+       ORDER BY ss.updated_at DESC LIMIT 1`,
+      [userId]
+    );
+    return ApiResponse.success(res, rows[0] || null);
+  } catch (err) {
+    logger.error('自分のステータスシート取得エラー:', err.message);
+    return ApiResponse.success(res, null);
+  }
+};
+
+/**
+ * GET /api/ai/analysis/published-status-sheets
+ * リーダー: 全オペレーターの公開済みステータスシート一覧
+ */
+const getPublishedStatusSheets = async (req, res, next) => {
+  try {
+    const user = req.user;
+    // リーダーまたはマネージャー以上のみ
+    const [userRow] = await pool.query('SELECT operator_level, role FROM users WHERE id = ?', [user.id]);
+    const isLeader = userRow[0]?.operator_level === 'リーダー';
+    const isManager = ['admin', 'manager'].includes(userRow[0]?.role);
+    if (!isLeader && !isManager) {
+      return ApiResponse.forbidden(res, '権限がありません');
+    }
+
+    const [rows] = await pool.query(
+      `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
+              ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
+              ss.is_published, ss.created_at, ss.updated_at
+       FROM status_sheets ss
+       JOIN users u ON ss.user_id = u.id
+       WHERE ss.is_published = 1
+       ORDER BY u.id ASC`
+    );
+    // user_idごとに最新1件のみ
+    const map = new Map();
+    rows.forEach(s => { if (!map.has(s.user_id)) map.set(s.user_id, s); });
+    return ApiResponse.success(res, Array.from(map.values()));
+  } catch (err) {
+    logger.error('公開ステータスシート一覧取得エラー:', err.message);
+    return ApiResponse.success(res, []);
+  }
+};
+
+/**
+ * PUT /api/ai/analysis/status-sheets/:id/publish
+ * 管理者: ステータスシートの公開/非公開切替
+ */
+const togglePublish = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { is_published } = req.body;
+    await pool.execute(
+      'UPDATE status_sheets SET is_published = ? WHERE id = ?',
+      [is_published ? 1 : 0, id]
+    );
+    return ApiResponse.success(res, null, is_published ? '公開しました' : '非公開にしました');
+  } catch (err) {
+    logger.error('公開切替エラー:', err.message);
+    next(err);
+  }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish };

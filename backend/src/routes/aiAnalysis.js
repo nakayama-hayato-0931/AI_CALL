@@ -4,10 +4,16 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep } = require('../controllers/aiAnalysisController');
+const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish } = require('../controllers/aiAnalysisController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 
 router.use(authenticate);
+
+// オペレーター/リーダー用（認証のみ、マネージャー権限不要）
+router.get('/my-status-sheet', getMyStatusSheet);          // 自分のシート閲覧
+router.get('/published-status-sheets', getPublishedStatusSheets); // リーダー用：公開シート一覧
+
+// 以下はマネージャー以上のみ
 router.use(requireManager);
 
 // POST /api/ai/analysis/team - チーム全体AI分析
@@ -25,6 +31,7 @@ router.post('/status-sheets/:userId/generate', generateSingleStatusSheet); // �
 router.get('/status-sheets', getStatusSheets);                         // 保存済み一覧取得
 router.get('/status-sheets/:userId', getStatusSheet);                  // 個別取得
 router.put('/status-sheets/:id', updateStatusSheet);                   // 手動編集
+router.put('/status-sheets/:id/publish', togglePublish);               // 公開/非公開切替
 
 // 研修進捗
 router.get('/training/:userId', getTrainingProgress);                  // 研修進捗取得

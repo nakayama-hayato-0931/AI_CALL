@@ -295,6 +295,7 @@ export default function AdminUsers() {
                       <option value="初級">初級</option>
                       <option value="中級">中級</option>
                       <option value="上級">上級</option>
+                      <option value="リーダー">リーダー</option>
                     </select>
                   ) : <span className="text-gray-300 text-xs">-</span>}
                 </td>

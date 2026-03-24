@@ -24,6 +24,7 @@ export default function StatusSheetsPage() {
   const [alertMessage, setAlertMessage] = useState(null);
   const [trainingData, setTrainingData] = useState({});  // { userId: steps[] }
   const [trainingLoading, setTrainingLoading] = useState({});
+  const [publishingId, setPublishingId] = useState(null);
   const [editingTargets, setEditingTargets] = useState(null); // userId being edited
   const [targetForm, setTargetForm] = useState({});
   const [sortedEntries, setSortedEntries] = useState([]);
@@ -229,6 +230,16 @@ export default function StatusSheetsPage() {
     } catch (err) { toast.error('更新に失敗しました'); }
   };
 
+  const handleTogglePublish = async (sheetId, currentState) => {
+    try {
+      setPublishingId(sheetId);
+      await api.put(`/api/ai/analysis/status-sheets/${sheetId}/publish`, { is_published: !currentState });
+      toast.success(!currentState ? '公開しました' : '非公開にしました');
+      fetchSheets();
+    } catch (err) { toast.error('切替に失敗しました'); }
+    finally { setPublishingId(null); }
+  };
+
   const parseJSON = (val) => {
     if (typeof val === 'string') {
       try { return JSON.parse(val); } catch { return val; }
@@ -395,10 +406,22 @@ export default function StatusSheetsPage() {
                       );
                     })()}
                   </div>
-                  <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleTogglePublish(sheet.id, sheet.is_published); }}
+                      disabled={publishingId === sheet.id}
+                      className={`text-[10px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                        sheet.is_published
+                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                      }`}>
+                      {sheet.is_published ? '公開中' : '非公開'}
+                    </button>
+                    <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
                 </button>
 
                 {/* 展開コンテンツ */}
