@@ -284,14 +284,19 @@ const getCallLogs = async (req, res, next) => {
 
     // 案件の企業情報を取得
     const [projRows] = await pool.execute(
-      'SELECT p.company_id, c.phone_number FROM projects p JOIN companies c ON p.company_id = c.id WHERE p.id = ?',
+      'SELECT p.company_id, p.legacy_phone, c.phone_number FROM projects p LEFT JOIN companies c ON p.company_id = c.id WHERE p.id = ?',
       [id]
     );
     if (projRows.length === 0) {
       return ApiResponse.notFound(res, '案件が見つかりません');
     }
 
-    const { company_id, phone_number } = projRows[0];
+    const { company_id, phone_number, legacy_phone } = projRows[0];
+
+    // 移行前案件（company_idなし）は通話ログなし
+    if (!company_id) {
+      return ApiResponse.success(res, []);
+    }
 
     // 同じ電話番号を持つ全企業への通話を取得
     const [calls] = await pool.query(

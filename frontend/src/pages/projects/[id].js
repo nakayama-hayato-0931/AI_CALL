@@ -37,7 +37,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '',
-    document_screening: '', mail_sent: '', phone_confirmed: '', job_number: '', memo: '',
+    document_screening: '', mail_sent: '', mail_replied: '', phone_confirmed: '', job_number: '', memo: '',
     contact_person: '', contact_info: '', dashboard_checked: false,
   });
   const [companyForm, setCompanyForm] = useState({
@@ -133,6 +133,7 @@ export default function ProjectDetailPage() {
         interview_type: p.interview_type || '',
         document_screening: p.document_screening || '',
         mail_sent: p.mail_sent ? p.mail_sent.slice(0, 10) : '',
+        mail_replied: p.mail_replied ? p.mail_replied.slice(0, 10) : '',
         phone_confirmed: p.phone_confirmed ? p.phone_confirmed.slice(0, 10) : '',
         job_number: p.job_number || '',
         memo: p.memo || '',
@@ -161,6 +162,7 @@ export default function ProjectDetailPage() {
         document_screening: form.document_screening || null,
         job_number: form.job_number || null,
         mail_sent: form.mail_sent || null,
+        mail_replied: form.mail_replied || null,
         phone_confirmed: form.phone_confirmed || null,
       });
       toast.success('案件を更新しました');
@@ -424,10 +426,14 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="input-label">メール送信日</label>
                     <input type="date" value={form.mail_sent || ''} onChange={(e) => setForm({ ...form, mail_sent: e.target.value || null })} className="input" />
+                  </div>
+                  <div>
+                    <label className="input-label">メール返信日</label>
+                    <input type="date" value={form.mail_replied || ''} onChange={(e) => setForm({ ...form, mail_replied: e.target.value || null })} className="input" />
                   </div>
                   <div>
                     <label className="input-label">電話確認日</label>
