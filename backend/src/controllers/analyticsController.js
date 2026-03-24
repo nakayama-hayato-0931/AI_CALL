@@ -460,9 +460,9 @@ const getCpaAll = async (req, res, next) => {
         COALESCE(SUM(TIMESTAMPDIFF(MINUTE, CONCAT(cr.date,' ',cr.start_time), CONCAT(cr.date,' ',cr.end_time)) - COALESCE(cr.break_minutes,0)), 0) as total_minutes,
         COUNT(DISTINCT cr.date) as work_days
        FROM cost_records cr WHERE cr.date BETWEEN ? AND ? GROUP BY cr.user_id`,
-      [systemDateFrom || '2099-01-01', systemDateTo]
+      [dateFrom, dateTo]
     );
-    // コスト = 人件費 + 交通費（3月以前はpast_cpa_dataから）
+    // コスト = 人件費 + 交通費（常にcost_recordsから取得）
     const costMap = new Map();
     for (const r of costAll) {
       const laborCost = Math.round(Number(r.total_minutes) / 60 * HOURLY_RATE);
