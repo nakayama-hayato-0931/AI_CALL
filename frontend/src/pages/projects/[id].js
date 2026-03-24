@@ -37,7 +37,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '',
-    document_screening: '', mail_sent: false, phone_confirmed: false, job_number: '', memo: '',
+    document_screening: '', mail_sent: '', phone_confirmed: '', job_number: '', memo: '',
     contact_person: '', contact_info: '', dashboard_checked: false,
   });
   const [companyForm, setCompanyForm] = useState({
@@ -132,8 +132,8 @@ export default function ProjectDetailPage() {
         interview_date: p.interview_date ? p.interview_date.slice(0, 16) : '',
         interview_type: p.interview_type || '',
         document_screening: p.document_screening || '',
-        mail_sent: !!p.mail_sent,
-        phone_confirmed: !!p.phone_confirmed,
+        mail_sent: p.mail_sent ? p.mail_sent.slice(0, 10) : '',
+        phone_confirmed: p.phone_confirmed ? p.phone_confirmed.slice(0, 10) : '',
         job_number: p.job_number || '',
         memo: p.memo || '',
         contact_person: p.contact_person || '',
@@ -160,6 +160,8 @@ export default function ProjectDetailPage() {
         interview_type: form.interview_type || null,
         document_screening: form.document_screening || null,
         job_number: form.job_number || null,
+        mail_sent: form.mail_sent || null,
+        phone_confirmed: form.phone_confirmed || null,
       });
       toast.success('案件を更新しました');
       fetchProject();
@@ -422,34 +424,15 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-x-6 gap-y-2">
-                  <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
-                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                      form.mail_sent ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
-                    }`}>
-                      {form.mail_sent && (
-                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <input type="checkbox" checked={form.mail_sent} onChange={(e) => setForm({ ...form, mail_sent: e.target.checked })} className="sr-only" />
-                    <span className="text-gray-700">メール送信済み</span>
-                  </label>
-
-                  <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
-                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                      form.phone_confirmed ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
-                    }`}>
-                      {form.phone_confirmed && (
-                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <input type="checkbox" checked={form.phone_confirmed} onChange={(e) => setForm({ ...form, phone_confirmed: e.target.checked })} className="sr-only" />
-                    <span className="text-gray-700">電話確認済み</span>
-                  </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="input-label">メール送信日</label>
+                    <input type="date" value={form.mail_sent || ''} onChange={(e) => setForm({ ...form, mail_sent: e.target.value || null })} className="input" />
+                  </div>
+                  <div>
+                    <label className="input-label">電話確認日</label>
+                    <input type="date" value={form.phone_confirmed || ''} onChange={(e) => setForm({ ...form, phone_confirmed: e.target.value || null })} className="input" />
+                  </div>
                 </div>
 
                 <div>

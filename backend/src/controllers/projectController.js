@@ -209,9 +209,9 @@ const updateProject = async (req, res, next) => {
     if (interview_date !== undefined) { updates.push('interview_date = ?'); updateParams.push(interview_date || null); }
     if (interview_type !== undefined) { updates.push('interview_type = ?'); updateParams.push(interview_type || null); }
     if (document_screening !== undefined) { updates.push('document_screening = ?'); updateParams.push(document_screening || null); }
-    if (mail_sent !== undefined) { updates.push('mail_sent = ?'); updateParams.push(mail_sent ? 1 : 0); }
-    if (mail_replied !== undefined) { updates.push('mail_replied = ?'); updateParams.push(mail_replied ? 1 : 0); }
-    if (phone_confirmed !== undefined) { updates.push('phone_confirmed = ?'); updateParams.push(phone_confirmed ? 1 : 0); }
+    if (mail_sent !== undefined) { updates.push('mail_sent = ?'); updateParams.push(mail_sent || null); }
+    if (mail_replied !== undefined) { updates.push('mail_replied = ?'); updateParams.push(mail_replied || null); }
+    if (phone_confirmed !== undefined) { updates.push('phone_confirmed = ?'); updateParams.push(phone_confirmed || null); }
     if (job_number !== undefined) { updates.push('job_number = ?'); updateParams.push(job_number || null); }
     if (status !== undefined) { updates.push('status = ?'); updateParams.push(status || null); }
     if (memo !== undefined) { updates.push('memo = ?'); updateParams.push(memo || null); }
@@ -585,9 +585,25 @@ const importLegacyProjects = async (req, res, next) => {
       const interviewType = onlineOk ? 'online' : null;
       const noScreening = parseBool(row['書類選考\n無し']);
       const docScreening = noScreening ? 'not_required' : null;
-      const mailSent = parseBool(row['メール\n送付']);
-      const mailReplied = parseBool(row['メール\n返信']);
-      const phoneDone = parseBool(row['電話確認']);
+      // メール送付等は日付パース（True/False/日付文字列/Excel serial対応）
+      const parseFieldDate = (val) => {
+        if (!val || val === 'False' || val === 'false' || val === '0') return null;
+        if (val === 'True' || val === 'true' || val === '1') return null; // True but no date
+        // Excel serial number
+        const num = parseInt(parseFloat(val));
+        if (!isNaN(num) && num > 40000 && num < 100000) {
+          const base = new Date(1899, 11, 30);
+          base.setDate(base.getDate() + num);
+          return base.toISOString().slice(0, 10);
+        }
+        // Date string
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        return null;
+      };
+      const mailSent = parseFieldDate(row['メール\n送付']);
+      const mailReplied = parseFieldDate(row['メール\n返信']);
+      const phoneDone = parseFieldDate(row['電話確認']);
       const logConfirmed = parseBool(row['ログ確認']);
       const jobPosted = parseBool(row['求人済']);
       const preConfirmed = parseBool(row['事前確認']);

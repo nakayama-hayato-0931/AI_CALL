@@ -440,17 +440,17 @@ export default function AdminProjects() {
                     </td>
                     <td className="table-cell text-center">
                       <span className={p.mail_sent ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
-                        {p.mail_sent ? '済' : '未'}
+                        {p.mail_sent ? new Date(p.mail_sent).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric'}) : '未'}
                       </span>
                     </td>
                     <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
                       <span className={p.mail_replied ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
-                        {p.mail_replied ? '済' : '未'}
+                        {p.mail_replied ? new Date(p.mail_replied).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric'}) : '未'}
                       </span>
                     </td>
                     <td className={`table-cell text-center ${urgent ? 'bg-red-50' : ''}`}>
                       <span className={p.phone_confirmed ? 'text-emerald-600 font-medium' : urgent ? 'text-red-600 font-bold animate-pulse' : 'text-gray-400'}>
-                        {p.phone_confirmed ? '済' : '未'}
+                        {p.phone_confirmed ? new Date(p.phone_confirmed).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric'}) : '未'}
                       </span>
                     </td>
                     <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>

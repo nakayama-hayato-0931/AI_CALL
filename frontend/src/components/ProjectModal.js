@@ -25,9 +25,9 @@ export default function ProjectModal({ projectId, onClose }) {
     job_number: '',
     interview_date: '',
     interview_type: '',
-    mail_sent: false,
-    mail_replied: false,
-    phone_confirmed: false,
+    mail_sent: '',
+    mail_replied: '',
+    phone_confirmed: '',
     memo: '',
     contact_person: '',
     contact_info: '',
@@ -42,6 +42,9 @@ export default function ProjectModal({ projectId, onClose }) {
         ...form,
         interview_date: form.interview_date || null,
         interview_type: form.interview_type || null,
+        mail_sent: form.mail_sent || null,
+        mail_replied: form.mail_replied || null,
+        phone_confirmed: form.phone_confirmed || null,
       });
       toast.success('案件情報を保存しました');
       onClose();
@@ -97,28 +100,36 @@ export default function ProjectModal({ projectId, onClose }) {
               </div>
             </div>
 
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="input-label">メール送信日</label>
+                <input type="date" value={form.mail_sent || ''} onChange={e => setForm({...form, mail_sent: e.target.value || null})} className="input" />
+              </div>
+              <div>
+                <label className="input-label">メール返信日</label>
+                <input type="date" value={form.mail_replied || ''} onChange={e => setForm({...form, mail_replied: e.target.value || null})} className="input" />
+              </div>
+              <div>
+                <label className="input-label">電話確認日</label>
+                <input type="date" value={form.phone_confirmed || ''} onChange={e => setForm({...form, phone_confirmed: e.target.value || null})} className="input" />
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-4">
-              {[
-                { label: 'メール送信済', field: 'mail_sent' },
-                { label: 'メール返信済', field: 'mail_replied' },
-                { label: '電話確認済', field: 'phone_confirmed' },
-                { label: 'ダッシュボード記入済', field: 'dashboard_checked' },
-              ].map(item => (
-                <label key={item.field} className="flex items-center gap-2 text-sm cursor-pointer group">
-                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                    form[item.field] ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
-                  }`}>
-                    {form[item.field] && (
-                      <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </div>
-                  <input type="checkbox" checked={form[item.field]}
-                    onChange={e => setForm({...form, [item.field]: e.target.checked})} className="sr-only" />
-                  <span className="text-gray-700">{item.label}</span>
-                </label>
-              ))}
+              <label className="flex items-center gap-2 text-sm cursor-pointer group">
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  form.dashboard_checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300 group-hover:border-blue-400'
+                }`}>
+                  {form.dashboard_checked && (
+                    <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </div>
+                <input type="checkbox" checked={form.dashboard_checked}
+                  onChange={e => setForm({...form, dashboard_checked: e.target.checked})} className="sr-only" />
+                <span className="text-gray-700">ダッシュボード記入済</span>
+              </label>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

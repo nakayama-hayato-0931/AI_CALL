@@ -233,6 +233,10 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN pre_confirmed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   // memoカラムをTEXTに拡張
   try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN memo TEXT`); } catch (e) {}
+  // mail_sent, mail_replied, phone_confirmed を DATE型に変更
+  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_sent DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN mail_replied DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects MODIFY COLUMN phone_confirmed DATE DEFAULT NULL`); } catch (e) {}
   // 企業担当者・連絡先・ダッシュボード記入チェック
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_person VARCHAR(100) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_info VARCHAR(255) DEFAULT NULL`); } catch (e) {}
