@@ -514,8 +514,11 @@ const importLegacyProjects = async (req, res, next) => {
     // memoカラムをTEXTに拡張（VARCHARだと長いメモが入らない）
     try { await pool.execute('ALTER TABLE projects MODIFY COLUMN memo TEXT'); } catch (e) {}
 
-    // 既存legacy案件を削除（再インポート用）
-    await pool.execute('DELETE FROM projects WHERE is_legacy = 1');
+    // appendモードでなければ既存legacy案件を削除
+    const appendMode = req.query.append === '1' || req.body?.append === '1';
+    if (!appendMode) {
+      await pool.execute('DELETE FROM projects WHERE is_legacy = 1');
+    }
 
     let imported = 0;
     let skipped = 0;
@@ -661,4 +664,21 @@ const importLegacyProjects = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects };
+/**
+ * DELETE /api/projects/:id
+ * 案件削除（管理者のみ）
+ */
+const deleteProject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    // 関連データ削除
+    await pool.execute('DELETE FROM project_hires WHERE project_id = ?', [id]);
+    await pool.execute('DELETE FROM projects WHERE id = ?', [id]);
+    logger.info(`案件削除: ID ${id}`);
+    return ApiResponse.success(res, null, '案件を削除しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects };

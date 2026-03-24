@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getProjects, getProjectById, updateProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects } = require('../controllers/projectController');
+const { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects } = require('../controllers/projectController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -33,5 +33,8 @@ router.put('/:id/hires', saveProjectHires);
 
 // PUT /api/projects/:id - 案件更新
 router.put('/:id', updateProject);
+
+// DELETE /api/projects/:id - 案件削除（管理者のみ）
+router.delete('/:id', requireManager, deleteProject);
 
 module.exports = router;
