@@ -460,9 +460,9 @@ const getCpaAll = async (req, res, next) => {
         COALESCE(SUM(TIMESTAMPDIFF(MINUTE, CONCAT(cr.date,' ',cr.start_time), CONCAT(cr.date,' ',cr.end_time)) - COALESCE(cr.break_minutes,0)), 0) as total_minutes,
         COUNT(DISTINCT cr.date) as work_days
        FROM cost_records cr WHERE cr.date BETWEEN ? AND ? GROUP BY cr.user_id`,
-      [dateFrom, dateTo]
+      [systemDateFrom || '2099-01-01', systemDateTo]
     );
-    // コスト = 人件費 + 交通費
+    // コスト = 人件費 + 交通費（3月以前はpast_cpa_dataから）
     const costMap = new Map();
     for (const r of costAll) {
       const laborCost = Math.round(Number(r.total_minutes) / 60 * HOURLY_RATE);
@@ -482,37 +482,55 @@ const getCpaAll = async (req, res, next) => {
       costMap.set(r.user_id, laborCost + commuteCost);
     }
 
-    // コール数（全員分一括）
-    const [callAll] = await pool.query(
-      `SELECT c.user_id, COUNT(*) as cnt
-       FROM calls c WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
-       GROUP BY c.user_id`,
-      [dateFrom, dateTo]
-    );
-    const callMap = new Map(callAll.map(r => [r.user_id, Number(r.cnt)]));
+    // テスト運用期間: 2026年3月末まではシステムデータをCPA計算から除外
+    // （past_cpa_dataの手動入力データのみ使用）
+    // 4月以降はシステムデータを使用
+    const SYSTEM_DATA_START = '2026-04-01';
+    const systemDateFrom = dateFrom >= SYSTEM_DATA_START ? dateFrom : (dateTo >= SYSTEM_DATA_START ? SYSTEM_DATA_START : null);
+    const systemDateTo = dateTo;
 
-    // 案件数・ステータス（全員分一括）
-    const [projAll] = await pool.query(
-      `SELECT p.owner_user_id as user_id,
-        COUNT(*) as project_count,
-        CAST(SUM(CASE WHEN p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
-        CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
-        CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
-        CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
-       FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
-      [dateFrom, dateTo]
-    );
+    // コール数（全員分一括）- 4月以降のみ
+    let callMap = new Map();
+    if (systemDateFrom) {
+      const [callAll] = await pool.query(
+        `SELECT c.user_id, COUNT(*) as cnt
+         FROM calls c WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
+         GROUP BY c.user_id`,
+        [systemDateFrom, systemDateTo]
+      );
+      callMap = new Map(callAll.map(r => [r.user_id, Number(r.cnt)]));
+    }
+
+    // 案件数・ステータス（全員分一括）- 4月以降のみ
+    let projAll = [];
+    if (systemDateFrom) {
+      const [rows] = await pool.query(
+        `SELECT p.owner_user_id as user_id,
+          COUNT(*) as project_count,
+          CAST(SUM(CASE WHEN p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+          CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
+          CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
+          CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
+         FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+        [systemDateFrom, systemDateTo]
+      );
+      projAll = rows;
+    }
     const projMap = new Map(projAll.map(r => [r.user_id, r]));
 
-    // 金額（全員分一括）
-    const [finAll] = await pool.query(
-      `SELECT p.owner_user_id as user_id,
-        COALESCE(SUM(ph.initial_payment), 0) as ip, COALESCE(SUM(ph.expected_revenue), 0) as er
-       FROM project_hires ph JOIN projects p ON ph.project_id = p.id
-       WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? AND ph.is_cancelled = 0
-       GROUP BY p.owner_user_id`,
-      [dateFrom, dateTo]
-    );
+    // 金額（全員分一括）- 4月以降のみ
+    let finAll = [];
+    if (systemDateFrom) {
+      const [rows] = await pool.query(
+        `SELECT p.owner_user_id as user_id,
+          COALESCE(SUM(ph.initial_payment), 0) as ip, COALESCE(SUM(ph.expected_revenue), 0) as er
+         FROM project_hires ph JOIN projects p ON ph.project_id = p.id
+         WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? AND ph.is_cancelled = 0
+         GROUP BY p.owner_user_id`,
+        [systemDateFrom, systemDateTo]
+      );
+      finAll = rows;
+    }
     const finMap = new Map(finAll.map(r => [r.user_id, { ip: Number(r.ip), er: Number(r.er) }]));
 
     // チーム全体
@@ -665,20 +683,28 @@ const getQualityAll = async (req, res, next) => {
       "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
     );
 
-    const [rows] = await pool.query(
-      `SELECT p.owner_user_id as user_id,
-        COUNT(*) as total,
-        CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-        CAST(SUM(CASE WHEN COALESCE(p.mail_sent,0)=0 AND COALESCE(p.phone_confirmed,0)=0 THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-        CAST(SUM(CASE WHEN p.interview_date IS NOT NULL THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
-        CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
-        CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
-        CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
-        CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
-        CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
-       FROM projects p WHERE DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
-      [dateFrom, dateTo]
-    );
+    // テスト運用期間: 3月末まではシステムデータ除外（past_quality_dataのみ）
+    const SYSTEM_DATA_START = '2026-04-01';
+    const qSystemFrom = dateFrom >= SYSTEM_DATA_START ? dateFrom : (dateTo >= SYSTEM_DATA_START ? SYSTEM_DATA_START : null);
+
+    let rows = [];
+    if (qSystemFrom) {
+      const [r] = await pool.query(
+        `SELECT p.owner_user_id as user_id,
+          COUNT(*) as total,
+          CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
+          CAST(SUM(CASE WHEN COALESCE(p.mail_sent,0)=0 AND COALESCE(p.phone_confirmed,0)=0 THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
+          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
+          CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
+          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
+          CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
+          CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
+          CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
+         FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
+        [qSystemFrom, dateTo]
+      );
+      rows = r;
+    }
     const qMap = new Map(rows.map(r => [r.user_id, r]));
 
     const buildQ = (r) => {
