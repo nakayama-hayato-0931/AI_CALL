@@ -73,6 +73,7 @@ export default function SalesProjects() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('current');
 
   // 担当営業
   const [salesUsers, setSalesUsers] = useState([]);
@@ -99,11 +100,12 @@ export default function SalesProjects() {
       fetchProjects();
       fetchSalesUsers();
     }
-  }, [user, status, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
+  }, [user, status, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab]);
 
   const fetchProjects = async () => {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
+      if (activeTab === 'legacy') params.append('is_legacy', '1');
       if (status) params.append('status', status);
       if (selectedSalesUser) params.append('sales_user_id', selectedSalesUser);
       if (myOnly) params.append('my_only', '1');
@@ -250,8 +252,20 @@ export default function SalesProjects() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-900">案件一覧</h1>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-gray-900">案件一覧</h1>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => { setActiveTab('current'); setPage(1); }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'current' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              現在の案件
+            </button>
+            <button onClick={() => { setActiveTab('legacy'); setPage(1); }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'legacy' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              移行前
+            </button>
+          </div>
+        </div>
         <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             myOnly ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

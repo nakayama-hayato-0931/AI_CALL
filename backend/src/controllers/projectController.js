@@ -29,11 +29,18 @@ const getProjects = async (req, res, next) => {
       whereClauses.push('p.is_legacy = 0');
     }
 
-    // my_only=1 で自分の案件のみフィルタ (全ロール共通)
+    // my_only=1 で自分の案件のみフィルタ
     const { my_only } = req.query;
     if (my_only === '1') {
-      whereClauses.push('p.owner_user_id = ?');
-      params.push(req.user.id);
+      if (req.user.role === 'sales') {
+        // 営業: 担当営業が自分の案件
+        whereClauses.push('p.sales_user_id = ?');
+        params.push(req.user.id);
+      } else {
+        // オペレーター: 架電担当が自分の案件
+        whereClauses.push('p.owner_user_id = ?');
+        params.push(req.user.id);
+      }
     } else if (owner_user_id) {
       whereClauses.push('p.owner_user_id = ?');
       params.push(owner_user_id);
