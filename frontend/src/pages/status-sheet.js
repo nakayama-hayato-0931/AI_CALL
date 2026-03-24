@@ -152,68 +152,8 @@ export default function StatusSheetView() {
           </div>
         </div>
 
-        {/* 4. 目標値 */}
-        {targets && (
-          <div>
-            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-              <span className="w-6 h-6 bg-emerald-500 text-white rounded flex items-center justify-center text-xs font-bold">4</span>
-              目標値
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {targets.individual_targets && (
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                  <p className="text-xs font-bold text-blue-700 mb-3">個別目標</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'コール数/h', value: targets.individual_targets.calls_per_h },
-                      { label: '有効接続/h', value: targets.individual_targets.effective_per_h },
-                      { label: '担当接続/h', value: targets.individual_targets.person_per_h },
-                      { label: '案件1件あたり', value: targets.individual_targets.hours_per_project ? `${targets.individual_targets.hours_per_project}h` : '-' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className="text-blue-500">{item.label}</span>
-                        <span className="font-medium text-blue-800">{item.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {targets.individual_targets.rationale && (
-                    <p className="text-[10px] text-blue-500 mt-2 pt-2 border-t border-blue-100">{targets.individual_targets.rationale}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 5. 改善シナリオ */}
-        {scenario && (
-          <div>
-            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-              <span className="w-6 h-6 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">5</span>
-              数値改善シナリオ
-            </h3>
-            <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-              <div className="flex items-center gap-6 mb-4">
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-500">現在CPA</p>
-                  <p className="text-lg font-bold text-red-600">
-                    {scenario.current_cpa ? `¥${Number(scenario.current_cpa).toLocaleString()}` : '-'}
-                  </p>
-                </div>
-                <span className="text-gray-400">→</span>
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-500">目標CPA</p>
-                  <p className="text-lg font-bold text-emerald-600">
-                    {scenario.target_cpa ? `¥${Number(scenario.target_cpa).toLocaleString()}` : '-'}
-                  </p>
-                </div>
-              </div>
-              {scenario.summary && (
-                <p className="text-xs text-gray-700 bg-white/60 rounded p-2">{scenario.summary}</p>
-              )}
-            </div>
-          </div>
-        )}
+        {/* 4. 目標値 - オペレーター非公開 */}
+        {/* 5. 改善シナリオ - オペレーター非公開 */}
 
         {/* 6. 研修進捗（初級のみ） */}
         {isBeginner && trainingData[sheet.user_id] && (
