@@ -92,6 +92,7 @@ const ScoreCircle = ({ score, size = 64 }) => {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [freshUser, setFreshUser] = useState(null);
   const [stats, setStats] = useState(null);
   const [hourlyCalls, setHourlyCalls] = useState([]);
   const [industryData, setIndustryData] = useState([]);
@@ -235,10 +236,18 @@ export default function DashboardPage() {
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
 
-  // user確定後にscopeを適切に設定
+  // user確定後にscopeを適切に設定 + 最新user情報を取得
   useEffect(() => {
     if (user) {
       setKpiScope(isManager ? 'team' : 'self');
+      // 最新のtarget値をauth/meから取得
+      api.get('/api/auth/me').then(res => {
+        if (res.data.success && res.data.data) {
+          const fresh = res.data.data;
+          setFreshUser(fresh);
+          localStorage.setItem('user', JSON.stringify({ ...user, ...fresh }));
+        }
+      }).catch(() => {});
     }
   }, [user?.id]);
 
@@ -595,11 +604,12 @@ export default function DashboardPage() {
                     </tr>
                     {/* 目標値行（個別目標 or デフォルト） */}
                     {(() => {
-                      const tw = user?.target_work_hours || 80;
-                      const tc = user?.target_calls_per_h || 18;
-                      const te = user?.target_effective_per_h || 3;
-                      const tp = user?.target_person_per_h || 1.5;
-                      const tpj = user?.target_project_hours || 12;
+                      const u = freshUser || user;
+                      const tw = u?.target_work_hours || 80;
+                      const tc = u?.target_calls_per_h || 18;
+                      const te = u?.target_effective_per_h || 3;
+                      const tp = u?.target_person_per_h || 1.5;
+                      const tpj = u?.target_project_hours || 12;
                       return (
                         <tr className="bg-blue-50/50 border-t border-blue-100">
                           <td className="table-cell text-right"><span className="text-sm font-semibold text-blue-500">{tw}</span><span className="text-xs text-blue-400 ml-0.5">h/月</span></td>

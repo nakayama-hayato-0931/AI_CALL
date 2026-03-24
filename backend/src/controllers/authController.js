@@ -56,6 +56,13 @@ const login = async (req, res, next) => {
 
     logger.info(`ログイン成功: ${user.email}`);
 
+    // 目標値とランクも含める
+    const [fullUser] = await pool.execute(
+      'SELECT operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE id = ?',
+      [user.id]
+    );
+    const extra = fullUser[0] || {};
+
     return ApiResponse.success(res, {
       token,
       user: {
@@ -63,6 +70,12 @@ const login = async (req, res, next) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        operator_level: extra.operator_level,
+        target_work_hours: extra.target_work_hours,
+        target_calls_per_h: extra.target_calls_per_h,
+        target_effective_per_h: extra.target_effective_per_h,
+        target_person_per_h: extra.target_person_per_h,
+        target_project_hours: extra.target_project_hours,
       },
     }, 'ログインに成功しました');
   } catch (err) {
