@@ -438,19 +438,24 @@ export default function AdminProjects() {
                     <td className="table-cell whitespace-nowrap">
                       {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
                     </td>
-                    {['mail_sent', 'mail_replied', 'phone_confirmed'].map(field => (
-                      <td key={field} className={`table-cell text-center ${!p[field] && urgent ? 'bg-red-50' : ''}`} onClick={e => e.stopPropagation()}>
-                        <input type="date" value={p[field] ? p[field].slice(0, 10) : ''}
-                          onChange={async (e) => {
-                            try {
-                              await api.put(`/api/projects/${p.id}`, { [field]: e.target.value || null });
-                              fetchProjects();
-                            } catch (err) { toast.error('更新に失敗しました'); }
-                          }}
-                          className={`text-[10px] w-[90px] border-0 bg-transparent cursor-pointer text-center ${p[field] ? 'text-emerald-600 font-medium' : 'text-gray-300'}`}
-                        />
-                      </td>
-                    ))}
+                    {['mail_sent', 'mail_replied', 'phone_confirmed'].map(field => {
+                      const val = p[field] ? p[field].slice(0, 10) : '';
+                      const display = val ? `${parseInt(val.slice(5,7))}/${parseInt(val.slice(8,10))}` : '未';
+                      return (
+                        <td key={field} className={`table-cell text-center ${!val && urgent ? 'bg-red-50' : ''}`} onClick={e => e.stopPropagation()} style={{position:'relative',width:'55px',padding:'2px 4px'}}>
+                          <span className={`text-xs ${val ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>{display}</span>
+                          <input type="date" value={val}
+                            onChange={async (e) => {
+                              try {
+                                await api.put(`/api/projects/${p.id}`, { [field]: e.target.value || null });
+                                fetchProjects();
+                              } catch (err) { toast.error('更新に失敗しました'); }
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                          />
+                        </td>
+                      );
+                    })}
                     <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>
                     <td className="table-cell text-center">
                       <button
