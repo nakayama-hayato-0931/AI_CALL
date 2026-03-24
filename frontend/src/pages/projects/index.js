@@ -76,6 +76,7 @@ export default function ProjectsPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('current'); // 'current' or 'legacy'
 
   // 担当営業フィルタ
   const [salesUsers, setSalesUsers] = useState([]);
@@ -99,7 +100,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
-  }, [statusFilter, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page]);
+  }, [statusFilter, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab]);
 
   const fetchSalesUsers = async () => {
     try {
@@ -111,6 +112,7 @@ export default function ProjectsPage() {
   const fetchProjects = async () => {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
+      if (activeTab === 'legacy') params.append('is_legacy', '1');
       if (statusFilter) params.append('status', statusFilter);
       if (selectedSalesUser) params.append('sales_user_id', selectedSalesUser);
       if (myOnly) params.append('my_only', '1');
@@ -246,10 +248,19 @@ export default function ProjectsPage() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">案件管理</h1>
-          <p className="text-sm text-gray-400 mt-0.5">案件の一覧と進捗管理</p>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => { setActiveTab('current'); setPage(1); }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'current' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              現在の案件
+            </button>
+            <button onClick={() => { setActiveTab('legacy'); setPage(1); }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'legacy' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              移行前
+            </button>
+          </div>
         </div>
         <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
