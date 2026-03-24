@@ -683,28 +683,12 @@ const getQualityAll = async (req, res, next) => {
       "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
     );
 
-    // 移行前案件(is_legacy=1)は常に含める、システム案件(is_legacy=0)は4月以降のみ
+    // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得
     const SYSTEM_DATA_START = '2026-04-01';
-
-    // 移行前案件（全期間）
-    const [legacyRows] = await pool.query(
-      `SELECT p.owner_user_id as user_id,
-        COUNT(*) as total,
-        CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-        CAST(SUM(CASE WHEN COALESCE(p.mail_sent,0)=0 AND COALESCE(p.phone_confirmed,0)=0 THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-        CAST(SUM(CASE WHEN p.interview_date IS NOT NULL THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
-        CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
-        CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
-        CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
-        CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
-        CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
-       FROM projects p WHERE p.is_legacy = 1 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
-      [dateFrom, dateTo]
-    );
-
-    // システム案件（4月以降のみ）
     const qSystemFrom = dateFrom >= SYSTEM_DATA_START ? dateFrom : (dateTo >= SYSTEM_DATA_START ? SYSTEM_DATA_START : null);
-    let systemRows = [];
+    const fields = ['total','lost','waiting_contact','interview_set','interview_done','barashi','online_interview','no_screening','screening_failed'];
+
+    let rows = [];
     if (qSystemFrom) {
       const [r] = await pool.query(
         `SELECT p.owner_user_id as user_id,
@@ -720,21 +704,8 @@ const getQualityAll = async (req, res, next) => {
          FROM projects p WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
         [qSystemFrom, dateTo]
       );
-      systemRows = r;
+      rows = r;
     }
-
-    // 移行前 + システムを合算
-    const mergedMap = new Map();
-    const fields = ['total','lost','waiting_contact','interview_set','interview_done','barashi','online_interview','no_screening','screening_failed'];
-    for (const r of [...legacyRows, ...systemRows]) {
-      const uid = r.user_id;
-      if (!mergedMap.has(uid)) {
-        mergedMap.set(uid, { user_id: uid });
-        for (const f of fields) mergedMap.get(uid)[f] = 0;
-      }
-      for (const f of fields) mergedMap.get(uid)[f] += Number(r[f] || 0);
-    }
-    const rows = Array.from(mergedMap.values());
     const qMap = new Map(rows.map(r => [r.user_id, r]));
 
     const buildQ = (r) => {
@@ -753,10 +724,28 @@ const getQualityAll = async (req, res, next) => {
       };
     };
 
-    // チーム全体（移行前+システムの合算から集計）
+    // 過去案件質データ合算（past_quality_data）
+    const useWeeklyPast = (period === 'custom');
+    const fromDate = new Date(dateFrom);
+    const toDate = new Date(dateTo);
+    const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
+    const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
+    let pastQ = null;
+    try {
+      const [pastRows] = await pool.query(
+        useWeeklyPast
+          ? `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NOT NULL AND date_from <= ? AND date_to >= ?`
+          : `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?`,
+        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+      );
+      if (pastRows.length > 0 && pastRows[0].total) pastQ = pastRows[0];
+    } catch (e) { /* skip */ }
+
+    // チーム全体（システム + 過去データ）
     const allR = {};
     for (const f of fields) {
       allR[f] = rows.reduce((s, r) => s + Number(r[f] || 0), 0);
+      if (pastQ && pastQ[f] != null) allR[f] += Number(pastQ[f]);
     }
     const team = { name: '全体', ...buildQ(allR) };
     const operators = users.map(u => ({ userId: u.id, name: u.name, ...buildQ(qMap.get(u.id)) }));
