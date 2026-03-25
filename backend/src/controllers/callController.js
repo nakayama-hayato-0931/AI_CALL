@@ -328,6 +328,19 @@ const getCalls = async (req, res, next) => {
       params
     );
 
+    // 結果コード別集計（全件）
+    const [summaryRows] = await pool.execute(
+      `SELECT c.result_code, COUNT(*) as cnt FROM calls c
+       LEFT JOIN companies co ON c.company_id = co.id
+       ${whereStr}
+       GROUP BY c.result_code`,
+      params
+    );
+    const resultSummary = {};
+    for (const r of summaryRows) {
+      if (r.result_code) resultSummary[r.result_code] = r.cnt;
+    }
+
     const [rows] = await pool.execute(
       `SELECT c.*, u.name as operator_name, co.company_name, co.phone_number,
        ae.overall_score as ai_overall, ae.opening_score as ai_opening,
@@ -378,6 +391,7 @@ const getCalls = async (req, res, next) => {
         total: countRows[0].total,
         totalPages: Math.ceil(countRows[0].total / limit),
       },
+      resultSummary,
     });
   } catch (err) {
     next(err);

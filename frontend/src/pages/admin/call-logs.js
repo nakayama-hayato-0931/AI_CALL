@@ -90,7 +90,7 @@ export default function AdminCallLogsPage() {
       const { data } = await api.get('/api/calls', { params });
       if (data.success) {
         setCalls(data.data.calls);
-        setPagination(data.data.pagination);
+        setPagination({ ...data.data.pagination, resultSummary: data.data.resultSummary });
       }
     } catch (err) {
       toast.error('架電結果の取得に失敗しました');
@@ -119,8 +119,8 @@ export default function AdminCallLogsPage() {
     });
   };
 
-  // 結果コード別の集計
-  const resultSummary = calls.reduce((acc, c) => {
+  // 結果コード別の集計（バックエンドから全件分を取得、なければページ分で計算）
+  const resultSummary = pagination.resultSummary || calls.reduce((acc, c) => {
     const code = c.result_code || 'UNKNOWN';
     acc[code] = (acc[code] || 0) + 1;
     return acc;
