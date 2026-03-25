@@ -384,17 +384,20 @@ export default function SalesProjects() {
                     {['mail_sent', 'mail_replied', 'phone_confirmed'].map(field => {
                       const val = p[field] ? p[field].slice(0, 10) : '';
                       const display = val ? `${parseInt(val.slice(5,7))}/${parseInt(val.slice(8,10))}` : '未';
+                      const inputId = `date_${p.id}_${field}`;
                       return (
-                        <td key={field} className={`table-cell text-center ${!val && urgent ? 'bg-red-50' : ''}`} onClick={e => e.stopPropagation()} style={{position:'relative',width:'55px',padding:'2px 4px'}}>
+                        <td key={field} className={`table-cell text-center cursor-pointer hover:bg-blue-50 ${!val && urgent ? 'bg-red-50' : ''}`}
+                          onClick={e => { e.stopPropagation(); document.getElementById(inputId)?.showPicker?.(); }}
+                          style={{width:'55px',padding:'2px 4px'}}>
                           <span className={`text-xs ${val ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>{display}</span>
-                          <input type="date" value={val}
+                          <input id={inputId} type="date" value={val}
                             onChange={async (e) => {
                               try {
                                 await api.put(`/api/projects/${p.id}`, { [field]: e.target.value || null });
                                 fetchProjects();
                               } catch (err) { toast.error('更新に失敗しました'); }
                             }}
-                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            className="sr-only"
                           />
                         </td>
                       );
