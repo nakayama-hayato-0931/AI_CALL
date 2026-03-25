@@ -468,4 +468,38 @@ const getOperators = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators };
+/**
+ * POST /api/calls/:id/refresh-transcript
+ * 手動で文字起こしをGoogle Sheetsから再取得
+ */
+const refreshTranscript = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.execute(
+      `SELECT c.id, c.call_started_at, co.phone_number
+       FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+       WHERE c.id = ?`,
+      [id]
+    );
+    if (rows.length === 0) return ApiResponse.notFound(res, '通話が見つかりません');
+
+    const call = rows[0];
+    if (!call.phone_number || !call.call_started_at) {
+      return ApiResponse.badRequest(res, '電話番号または通話開始時間がありません');
+    }
+
+    const transcript = await findTranscript(call.phone_number, call.call_started_at);
+    if (transcript) {
+      await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, id]);
+      logger.info(`文字起こし手動取得成功: call=${id}`);
+      return ApiResponse.success(res, { transcript, found: true }, '文字起こしを取得しました');
+    } else {
+      return ApiResponse.success(res, { found: false }, '文字起こしが見つかりませんでした');
+    }
+  } catch (err) {
+    logger.error('文字起こし手動取得エラー:', err.message);
+    next(err);
+  }
+};
+
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript };

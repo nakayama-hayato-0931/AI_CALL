@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators } = require('../controllers/callController');
+const { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript } = require('../controllers/callController');
 const { authenticate } = require('../middlewares/auth');
 
 // POST /api/calls/:id/cancel-beacon - ページ離脱時のbeacon用（認証不要）
@@ -31,5 +31,8 @@ router.put('/:id/end', endCall);
 
 // DELETE /api/calls/:id/cancel - 結果未入力の通話を取消
 router.delete('/:id/cancel', cancelCall);
+
+// POST /api/calls/:id/refresh-transcript - 文字起こし手動再取得
+router.post('/:id/refresh-transcript', refreshTranscript);
 
 module.exports = router;

@@ -337,7 +337,30 @@ export default function CallResultsPage() {
                             表示
                           </button>
                         ) : (
-                          <span className="text-gray-300 text-xs">-</span>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const btn = e.currentTarget;
+                              btn.disabled = true;
+                              btn.textContent = '検索中...';
+                              try {
+                                const { data } = await api.post(`/api/calls/${call.id}/refresh-transcript`);
+                                if (data.data?.found) {
+                                  toast.success('文字起こしを取得しました');
+                                  fetchCalls();
+                                } else {
+                                  toast.error('文字起こしが見つかりませんでした');
+                                  btn.textContent = '未取得';
+                                  btn.disabled = false;
+                                }
+                              } catch (err) {
+                                toast.error('取得に失敗しました');
+                                btn.textContent = '再試行';
+                                btn.disabled = false;
+                              }
+                            }}
+                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium px-1.5 py-0.5 rounded border border-amber-200 hover:bg-amber-50"
+                          >ログ取得</button>
                         )}
                       </td>
                       <td className="table-cell text-center">
