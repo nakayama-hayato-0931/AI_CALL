@@ -248,6 +248,10 @@ export default function CallListPage() {
         toast.error('企業名と電話番号は必須です');
         return;
       }
+      if (!manualForm.industry) {
+        toast.error('業種を選択してください');
+        return;
+      }
     } else {
       if (!manualForm.company_name.trim() && !manualForm.phone_number.trim()) {
         toast.error('企業名または電話番号のどちらかは必須です');
@@ -626,11 +630,12 @@ export default function CallListPage() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">業種</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">業種 <span className="text-red-500">*</span></label>
                       <select
                         value={manualForm.industry}
                         onChange={(e) => setManualForm(f => ({ ...f, industry: e.target.value }))}
                         className="input"
+                        required
                       >
                         <option value="">選択してください</option>
                         <option value="飲食">飲食</option>
