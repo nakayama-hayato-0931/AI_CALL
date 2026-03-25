@@ -262,7 +262,12 @@ export default function CallListPage() {
     try {
       if (importTab === 'calllist' || importTab === 'special') {
         const url = importTab === 'special' ? '/api/csv/manual-special' : '/api/csv/manual-company';
-        const { data } = await api.post(url, manualForm);
+        const payload = { ...manualForm };
+        if (selectedOperators.length > 0) {
+          payload.priority_operator_ids = selectedOperators;
+          payload.grace_days = graceDays;
+        }
+        const { data } = await api.post(url, payload);
         toast.success(data.message || '登録しました');
         if (importTab === 'special') setListView('special');
         fetchCompanies(1);
@@ -679,6 +684,35 @@ export default function CallListPage() {
                     />
                   </div>
                 </>
+              )}
+
+              {/* 優先オペレーター（手動入力・管理者のみ・架電/特別リスト） */}
+              {isManager && (importTab === 'calllist' || importTab === 'special') && operators.length > 0 && (
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                  <p className="text-xs font-bold text-blue-700 mb-2">優先オペレーター割当</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {operators.map(op => (
+                      <label key={op.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input type="checkbox" checked={selectedOperators.includes(op.id)}
+                          onChange={e => {
+                            if (e.target.checked) setSelectedOperators([...selectedOperators, op.id]);
+                            else setSelectedOperators(selectedOperators.filter(id => id !== op.id));
+                          }}
+                          className="text-blue-600 rounded" />
+                        {op.name}
+                      </label>
+                    ))}
+                  </div>
+                  {selectedOperators.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-blue-600">猶予日数:</span>
+                      <input type="number" min="1" max="30" value={graceDays}
+                        onChange={e => setGraceDays(Number(e.target.value))}
+                        className="input text-xs w-16" />
+                      <span className="text-xs text-blue-400">日間優先</span>
+                    </div>
+                  )}
+                </div>
               )}
 
               {importTab !== 'calllist' && importTab !== 'special' && (

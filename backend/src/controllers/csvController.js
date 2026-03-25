@@ -558,6 +558,31 @@ const manualAddCompany = async (req, res, next) => {
       }
     }
 
+    // 管理者/マネージャー: 優先オペレーター割当
+    const { priority_operator_ids, grace_days } = req.body;
+    if (priority_operator_ids && Array.isArray(priority_operator_ids) && priority_operator_ids.length > 0) {
+      const gd = grace_days || 5;
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + gd);
+      const expiresStr = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
+
+      await pool.execute(
+        'UPDATE companies SET priority_expires_at = ? WHERE id = ?',
+        [expiresStr, insertResult.insertId]
+      );
+
+      for (const opId of priority_operator_ids) {
+        try {
+          await pool.execute(
+            'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+            [insertResult.insertId, opId, req.user.id]
+          );
+        } catch (e) {
+          if (e.code !== 'ER_DUP_ENTRY') throw e;
+        }
+      }
+    }
+
     logger.info(`手動企業登録: id=${insertResult.insertId}, user=${req.user.id}`);
     return ApiResponse.created(res, { companyId: insertResult.insertId }, '架電リストに登録しました');
   } catch (err) {
