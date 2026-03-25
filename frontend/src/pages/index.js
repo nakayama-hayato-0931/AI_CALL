@@ -111,7 +111,7 @@ export default function DashboardPage() {
   const [showWorkHoursModal, setShowWorkHoursModal] = useState(false);
   const [workStartTime, setWorkStartTime] = useState('09:30');
   const [workEndTime, setWorkEndTime] = useState('18:00');
-  const [breakMinutes, setBreakMinutes] = useState(0);
+  const [breakMinutes, setBreakMinutes] = useState(60);
   const [savingWorkHours, setSavingWorkHours] = useState(false);
 
   // 時間文字列を分に変換するヘルパー
