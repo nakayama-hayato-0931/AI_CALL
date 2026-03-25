@@ -502,4 +502,45 @@ const refreshTranscript = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript };
+/**
+ * POST /api/calls/refresh-transcripts-bulk
+ * 文字起こし未取得の通話を一括でGoogle Sheetsから取得
+ */
+const refreshTranscriptsBulk = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id } = req.body;
+    let whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "(c.transcript IS NULL OR c.transcript = '')"];
+    let params = [];
+    if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
+    if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
+    if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
+
+    const [rows] = await pool.query(
+      `SELECT c.id, c.call_started_at, co.phone_number
+       FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+       WHERE ${whereClauses.join(' AND ')}
+       ORDER BY c.call_started_at DESC LIMIT 200`,
+      params
+    );
+
+    if (rows.length === 0) {
+      return ApiResponse.success(res, { found: 0, total: 0 }, '未取得の通話はありません');
+    }
+
+    const eligible = rows.filter(r => r.phone_number && r.call_started_at);
+    let found = 0;
+    const transcriptMap = await findTranscriptsBatch(eligible);
+    for (const [callId, transcript] of transcriptMap) {
+      await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
+      found++;
+    }
+
+    logger.info(`文字起こし一括取得: ${found}/${eligible.length}件`);
+    return ApiResponse.success(res, { found, total: eligible.length }, `${found}件の文字起こしを取得しました`);
+  } catch (err) {
+    logger.error('文字起こし一括取得エラー:', err.message);
+    next(err);
+  }
+};
+
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk };

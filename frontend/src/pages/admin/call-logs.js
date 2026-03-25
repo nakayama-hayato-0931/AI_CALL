@@ -38,6 +38,7 @@ export default function AdminCallLogsPage() {
   const [pagination, setPagination] = useState({});
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [refreshingBulk, setRefreshingBulk] = useState(false);
 
   // フィルター
   const [viewMode, setViewMode] = useState('daily');
@@ -194,7 +195,7 @@ export default function AdminCallLogsPage() {
         </div>
       </div>
 
-      {/* 件数 + サマリー */}
+      {/* 件数 + サマリー + ログ一括取得 */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <span className="text-xs text-gray-500">
           {pagination.total != null ? `${pagination.total}件` : ''}
@@ -213,6 +214,34 @@ export default function AdminCallLogsPage() {
             })}
           </div>
         )}
+        <button
+          onClick={async () => {
+            setRefreshingBulk(true);
+            try {
+              const params = {};
+              if (viewMode === 'daily') { params.date_from = date; params.date_to = date; }
+              else if (viewMode === 'range') { params.date_from = dateFrom; params.date_to = dateTo; }
+              if (selectedOperator) params.user_id = selectedOperator;
+              const { data } = await api.post('/api/calls/refresh-transcripts-bulk', params, { timeout: 60000 });
+              if (data.data?.found > 0) {
+                toast.success(`${data.data.found}件の文字起こしを取得しました`);
+                fetchCalls();
+              } else {
+                toast.error('新しい文字起こしは見つかりませんでした');
+              }
+            } catch (err) {
+              toast.error('取得に失敗しました');
+            } finally {
+              setRefreshingBulk(false);
+            }
+          }}
+          disabled={refreshingBulk || calls.length === 0}
+          className="ml-auto text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+        >
+          {refreshingBulk ? (
+            <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>取得中...</>
+          ) : 'ログ一括取得'}
+        </button>
       </div>
 
       {/* テーブル */}
@@ -300,30 +329,7 @@ export default function AdminCallLogsPage() {
                               表示
                             </button>
                           ) : (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const btn = e.currentTarget;
-                                btn.disabled = true;
-                                btn.textContent = '検索中...';
-                                try {
-                                  const { data } = await api.post(`/api/calls/${call.id}/refresh-transcript`);
-                                  if (data.data?.found) {
-                                    toast.success('文字起こしを取得しました');
-                                    fetchCalls();
-                                  } else {
-                                    toast.error('文字起こしが見つかりませんでした');
-                                    btn.textContent = '未取得';
-                                    btn.disabled = false;
-                                  }
-                                } catch (err) {
-                                  toast.error('取得に失敗しました');
-                                  btn.textContent = '再試行';
-                                  btn.disabled = false;
-                                }
-                              }}
-                              className="text-[10px] text-amber-600 hover:text-amber-800 font-medium px-1.5 py-0.5 rounded border border-amber-200 hover:bg-amber-50"
-                            >ログ取得</button>
+                            <span className="text-gray-300 text-xs">-</span>
                           )}
                         </td>
                       </tr>
