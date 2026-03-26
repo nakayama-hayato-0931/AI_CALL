@@ -229,6 +229,13 @@ const importCompanies = async (req, res, next) => {
       await conn.beginTransaction();
 
       const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+
+      // 事前にDB全phone_numberをロード（重複チェック高速化）
+      const [existingPhones] = await conn.query('SELECT phone_number FROM companies WHERE phone_number IS NOT NULL');
+      const dbPhoneSet = new Set(existingPhones.map(r => r.phone_number));
+      const [excludedPhones] = await conn.query('SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL');
+      const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
+
       // インポート内重複防止用Set
       const importedPhones = new Set();
       const importedNames = new Set();
@@ -259,19 +266,11 @@ const importCompanies = async (req, res, next) => {
           continue;
         }
 
-        // DB重複チェック
-        const [existing] = await conn.execute(
-          'SELECT id FROM companies WHERE phone_number = ? LIMIT 1',
-          [phoneNumber]
-        );
-        if (existing.length > 0) { duplicateCount++; skippedCount++; continue; }
+        // DB重複チェック（メモリ内Set使用）
+        if (dbPhoneSet.has(phoneNumber)) { duplicateCount++; skippedCount++; continue; }
 
-        // 除外リストチェック
-        const [excluded] = await conn.execute(
-          'SELECT id FROM exclusion_lists WHERE phone_number = ? LIMIT 1',
-          [phoneNumber]
-        );
-        if (excluded.length > 0) { excludedCount++; skippedCount++; continue; }
+        // 除外リストチェック（メモリ内Set使用）
+        if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; continue; }
 
         const [insertResult] = await conn.execute(
           `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
@@ -279,9 +278,10 @@ const importCompanies = async (req, res, next) => {
           [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId]
         );
 
-        // ファイル内重複防止
+        // ファイル内 + DB重複防止
         importedPhones.add(phoneNumber);
         importedNames.add(companyName);
+        dbPhoneSet.add(phoneNumber);
 
         if (req.user.role === 'operator') {
           try {
