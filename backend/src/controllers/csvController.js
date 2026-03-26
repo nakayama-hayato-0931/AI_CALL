@@ -203,7 +203,9 @@ const importCompanies = async (req, res, next) => {
     }
 
     const filePath = req.file.path;
+    logger.info(`インポート開始: ${req.file.originalname} (${req.file.size} bytes)`);
     const records = await parseFile(filePath, req.file.originalname);
+    logger.info(`パース完了: ${records.length}件`);
 
     if (records.length === 0) {
       cleanupFile(filePath);
@@ -231,10 +233,13 @@ const importCompanies = async (req, res, next) => {
       const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
 
       // 事前にDB全phone_numberをロード（重複チェック高速化）
+      logger.info('Pre-loading phone sets...');
       const [existingPhones] = await conn.query('SELECT phone_number FROM companies WHERE phone_number IS NOT NULL');
       const dbPhoneSet = new Set(existingPhones.map(r => r.phone_number));
+      logger.info(`Companies loaded: ${dbPhoneSet.size}`);
       const [excludedPhones] = await conn.query('SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL');
       const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
+      logger.info(`Exclusions loaded: ${excludePhoneSet.size}. Starting import loop...`);
 
       // インポート内重複防止用Set
       const importedPhones = new Set();
