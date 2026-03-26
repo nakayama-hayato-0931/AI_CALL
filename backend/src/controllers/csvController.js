@@ -228,6 +228,17 @@ const importCompanies = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
+      // 既存の電話番号と会社名を一括取得（重複チェック高速化）
+      const [existingCompanies] = await conn.query('SELECT phone_number, company_name FROM companies');
+      const existingPhones = new Set(existingCompanies.map(c => c.phone_number).filter(Boolean));
+      const existingNames = new Set(existingCompanies.map(c => c.company_name).filter(Boolean));
+
+      const [excludedList] = await conn.query('SELECT phone_number, company_name FROM exclusion_lists');
+      const excludedPhones = new Set(excludedList.map(c => c.phone_number).filter(Boolean));
+      const excludedNames = new Set(excludedList.map(c => c.company_name).filter(Boolean));
+
+      const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+
       for (let i = 0; i < records.length; i++) {
         const row = records[i];
         const lineNum = i + 2;
@@ -239,7 +250,6 @@ const importCompanies = async (req, res, next) => {
         const comment = (row.comment || '').trim() || null;
         const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
-        // 地域: 明示カラムがあればそれを使う、なければ住所から自動抽出
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
 
         if (!companyName || !phoneNumber) {
@@ -248,37 +258,30 @@ const importCompanies = async (req, res, next) => {
           continue;
         }
 
-        // 重複チェック: 電話番号 OR 会社名
-        const [existing] = await conn.execute(
-          'SELECT id FROM companies WHERE phone_number = ? OR company_name = ?',
-          [phoneNumber, companyName]
-        );
-        if (existing.length > 0) {
+        // 重複チェック（メモリ内）
+        if (existingPhones.has(phoneNumber) || existingNames.has(companyName)) {
           duplicateCount++;
           skippedCount++;
           continue;
         }
 
-        // 除外リストチェック: 電話番号 OR 会社名
-        const [excluded] = await conn.execute(
-          'SELECT id FROM exclusion_lists WHERE phone_number = ? OR company_name = ?',
-          [phoneNumber, companyName]
-        );
-        if (excluded.length > 0) {
+        // 除外リストチェック（メモリ内）
+        if (excludedPhones.has(phoneNumber) || excludedNames.has(companyName)) {
           excludedCount++;
           skippedCount++;
           continue;
         }
 
-        // インサート（オペレーターの場合はimported_by_user_idを設定）
-        const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
         const [insertResult] = await conn.execute(
           `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId]
         );
 
-        // オペレーター: 自動割り当て
+        // 新規追加分をSetに追加（同一ファイル内の重複防止）
+        existingPhones.add(phoneNumber);
+        existingNames.add(companyName);
+
         if (req.user.role === 'operator') {
           try {
             await conn.execute(
