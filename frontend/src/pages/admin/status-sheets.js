@@ -199,14 +199,33 @@ export default function StatusSheetsPage() {
     });
     const sheetUserIds = new Set(uniqueSheets.map(s => s.user_id));
     const levelOrder = { '初級': 0, '中級': 1, '上級': 2, 'リーダー': 2 };
+    // operators から重複排除してプレースホルダー追加
+    const uniqueOps = operators.filter(op => !sheetUserIds.has(op.id));
+    const seenOps = new Set();
+    const dedupedOps = uniqueOps.filter(op => {
+      if (seenOps.has(op.id)) return false;
+      seenOps.add(op.id);
+      return true;
+    });
+
     const entries = [
       ...uniqueSheets,
-      ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
+      ...dedupedOps.map(op => ({
         id: null, user_id: op.id, user_name: op.name, operator_level: op.operator_level || null,
         current_status: null, training_plan: null, next_steps: null, targets: null, scenario: null,
         updated_at: null, period_from: null, period_to: null, _placeholder: true,
       }))
-    ].sort((a, b) => {
+    ];
+
+    // 最終重複排除
+    const finalSeen = new Set();
+    const dedupedEntries = entries.filter(e => {
+      if (finalSeen.has(e.user_id)) return false;
+      finalSeen.add(e.user_id);
+      return true;
+    });
+
+    dedupedEntries.sort((a, b) => {
       const la = levelOrder[a.operator_level] ?? 99;
       const lb = levelOrder[b.operator_level] ?? 99;
       if (la !== lb) return la - lb;
@@ -215,9 +234,9 @@ export default function StatusSheetsPage() {
         const bC = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
         return aC - bC;
       }
-      return 0;
+      return (a.user_name || '').localeCompare(b.user_name || '');
     });
-    setSortedEntries(entries);
+    setSortedEntries(dedupedEntries);
   }, [sheets, operators, trainingData]);
 
   const handleStartTargetEdit = (userId) => {
