@@ -46,9 +46,12 @@ app.use(cors({
   origin: function(origin, callback) {
     // サーバー間通信（originなし）は許可
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    }
+    // 許可リストに含まれる場合
+    if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+    // Railway同一プラットフォーム内は許可
+    if (origin.endsWith('.railway.app')) return callback(null, true);
+    // localhost開発環境は許可
+    if (origin.startsWith('http://localhost:')) return callback(null, true);
     callback(new Error('CORS policy: Origin not allowed'));
   },
   credentials: true,
