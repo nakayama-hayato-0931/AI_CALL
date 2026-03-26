@@ -775,7 +775,7 @@ export default function CallPage() {
                   {RESULT_CODES.map((rc) => (
                     <button
                       key={rc.code}
-                      onClick={() => setResultCode(rc.code)}
+                      onClick={() => setResultCode(prev => prev === rc.code ? '' : rc.code)}
                       disabled={calling && !autoMode}
                       className={`py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-150 ${
                         resultCode === rc.code
