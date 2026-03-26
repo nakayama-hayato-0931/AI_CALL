@@ -37,26 +37,25 @@ const PORT = process.env.PORT || 3001;
 // ミドルウェア
 // ============================================
 
-// セキュリティヘッダー
-app.use(helmet());
-
-// CORS設定
+// CORS設定（helmetより先に配置）
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',').map(s => s.trim());
 app.use(cors({
   origin: function(origin, callback) {
-    // サーバー間通信（originなし）は許可
     if (!origin) return callback(null, true);
-    // 許可リストに含まれる場合
     if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
-    // Railway同一プラットフォーム内は許可
     if (origin.endsWith('.railway.app')) return callback(null, true);
-    // localhost開発環境は許可
     if (origin.startsWith('http://localhost:')) return callback(null, true);
     callback(new Error('CORS policy: Origin not allowed'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// セキュリティヘッダー（CORSの後に配置）
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: false,
 }));
 
 // リクエストレートリミット
