@@ -386,8 +386,7 @@ export default function StatusSheetsPage() {
                 ))}
               </div>
             );
-          })()
-          )}
+          })()}
         </div>
       )}
 
