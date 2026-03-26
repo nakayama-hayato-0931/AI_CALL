@@ -68,21 +68,29 @@ export default function StatusSheetsPage() {
     try {
       const { data } = await api.get('/api/analytics/operators');
       if (data.success) {
-        const ops = data.data || [];
-        setOperators(ops);
-        // 初級オペレーターの研修データを一括取得
-        const beginners = ops.filter(op => op.operator_level === '初級');
-        for (const op of beginners) {
-          if (!trainingData[op.id]) {
-            try {
-              const { data: td } = await api.get(`/api/ai/analysis/training/${op.id}`);
-              if (td.success) setTrainingData(prev => ({ ...prev, [op.id]: td.data }));
-            } catch (e) {}
-          }
-        }
+        setOperators(data.data || []);
       }
     } catch (err) { console.error(err); }
   };
+
+  // 初級オペレーターの研修データ取得（operators確定後）
+  useEffect(() => {
+    if (!operators.length) return;
+    const fetchTrainingBatch = async () => {
+      const beginners = operators.filter(op => op.operator_level === '初級');
+      const batch = {};
+      for (const op of beginners) {
+        try {
+          const { data } = await api.get(`/api/ai/analysis/training/${op.id}`);
+          if (data.success) batch[op.id] = data.data;
+        } catch (e) {}
+      }
+      if (Object.keys(batch).length > 0) {
+        setTrainingData(prev => ({ ...prev, ...batch }));
+      }
+    };
+    fetchTrainingBatch();
+  }, [operators.length]);
 
   const fetchSheets = async () => {
     try {
