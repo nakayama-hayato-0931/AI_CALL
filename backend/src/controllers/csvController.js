@@ -228,16 +228,10 @@ const importCompanies = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
-      // 既存の電話番号と会社名を一括取得（重複チェック高速化）
-      const [existingCompanies] = await conn.query('SELECT phone_number, company_name FROM companies');
-      const existingPhones = new Set(existingCompanies.map(c => c.phone_number).filter(Boolean));
-      const existingNames = new Set(existingCompanies.map(c => c.company_name).filter(Boolean));
-
-      const [excludedList] = await conn.query('SELECT phone_number, company_name FROM exclusion_lists');
-      const excludedPhones = new Set(excludedList.map(c => c.phone_number).filter(Boolean));
-      const excludedNames = new Set(excludedList.map(c => c.company_name).filter(Boolean));
-
       const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+      // インポート内重複防止用Set
+      const importedPhones = new Set();
+      const importedNames = new Set();
 
       for (let i = 0; i < records.length; i++) {
         const row = records[i];
@@ -258,19 +252,26 @@ const importCompanies = async (req, res, next) => {
           continue;
         }
 
-        // 重複チェック（メモリ内）
-        if (existingPhones.has(phoneNumber) || existingNames.has(companyName)) {
+        // ファイル内重複チェック
+        if (importedPhones.has(phoneNumber) || importedNames.has(companyName)) {
           duplicateCount++;
           skippedCount++;
           continue;
         }
 
-        // 除外リストチェック（メモリ内）
-        if (excludedPhones.has(phoneNumber) || excludedNames.has(companyName)) {
-          excludedCount++;
-          skippedCount++;
-          continue;
-        }
+        // DB重複チェック
+        const [existing] = await conn.execute(
+          'SELECT id FROM companies WHERE phone_number = ? LIMIT 1',
+          [phoneNumber]
+        );
+        if (existing.length > 0) { duplicateCount++; skippedCount++; continue; }
+
+        // 除外リストチェック
+        const [excluded] = await conn.execute(
+          'SELECT id FROM exclusion_lists WHERE phone_number = ? LIMIT 1',
+          [phoneNumber]
+        );
+        if (excluded.length > 0) { excludedCount++; skippedCount++; continue; }
 
         const [insertResult] = await conn.execute(
           `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
@@ -278,9 +279,9 @@ const importCompanies = async (req, res, next) => {
           [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId]
         );
 
-        // 新規追加分をSetに追加（同一ファイル内の重複防止）
-        existingPhones.add(phoneNumber);
-        existingNames.add(companyName);
+        // ファイル内重複防止
+        importedPhones.add(phoneNumber);
+        importedNames.add(companyName);
 
         if (req.user.role === 'operator') {
           try {
