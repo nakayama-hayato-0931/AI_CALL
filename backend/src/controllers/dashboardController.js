@@ -36,9 +36,17 @@ const INDUSTRY_CATEGORY_MAP = {
   '輸送用機械器具製造業': '製造業',
   'その他の製造業': '製造業',
 
-  // 飲食・宿泊
+  // 飲食
   '飲食店': '飲食',
   '持ち帰り・配達飲食サービス業': '飲食',
+  '飲食サービス業': '飲食',
+  'グルメ・飲食': '飲食',
+  '食堂・レストラン': '飲食',
+  '焼肉・ステーキ・すき焼き': '飲食',
+  '割烹・料亭': '飲食',
+  '魚・うなぎ・かき・かに': '飲食',
+  '和食・日本料理': '飲食',
+  // 宿泊
   '宿泊業': '宿泊',
   '宿泊業，飲食サービス業': '飲食',
 
@@ -115,7 +123,7 @@ const getIndustryCategory = (industry) => {
   if (INDUSTRY_CATEGORY_MAP[industry]) return INDUSTRY_CATEGORY_MAP[industry];
   // 部分一致でカテゴリ推定
   if (industry.includes('製造')) return '製造業';
-  if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン')) return '飲食';
+  if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン') || industry.includes('グルメ') || industry.includes('焼肉') || industry.includes('割烹') || industry.includes('料亭') || industry.includes('うなぎ') || industry.includes('和食') || industry.includes('日本料理') || industry.includes('ステーキ') || industry.includes('すき焼')) return '飲食';
   if (industry.includes('建設') || industry.includes('工事')) return '建設業';
   if (industry.includes('卸売') || industry.includes('小売')) return '卸売・小売';
   if (industry.includes('運送') || industry.includes('運輸') || industry.includes('倉庫')) return '運輸業';
