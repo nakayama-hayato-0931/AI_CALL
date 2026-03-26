@@ -574,9 +574,12 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-gray-100">
-                      <td className="table-cell text-right cursor-pointer" onClick={() => setShowWorkHoursModal(true)}>
-                        <span className="font-bold text-sm">{displayWorkValue}</span>
-                        <span className="text-gray-400 ml-0.5">{displayWorkSuffix}</span>
+                      <td className="table-cell text-right cursor-pointer hover:bg-blue-50 transition-colors group" onClick={() => setShowWorkHoursModal(true)}>
+                        <div>
+                          <span className="font-bold text-sm">{displayWorkValue}</span>
+                          <span className="text-gray-400 ml-0.5">{displayWorkSuffix}</span>
+                        </div>
+                        <p className="text-[9px] text-blue-400 group-hover:text-blue-600">クリックで入力</p>
                       </td>
                       <td className="table-cell text-right">
                         <span className="font-bold text-sm">{stats?.callCount || 0}</span>
