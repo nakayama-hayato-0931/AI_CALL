@@ -122,7 +122,7 @@ const getIndustryCategory = (industry) => {
   if (!industry) return 'その他';
   if (INDUSTRY_CATEGORY_MAP[industry]) return INDUSTRY_CATEGORY_MAP[industry];
   // 部分一致でカテゴリ推定
-  if (industry.includes('製造')) return '製造業';
+  if (industry.includes('製造') || industry.includes('加工') || industry.includes('鉄鋼') || industry.includes('金属')) return '製造業';
   if (industry.includes('飲食') || industry.includes('食堂') || industry.includes('レストラン') || industry.includes('グルメ') || industry.includes('焼肉') || industry.includes('割烹') || industry.includes('料亭') || industry.includes('うなぎ') || industry.includes('和食') || industry.includes('日本料理') || industry.includes('ステーキ') || industry.includes('すき焼')) return '飲食';
   if (industry.includes('建設') || industry.includes('工事')) return '建設業';
   if (industry.includes('卸売') || industry.includes('小売')) return '卸売・小売';
