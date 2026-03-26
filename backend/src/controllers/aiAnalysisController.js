@@ -458,6 +458,22 @@ const generateSheetForOperator = async (op, dateFrom, dateTo, createdBy) => {
     return { userId: op.id, name: op.name, sheet: null, message: `AI生成失敗: ${aiErr.message}` };
   }
 
+  // org_targetsをDB設定値で上書き（AIが独自の値を生成するのを防止）
+  try {
+    const [ttRows] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'team_targets'");
+    if (ttRows.length > 0) {
+      const tt = JSON.parse(ttRows[0].setting_value);
+      if (!sheet.targets) sheet.targets = {};
+      sheet.targets.org_targets = {
+        calls_per_h: tt.calls_per_h || 18,
+        effective_per_h: tt.effective_per_h || 3,
+        person_per_h: tt.person_per_h || 2,
+        hours_per_project: tt.project_hours || 8,
+        target_cpa: tt.target_cpa || 18000,
+      };
+    }
+  } catch (e) { /* ignore */ }
+
   // DBに保存
   try {
     const [existing] = await pool.query('SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [op.id]);

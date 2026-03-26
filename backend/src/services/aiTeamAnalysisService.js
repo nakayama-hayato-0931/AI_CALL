@@ -16,14 +16,14 @@ const getTeamTargets = async () => {
   return DEFAULT_TEAM_TARGETS;
 };
 
-const formatTeamTargetsForPrompt = (t) => `【チーム目標値（1時間あたり）】
+const formatTeamTargetsForPrompt = (t) => `【チーム目標値（1時間あたり）※この値は管理者が設定した正式な目標値です。変更しないでください】
 - コール数: ${t.calls_per_h}件/h
 - リコール取得: ${t.recall_per_h || 3}件/h
-- リコール消化: ${t.recall_per_h || 3}件/h
 - 有効接続: ${t.effective_per_h}件/h
 - 担当者接続: ${t.person_per_h}件/h
 - アポ獲得効率: ${t.project_hours}時間に1件
-- 案件化率目標: ${t.conversion_rate || 0.61}%`;
+- 案件化率目標: ${t.conversion_rate || 0.61}%
+- 目標CPA: ¥${t.target_cpa || 18000}`;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -300,13 +300,7 @@ ${formatTeamTargetsForPrompt(tt)}
     }
   },
   "targets": {
-    "org_targets": {
-      "calls_per_h": "組織全体の時間あたりコール数目標（数値）",
-      "effective_per_h": "有効接続/h目標（数値）",
-      "person_per_h": "担当接続/h目標（数値）",
-      "hours_per_project": "案件1件あたり所要時間目標（数値）",
-      "target_cpa": "目標CPA（円、数値）"
-    },
+    "org_targets": "※org_targetsは出力不要。システムがチーム目標値を自動挿入します",
     "individual_targets": {
       "calls_per_h": "この人の時間あたりコール数目標（数値、実績とランクに基づいて設定）",
       "effective_per_h": "有効接続/h目標（数値）",
