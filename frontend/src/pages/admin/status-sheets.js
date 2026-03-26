@@ -190,10 +190,15 @@ export default function StatusSheetsPage() {
   // ソート済みエントリ（operatorsベースで1人1エントリ保証）
   const sortedEntries = useMemo(() => {
     if (!operators.length) return [];
+    // operatorsをidで重複排除
+    const opMap = new Map();
+    operators.forEach(op => { if (!opMap.has(op.id)) opMap.set(op.id, op); });
+    const uniqueOps = Array.from(opMap.values());
+    // sheetsをuser_idで重複排除
     const sheetMap = new Map();
     sheets.forEach(s => { if (!sheetMap.has(s.user_id)) sheetMap.set(s.user_id, s); });
     const levelOrder = { '初級': 0, '中級': 1, '上級': 2, 'リーダー': 2 };
-    const entries = operators.map(op => {
+    const entries = uniqueOps.map(op => {
       const sheet = sheetMap.get(op.id);
       if (sheet) return { ...sheet, operator_level: op.operator_level || sheet.operator_level };
       return {
@@ -206,15 +211,10 @@ export default function StatusSheetsPage() {
       const la = levelOrder[a.operator_level] ?? 99;
       const lb = levelOrder[b.operator_level] ?? 99;
       if (la !== lb) return la - lb;
-      if (a.operator_level === '初級') {
-        const aC = (trainingData[a.user_id] || []).filter(s => s.is_completed).length;
-        const bC = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
-        if (aC !== bC) return aC - bC;
-      }
       return (a.user_name || '').localeCompare(b.user_name || '');
     });
     return entries;
-  }, [sheets, operators, trainingData]);
+  }, [sheets, operators]);
 
   const handleStartTargetEdit = (userId) => {
     const op = operators.find(o => o.id === userId) || {};
