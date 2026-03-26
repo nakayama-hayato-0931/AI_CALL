@@ -464,22 +464,23 @@ const getCpaAll = async (req, res, next) => {
     );
     // コスト = 人件費 + 交通費（常にcost_recordsから取得）
     const costMap = new Map();
+    const workHoursMap = new Map(); // 稼働時間（時間）
     for (const r of costAll) {
-      const laborCost = Math.round(Number(r.total_minutes) / 60 * HOURLY_RATE);
+      const totalMinutes = Number(r.total_minutes);
+      const laborCost = Math.round(totalMinutes / 60 * HOURLY_RATE);
       const u = users.find(u => u.id === r.user_id);
       let commuteCost = 0;
       if (u) {
         if (u.commute_type === 'teiki') {
-          // 定期券: 期間に応じて按分（月額 × 期間月数）
           const d1 = new Date(dateFrom), d2 = new Date(dateTo);
           const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
           commuteCost = (u.commute_teiki_monthly || 0) * Math.min(months, 12);
         } else if (u.commute_type === 'daily') {
-          // 1日あたり: 稼働日数 × 日額
           commuteCost = (u.commute_daily_amount || 0) * Number(r.work_days || 0);
         }
       }
       costMap.set(r.user_id, laborCost + commuteCost);
+      workHoursMap.set(r.user_id, Math.round(totalMinutes / 6) / 10); // 小数第1位まで
     }
 
     // テスト運用期間: 2026年3月末まではシステムデータをCPA計算から除外
@@ -535,6 +536,7 @@ const getCpaAll = async (req, res, next) => {
 
     // チーム全体
     const teamCost = [...costMap.values()].reduce((s, v) => s + v, 0);
+    const teamWorkHours = [...workHoursMap.values()].reduce((s, v) => s + v, 0);
     const teamCalls = [...callMap.values()].reduce((s, v) => s + v, 0);
     const teamProjects = projAll.reduce((s, r) => s + Number(r.project_count), 0);
     const teamInterviews = projAll.reduce((s, r) => s + Number(r.interview_count), 0);
@@ -623,9 +625,10 @@ const getCpaAll = async (req, res, next) => {
       const curCalls = callMap.get(u.id) || 0;
       const curProj = projMap.get(u.id);
       const curFin = finMap.get(u.id);
+      const curWorkHours = workHoursMap.get(u.id) || 0;
       if (past) {
         return {
-          userId: u.id, name: u.name,
+          userId: u.id, name: u.name, workHours: curWorkHours,
           ...buildRow(
             curCost + past.cost,
             curCalls + past.calls,
@@ -641,13 +644,13 @@ const getCpaAll = async (req, res, next) => {
         };
       }
       return {
-        userId: u.id, name: u.name,
+        userId: u.id, name: u.name, workHours: curWorkHours,
         ...buildRow(curCost, curCalls, curProj, curFin),
       };
     });
 
     const team = {
-      name: '全体',
+      name: '全体', workHours: Math.round(teamWorkHours * 10) / 10,
       ...buildRow(teamCost + pastCost, teamCalls + pastCalls, {
         project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
         naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,

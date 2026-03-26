@@ -236,6 +236,9 @@ export default function AnalyticsPage() {
               {cpaColumns.map(col => (
                 <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
                   {formatCell(data.team[col.key], col.format)}
+                  {col.key === 'cost' && data.team.workHours > 0 && (
+                    <span className="text-[10px] text-blue-400 font-normal ml-1">{data.team.workHours}h</span>
+                  )}
                 </td>
               ))}
             </tr>
@@ -248,6 +251,9 @@ export default function AnalyticsPage() {
                 {cpaColumns.map(col => (
                   <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
                     {formatCell(op[col.key], col.format)}
+                    {col.key === 'cost' && op.workHours > 0 && (
+                      <span className="text-[10px] text-gray-400 ml-1">{op.workHours}h</span>
+                    )}
                   </td>
                 ))}
               </tr>
