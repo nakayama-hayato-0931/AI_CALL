@@ -171,12 +171,11 @@ export default function CallPage() {
   // ページ離脱時にロック解除（ベストエフォート）
   useEffect(() => {
     const handleBeforeUnload = () => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
       // 未保存のcallをキャンセル
       const cId = callIdRef.current;
       if (cId) {
         navigator.sendBeacon(
-          `${apiUrl}/api/calls/${cId}/cancel-beacon`,
+          `/api/calls/${cId}/cancel-beacon`,
           new Blob([JSON.stringify({})], { type: 'application/json' })
         );
       }
@@ -184,7 +183,7 @@ export default function CallPage() {
       const id = selectedIdRef.current;
       if (id) {
         navigator.sendBeacon(
-          `${apiUrl}/api/companies/${id}/unlock`,
+          `/api/companies/${id}/unlock`,
           new Blob([JSON.stringify({})], { type: 'application/json' })
         );
       }
