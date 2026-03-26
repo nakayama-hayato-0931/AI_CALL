@@ -190,10 +190,17 @@ export default function StatusSheetsPage() {
   // ソート済みエントリをsheets/operators/trainingData変更時に計算
   useEffect(() => {
     if (!operators.length) return;
-    const sheetUserIds = new Set(sheets.map(s => s.user_id));
-    const levelOrder = { '初級': 0, '中級': 1, '上級': 2 };
+    // user_idの重複を排除
+    const seenUserIds = new Set();
+    const uniqueSheets = sheets.filter(s => {
+      if (seenUserIds.has(s.user_id)) return false;
+      seenUserIds.add(s.user_id);
+      return true;
+    });
+    const sheetUserIds = new Set(uniqueSheets.map(s => s.user_id));
+    const levelOrder = { '初級': 0, '中級': 1, '上級': 2, 'リーダー': 2 };
     const entries = [
-      ...sheets,
+      ...uniqueSheets,
       ...operators.filter(op => !sheetUserIds.has(op.id)).map(op => ({
         id: null, user_id: op.id, user_name: op.name, operator_level: op.operator_level || null,
         current_status: null, training_plan: null, next_steps: null, targets: null, scenario: null,
@@ -323,43 +330,44 @@ export default function StatusSheetsPage() {
               </div>
             )}
           </div>
-          {editingTeamTargets ? (
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-              {[
-                { key: 'calls_per_h', label: 'コール/h', unit: '件' },
-                { key: 'effective_per_h', label: '有効接続/h', unit: '件' },
-                { key: 'person_per_h', label: '担当接続/h', unit: '件' },
-                { key: 'project_hours', label: '案件所要時間', unit: 'h' },
-                { key: 'conversion_rate', label: '案件化率', unit: '%' },
-                { key: 'recall_per_h', label: 'リコール/h', unit: '件' },
-              ].map(({ key, label, unit }) => (
-                <div key={key}>
-                  <label className="text-[10px] text-gray-500 block mb-1">{label}</label>
-                  <div className="flex items-center gap-1">
-                    <input type="number" step="0.1" className="input text-xs w-full"
-                      value={teamTargetForm[key] || ''}
-                      onChange={e => setTeamTargetForm(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))} />
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">{unit}</span>
+          {(() => {
+            const fields = [
+              { key: 'calls_per_h', label: 'コール/h', unit: '件', displayUnit: '/h' },
+              { key: 'effective_per_h', label: '有効接続/h', unit: '件', displayUnit: '/h' },
+              { key: 'person_per_h', label: '担当接続/h', unit: '件', displayUnit: '/h' },
+              { key: 'recall_per_h', label: 'リコール/h', unit: '件', displayUnit: '/h' },
+              { key: 'project_hours', label: '案件所要時間', unit: 'h', displayUnit: 'h' },
+              { key: 'conversion_rate', label: '案件化率', unit: '%', displayUnit: '%' },
+              { key: 'target_cpa', label: '目標CPA', unit: '円', displayUnit: '円' },
+            ];
+            return editingTeamTargets ? (
+              <div className="grid grid-cols-3 md:grid-cols-7 gap-3">
+                {fields.map(({ key, label, unit }) => (
+                  <div key={key}>
+                    <label className="text-[10px] text-gray-500 block mb-1">{label}</label>
+                    <div className="flex items-center gap-1">
+                      <input type="number" step={key === 'target_cpa' ? '1000' : '0.1'} className="input text-xs w-full"
+                        value={teamTargetForm[key] || ''}
+                        onChange={e => setTeamTargetForm(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))} />
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap">{unit}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-4">
-              {[
-                { key: 'calls_per_h', label: 'コール', unit: '/h' },
-                { key: 'effective_per_h', label: '有効接続', unit: '/h' },
-                { key: 'person_per_h', label: '担当接続', unit: '/h' },
-                { key: 'project_hours', label: '案件所要', unit: 'h' },
-                { key: 'conversion_rate', label: '案件化率', unit: '%' },
-                { key: 'recall_per_h', label: 'リコール', unit: '/h' },
-              ].map(({ key, label, unit }) => (
-                <div key={key} className="text-center">
-                  <p className="text-[10px] text-gray-400">{label}</p>
-                  <p className="text-sm font-bold text-gray-700">{teamTargets[key] || '-'}<span className="text-[10px] text-gray-400 font-normal ml-0.5">{unit}</span></p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-4">
+                {fields.map(({ key, label, displayUnit }) => (
+                  <div key={key} className="text-center">
+                    <p className="text-[10px] text-gray-400">{label.replace('/h','')}</p>
+                    <p className="text-sm font-bold text-gray-700">
+                      {key === 'target_cpa' && teamTargets[key] ? `¥${Number(teamTargets[key]).toLocaleString()}` : (teamTargets[key] || '-')}
+                      {key !== 'target_cpa' && <span className="text-[10px] text-gray-400 font-normal ml-0.5">{displayUnit}</span>}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()
           )}
         </div>
       )}
