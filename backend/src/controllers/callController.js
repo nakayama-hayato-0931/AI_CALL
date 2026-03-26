@@ -310,8 +310,10 @@ const getCalls = async (req, res, next) => {
       params.push(date_from);
     }
     if (date_to) {
+      // date_toが日付のみ(YYYY-MM-DD)の場合、その日の23:59:59まで含む
+      const dt = date_to.length === 10 ? `${date_to} 23:59:59` : date_to;
       whereClauses.push('c.call_started_at <= ?');
-      params.push(date_to);
+      params.push(dt);
     }
     if (search) {
       whereClauses.push('(co.company_name LIKE ? OR co.phone_number LIKE ? OR c.memo LIKE ?)');
@@ -321,14 +323,7 @@ const getCalls = async (req, res, next) => {
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    const [countRows] = await pool.execute(
-      `SELECT COUNT(*) as total FROM calls c
-       LEFT JOIN companies co ON c.company_id = co.id
-       ${whereStr}`,
-      params
-    );
-
-    // 結果コード別集計（全件）
+    // COUNT + 結果コード別集計を1クエリで
     const [summaryRows] = await pool.execute(
       `SELECT c.result_code, COUNT(*) as cnt FROM calls c
        LEFT JOIN companies co ON c.company_id = co.id
@@ -337,9 +332,12 @@ const getCalls = async (req, res, next) => {
       params
     );
     const resultSummary = {};
+    let totalCount = 0;
     for (const r of summaryRows) {
       if (r.result_code) resultSummary[r.result_code] = r.cnt;
+      totalCount += r.cnt;
     }
+    const countRows = [{ total: totalCount }];
 
     const [rows] = await pool.execute(
       `SELECT c.*, u.name as operator_name, co.company_name, co.phone_number,
