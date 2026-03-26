@@ -322,6 +322,19 @@ const runMigrations = async () => {
     `);
     logger.info('[Migration] past_quality_data テーブル確認完了');
   } catch (e) { logger.warn('[Migration] past_quality_data:', e.message); }
+  // system_settings テーブル（チーム目標値等）
+  try {
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value TEXT,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    // デフォルト値挿入
+    await pool.execute(`INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('team_targets', '{"calls_per_h":20,"recall_per_h":3,"effective_per_h":3,"person_per_h":2,"project_hours":8,"conversion_rate":0.61}')`);
+    logger.info('[Migration] system_settings テーブル確認完了');
+  } catch (e) { logger.warn('[Migration] system_settings:', e.message); }
 };
 runMigrations();
 

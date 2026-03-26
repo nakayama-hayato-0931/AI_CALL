@@ -29,12 +29,40 @@ export default function StatusSheetsPage() {
   const [targetForm, setTargetForm] = useState({});
   const [sortedEntries, setSortedEntries] = useState([]);
 
+  // チーム目標
+  const [teamTargets, setTeamTargets] = useState(null);
+  const [editingTeamTargets, setEditingTeamTargets] = useState(false);
+  const [teamTargetForm, setTeamTargetForm] = useState({});
+  const [savingTeamTargets, setSavingTeamTargets] = useState(false);
+
   useEffect(() => {
     if (!authLoading && user) {
       fetchSheets();
       fetchOperators();
+      fetchTeamTargets();
     }
   }, [authLoading, user]);
+
+  const fetchTeamTargets = async () => {
+    try {
+      const { data } = await api.get('/api/ai/analysis/team-targets');
+      if (data.success) {
+        setTeamTargets(data.data);
+        setTeamTargetForm(data.data);
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleSaveTeamTargets = async () => {
+    setSavingTeamTargets(true);
+    try {
+      await api.put('/api/ai/analysis/team-targets', teamTargetForm);
+      setTeamTargets(teamTargetForm);
+      setEditingTeamTargets(false);
+      toast.success('チーム目標値を更新しました');
+    } catch (err) { toast.error('更新に失敗しました'); }
+    finally { setSavingTeamTargets(false); }
+  };
 
   const fetchOperators = async () => {
     try {
@@ -277,6 +305,64 @@ export default function StatusSheetsPage() {
         <h1 className="text-lg font-bold text-gray-900">育成ステータスシート</h1>
         <p className="text-xs text-gray-500 mt-1">各オペレーターの育成状況・育成プラン・ネクストステップを管理</p>
       </div>
+
+      {/* チーム目標値 */}
+      {teamTargets && (
+        <div className="card p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-gray-700">チーム目標値（AI評価に使用）</h3>
+            {!editingTeamTargets ? (
+              <button onClick={() => { setTeamTargetForm({...teamTargets}); setEditingTeamTargets(true); }}
+                className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50">設定</button>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={() => setEditingTeamTargets(false)}
+                  className="text-xs text-gray-500 px-2 py-1 rounded border">キャンセル</button>
+                <button onClick={handleSaveTeamTargets} disabled={savingTeamTargets}
+                  className="btn-primary text-xs disabled:opacity-50">{savingTeamTargets ? '保存中...' : '保存'}</button>
+              </div>
+            )}
+          </div>
+          {editingTeamTargets ? (
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+              {[
+                { key: 'calls_per_h', label: 'コール/h', unit: '件' },
+                { key: 'effective_per_h', label: '有効接続/h', unit: '件' },
+                { key: 'person_per_h', label: '担当接続/h', unit: '件' },
+                { key: 'project_hours', label: '案件所要時間', unit: 'h' },
+                { key: 'conversion_rate', label: '案件化率', unit: '%' },
+                { key: 'recall_per_h', label: 'リコール/h', unit: '件' },
+              ].map(({ key, label, unit }) => (
+                <div key={key}>
+                  <label className="text-[10px] text-gray-500 block mb-1">{label}</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" step="0.1" className="input text-xs w-full"
+                      value={teamTargetForm[key] || ''}
+                      onChange={e => setTeamTargetForm(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))} />
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">{unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-4">
+              {[
+                { key: 'calls_per_h', label: 'コール', unit: '/h' },
+                { key: 'effective_per_h', label: '有効接続', unit: '/h' },
+                { key: 'person_per_h', label: '担当接続', unit: '/h' },
+                { key: 'project_hours', label: '案件所要', unit: 'h' },
+                { key: 'conversion_rate', label: '案件化率', unit: '%' },
+                { key: 'recall_per_h', label: 'リコール', unit: '/h' },
+              ].map(({ key, label, unit }) => (
+                <div key={key} className="text-center">
+                  <p className="text-[10px] text-gray-400">{label}</p>
+                  <p className="text-sm font-bold text-gray-700">{teamTargets[key] || '-'}<span className="text-[10px] text-gray-400 font-normal ml-0.5">{unit}</span></p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 生成セクション */}
       <div className="card p-4 mb-6">

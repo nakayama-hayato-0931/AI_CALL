@@ -37,4 +37,26 @@ router.put('/status-sheets/:id/publish', togglePublish);               // 公開
 router.get('/training/:userId', getTrainingProgress);                  // 研修進捗取得
 router.put('/training/:userId/:stepNumber', updateTrainingStep);       // 研修ステップ更新
 
+// チーム目標値
+const pool = require('../../config/database');
+const ApiResponse = require('../utils/apiResponse');
+
+router.get('/team-targets', async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'team_targets'");
+    if (rows.length > 0) {
+      return ApiResponse.success(res, JSON.parse(rows[0].setting_value));
+    }
+    return ApiResponse.success(res, { calls_per_h: 20, recall_per_h: 3, effective_per_h: 3, person_per_h: 2, project_hours: 8, conversion_rate: 0.61 });
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.put('/team-targets', async (req, res) => {
+  try {
+    const value = JSON.stringify(req.body);
+    await pool.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('team_targets', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [value, value]);
+    return ApiResponse.success(res, req.body, 'チーム目標値を更新しました');
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
 module.exports = router;

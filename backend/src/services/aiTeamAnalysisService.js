@@ -4,6 +4,26 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 const logger = require('../utils/logger');
+const pool = require('../../config/database');
+
+const DEFAULT_TEAM_TARGETS = { calls_per_h: 20, recall_per_h: 3, effective_per_h: 3, person_per_h: 2, project_hours: 8, conversion_rate: 0.61 };
+
+const getTeamTargets = async () => {
+  try {
+    const [rows] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'team_targets'");
+    if (rows.length > 0) return { ...DEFAULT_TEAM_TARGETS, ...JSON.parse(rows[0].setting_value) };
+  } catch (e) { /* fallback */ }
+  return DEFAULT_TEAM_TARGETS;
+};
+
+const formatTeamTargetsForPrompt = (t) => `【チーム目標値（1時間あたり）】
+- コール数: ${t.calls_per_h}件/h
+- リコール取得: ${t.recall_per_h || 3}件/h
+- リコール消化: ${t.recall_per_h || 3}件/h
+- 有効接続: ${t.effective_per_h}件/h
+- 担当者接続: ${t.person_per_h}件/h
+- アポ獲得効率: ${t.project_hours}時間に1件
+- 案件化率目標: ${t.conversion_rate || 0.61}%`;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -61,17 +81,11 @@ const callClaude = async (systemPrompt, userContent, maxTokens = 2000, temperatu
  */
 const evaluateTeamAnalysis = async (teamData) => {
   try {
+    const tt = await getTeamTargets();
     const systemPrompt = `あなたは法人営業チームのマネジメントコンサルタントAIです。
 コールセンターチーム全体の架電パフォーマンスデータを分析し、マネージャー向けの総合レポートを作成してください。
 
-【チーム目標値（1時間あたり）】
-- コール数: 20件/h
-- リコール取得: 3件/h
-- リコール消化: 3件/h
-- 有効接続: 3件/h
-- 担当者接続: 2件/h
-- アポ獲得効率: 8時間に1件（稼働8時間で1アポ）
-- 案件化率目標: 0.61%（10月〜2月の平均実績がベンチマーク）
+${formatTeamTargetsForPrompt(tt)}
 
 各オペレーターのデータに稼働時間が含まれている場合は、時間あたりの実績を目標値と比較して評価してください。
 目標値に対する達成率も考慮してteam_scoreを算出してください。
@@ -153,17 +167,11 @@ ${operatorDetails}`;
  */
 const evaluateOperatorCoaching = async (operatorData) => {
   try {
+    const tt = await getTeamTargets();
     const systemPrompt = `あなたは法人営業のパーソナルコーチングAIです。
 個別オペレーターの架電データを分析し、成長のための具体的なアドバイスを提供してください。
 
-【目標値（1時間あたり）】
-- コール数: 20件/h
-- リコール取得: 3件/h
-- リコール消化: 3件/h
-- 有効接続: 3件/h
-- 担当者接続: 2件/h
-- アポ獲得効率: 8時間に1件（稼働8時間で1アポ）
-- 案件化率目標: 0.61%（10月〜2月の平均実績がベンチマーク）
+${formatTeamTargetsForPrompt(tt)}
 
 稼働時間データがある場合は、時間あたりの実績を目標値と比較し、具体的な達成率を示してください。
 
@@ -249,16 +257,12 @@ const evaluateStatusSheet = async (operatorData) => {
   try {
     const { name, level, dateFrom, dateTo, workHours, stats, evaluations, scoreAvgs } = operatorData;
     const levelLabel = level || '未設定';
+    const tt = await getTeamTargets();
 
     const systemPrompt = `あなたは法人営業コールセンターの育成担当マネージャーAIです。
 個別オペレーターのパフォーマンスデータとAI評価結果を分析し、育成ステータスシートを作成してください。
 
-【チーム目標値（1時間あたり）】
-- コール数: 20件/h
-- 有効接続: 3件/h
-- 担当者接続: 2件/h
-- アポ獲得効率: 8時間に1件
-- 案件化率目標: 0.61%
+${formatTeamTargetsForPrompt(tt)}
 
 【このオペレーターのランク: ${levelLabel}】
 ランクに応じた改善案を提示してください:
