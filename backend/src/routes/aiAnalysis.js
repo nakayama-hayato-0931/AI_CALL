@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish } = require('../controllers/aiAnalysisController');
+const { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish, updateMeeting, autoSetMeetingFlags } = require('../controllers/aiAnalysisController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 
 router.use(authenticate);
@@ -32,6 +32,8 @@ router.get('/status-sheets', getStatusSheets);                         // 保存
 router.get('/status-sheets/:userId', getStatusSheet);                  // 個別取得
 router.put('/status-sheets/:id', updateStatusSheet);                   // 手動編集
 router.put('/status-sheets/:id/publish', togglePublish);               // 公開/非公開切替
+router.put('/status-sheets/:id/meeting', updateMeeting);              // 面談情報更新
+router.post('/status-sheets/auto-meeting-flags', autoSetMeetingFlags); // AI評価で要面談自動判定
 
 // 研修進捗
 router.get('/training/:userId', getTrainingProgress);                  // 研修進捗取得

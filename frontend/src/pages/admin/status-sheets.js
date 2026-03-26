@@ -424,6 +424,24 @@ export default function StatusSheetsPage() {
         {generating && (
           <p className="text-xs text-gray-400 mt-2">全オペレーターのステータスシートをAIが生成中です。数分かかる場合があります。</p>
         )}
+        <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+          <button
+            onClick={async () => {
+              try {
+                const { data } = await api.post('/api/ai/analysis/status-sheets/auto-meeting-flags', { threshold: 50 });
+                if (data.data?.flagged > 0) {
+                  toast.success(`${data.data.flagged}名に要面談フラグを設定しました`);
+                  fetchSheets();
+                } else {
+                  toast.success('要面談対象者はいませんでした');
+                }
+              } catch (err) { toast.error('判定に失敗しました'); }
+            }}
+            className="text-xs px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+            AI評価で要面談を自動判定
+          </button>
+          <span className="text-[10px] text-gray-400">直近2週間のAI評価平均50点未満のオペレーターに要面談フラグを設定</span>
+        </div>
       </div>
 
       {/* ステータスシート一覧（シートがないオペレーターも含む） */}
@@ -457,11 +475,20 @@ export default function StatusSheetsPage() {
                   className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                      sheet.needs_meeting && !sheet.meeting_completed ? 'bg-red-100 text-red-600 ring-2 ring-red-300' : 'bg-blue-100 text-blue-600'
+                    }`}>
                       {sheet.user_name?.charAt(0)}
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-medium text-gray-800">{sheet.user_name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className={`text-sm font-medium ${sheet.needs_meeting && !sheet.meeting_completed ? 'text-red-600' : 'text-gray-800'}`}>
+                          {sheet.user_name}
+                        </p>
+                        {sheet.needs_meeting && !sheet.meeting_completed && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded font-medium">要面談</span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-gray-400">
                         {sheet.period_from ? (
                           <>{sheet.period_from} 〜 {sheet.period_to} / 更新: {new Date(sheet.updated_at).toLocaleDateString('ja-JP')}</>
@@ -524,6 +551,48 @@ export default function StatusSheetsPage() {
                 {/* 展開コンテンツ */}
                 {isExpanded && (
                   <div className="px-5 pb-5 space-y-5 border-t border-gray-100 pt-4">
+                    {/* 面談管理 */}
+                    {sheet.id && (
+                      <div className={`flex items-center gap-4 p-3 rounded-lg border ${sheet.needs_meeting && !sheet.meeting_completed ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={!!sheet.needs_meeting && !sheet.meeting_completed}
+                            onChange={async (e) => {
+                              try {
+                                await api.put(`/api/ai/analysis/status-sheets/${sheet.id}/meeting`, { needs_meeting: e.target.checked, meeting_completed: false });
+                                fetchSheets();
+                              } catch (err) { toast.error('更新に失敗しました'); }
+                            }}
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded" />
+                          <span className="text-xs font-medium text-gray-700">要面談</span>
+                        </label>
+                        {(sheet.needs_meeting || sheet.meeting_scheduled_date) && (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-gray-500">予定日:</span>
+                              <input type="date" value={sheet.meeting_scheduled_date?.slice(0,10) || ''}
+                                onChange={async (e) => {
+                                  try {
+                                    await api.put(`/api/ai/analysis/status-sheets/${sheet.id}/meeting`, { meeting_scheduled_date: e.target.value || null });
+                                    fetchSheets();
+                                  } catch (err) { toast.error('更新に失敗しました'); }
+                                }}
+                                className="text-xs border border-gray-200 rounded px-2 py-1" />
+                            </div>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" checked={!!sheet.meeting_completed}
+                                onChange={async (e) => {
+                                  try {
+                                    await api.put(`/api/ai/analysis/status-sheets/${sheet.id}/meeting`, { meeting_completed: e.target.checked });
+                                    fetchSheets();
+                                  } catch (err) { toast.error('更新に失敗しました'); }
+                                }}
+                                className="w-4 h-4 text-emerald-600 border-gray-300 rounded" />
+                              <span className="text-xs text-gray-600">面談実施済</span>
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    )}
                     {/* プレースホルダー（シート未生成）の場合 */}
                     {isPlaceholder && !isBeginnerLevel && (
                       <div className="text-center py-4">

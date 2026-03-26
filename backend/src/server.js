@@ -168,8 +168,11 @@ const runMigrations = async () => {
   }
   // operator_levelにリーダー追加
   try { await pool.execute(`ALTER TABLE users MODIFY COLUMN operator_level ENUM('初級','中級','上級','リーダー') DEFAULT NULL`); } catch (e) {}
-  // status_sheetsに公開フラグ追加
+  // status_sheetsに公開フラグ + 面談関連カラム追加
   try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN is_published TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN needs_meeting TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN meeting_scheduled_date DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN meeting_completed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   // 研修進捗テーブル
   try {
     await pool.execute(`

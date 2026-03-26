@@ -557,7 +557,8 @@ const getStatusSheets = async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
-              ss.is_published, ss.created_at, ss.updated_at, cb.name as created_by_name
+              ss.is_published, ss.needs_meeting, ss.meeting_scheduled_date, ss.meeting_completed,
+              ss.created_at, ss.updated_at, cb.name as created_by_name
        FROM status_sheets ss
        JOIN users u ON ss.user_id = u.id
        JOIN users cb ON ss.created_by = cb.id
@@ -818,4 +819,66 @@ const togglePublish = async (req, res, next) => {
   }
 };
 
-module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish };
+/**
+ * PUT /api/ai/analysis/status-sheets/:id/meeting
+ * 面談情報更新（要面談フラグ、予定日、実施チェック）
+ */
+const updateMeeting = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { needs_meeting, meeting_scheduled_date, meeting_completed } = req.body;
+    const updates = [];
+    const params = [];
+    if (needs_meeting !== undefined) { updates.push('needs_meeting = ?'); params.push(needs_meeting ? 1 : 0); }
+    if (meeting_scheduled_date !== undefined) { updates.push('meeting_scheduled_date = ?'); params.push(meeting_scheduled_date || null); }
+    if (meeting_completed !== undefined) {
+      updates.push('meeting_completed = ?'); params.push(meeting_completed ? 1 : 0);
+      // 面談実施チェック時、要面談フラグを自動解除
+      if (meeting_completed) { updates.push('needs_meeting = 0'); }
+    }
+    if (updates.length === 0) return ApiResponse.badRequest(res, '更新する項目がありません');
+    params.push(id);
+    await pool.execute(`UPDATE status_sheets SET ${updates.join(', ')} WHERE id = ?`, params);
+    return ApiResponse.success(res, null, '面談情報を更新しました');
+  } catch (err) { next(err); }
+};
+
+/**
+ * POST /api/ai/analysis/status-sheets/auto-meeting-flags
+ * AI評価スコアに基づいて要面談フラグを自動設定
+ */
+const autoSetMeetingFlags = async (req, res, next) => {
+  try {
+    const threshold = req.body.threshold || 50; // デフォルト50点未満で要面談
+    // 直近2週間のAI評価平均スコアを取得
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const dateFrom = twoWeeksAgo.toISOString().slice(0, 10);
+
+    const [scores] = await pool.query(
+      `SELECT ae.user_id, ROUND(AVG(ae.overall_score), 1) as avg_score
+       FROM ai_evaluations ae
+       JOIN calls c ON ae.call_id = c.id
+       WHERE DATE(c.call_started_at) >= ?
+       GROUP BY ae.user_id`,
+      [dateFrom]
+    );
+
+    let flagged = 0;
+    for (const s of scores) {
+      if (s.avg_score < threshold && s.avg_score > 0) {
+        // このユーザーのステータスシートに要面談フラグを設定（面談未実施のもののみ）
+        const [updated] = await pool.execute(
+          'UPDATE status_sheets SET needs_meeting = 1 WHERE user_id = ? AND meeting_completed = 0',
+          [s.user_id]
+        );
+        if (updated.affectedRows > 0) flagged++;
+      }
+    }
+
+    return ApiResponse.success(res, { flagged, threshold, scores: scores.map(s => ({ userId: s.user_id, avgScore: s.avg_score })) },
+      `${flagged}名に要面談フラグを設定しました（閾値: ${threshold}点）`);
+  } catch (err) { next(err); }
+};
+
+module.exports = { getTeamAnalysis, getOperatorDetail, getOperatorCoaching, generateStatusSheets, generateSingleStatusSheet, getStatusSheets, getStatusSheet, updateStatusSheet, getTrainingProgress, updateTrainingStep, getMyStatusSheet, getPublishedStatusSheets, togglePublish, updateMeeting, autoSetMeetingFlags };
