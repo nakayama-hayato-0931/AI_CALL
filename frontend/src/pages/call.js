@@ -68,6 +68,35 @@ export default function CallPage() {
   const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist' | 'special'
   const [selectedIndustry, setSelectedIndustry] = useState('');
 
+  // 未保存の結果がある場合のページ離脱防止
+  useEffect(() => {
+    const hasUnsaved = !!resultCode && !!callId;
+
+    // ブラウザのタブ閉じ/リロード
+    const handleBeforeUnload = (e) => {
+      if (hasUnsaved) {
+        e.preventDefault();
+        e.returnValue = '架電結果が保存されていません。このページを離れますか？';
+      }
+    };
+
+    // Next.js のページ遷移
+    const handleRouteChange = (url) => {
+      if (hasUnsaved && !window.confirm('架電結果が保存されていません。このページを離れますか？')) {
+        router.events.emit('routeChangeError');
+        throw 'Route change aborted by user';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    router.events.on('routeChangeStart', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      router.events.off('routeChangeStart', handleRouteChange);
+    };
+  }, [resultCode, callId, router]);
+
   // スクリプト（アウト返し・Q&A）
   const [scripts, setScripts] = useState([]);
   const [scriptTab, setScriptTab] = useState('rebuttal'); // 'rebuttal' | 'qa'
@@ -807,10 +836,15 @@ export default function CallPage() {
                 <button
                   onClick={handleEndCall}
                   disabled={!callId || !resultCode || (calling && !autoMode)}
-                  className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
+                  className={`w-full disabled:opacity-40 disabled:cursor-not-allowed ${
+                    resultCode && callId ? 'btn-primary animate-pulse' : 'btn-primary'
+                  }`}
                 >
                   {autoMode ? '保存して次へ架電 ▶' : '保存して次へ'}
                 </button>
+                {resultCode && callId && (
+                  <p className="text-xs text-red-500 text-center mt-1 font-medium">結果を保存してください</p>
+                )}
               </div>
             </div>
 
