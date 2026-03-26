@@ -5,7 +5,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '',  // Next.js rewriteプロキシ経由（CORSを回避）
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
