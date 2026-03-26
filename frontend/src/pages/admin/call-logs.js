@@ -221,7 +221,8 @@ export default function AdminCallLogsPage() {
               const params = {};
               if (viewMode === 'daily') { params.date_from = date; params.date_to = date; }
               else if (viewMode === 'range') { params.date_from = dateFrom; params.date_to = dateTo; }
-              if (selectedOperator) params.user_id = selectedOperator;
+              else { params.date_from = date; params.date_to = date; } // 'all'の場合も当日に限定
+              if (operatorId) params.user_id = operatorId;
               const { data } = await api.post('/api/calls/refresh-transcripts-bulk', params, { timeout: 60000 });
               if (data.data?.found > 0) {
                 toast.success(`${data.data.found}件の文字起こしを取得しました`);
@@ -230,7 +231,8 @@ export default function AdminCallLogsPage() {
                 toast.error('新しい文字起こしは見つかりませんでした');
               }
             } catch (err) {
-              toast.error('取得に失敗しました');
+              console.error('ログ一括取得エラー:', err);
+              toast.error(`取得に失敗しました: ${err.response?.data?.message || err.message}`);
             } finally {
               setRefreshingBulk(false);
             }
