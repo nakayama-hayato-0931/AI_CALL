@@ -424,24 +424,7 @@ export default function StatusSheetsPage() {
         {generating && (
           <p className="text-xs text-gray-400 mt-2">全オペレーターのステータスシートをAIが生成中です。数分かかる場合があります。</p>
         )}
-        <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
-          <button
-            onClick={async () => {
-              try {
-                const { data } = await api.post('/api/ai/analysis/status-sheets/auto-meeting-flags', { threshold: 50 });
-                if (data.data?.flagged > 0) {
-                  toast.success(`${data.data.flagged}名に要面談フラグを設定しました`);
-                  fetchSheets();
-                } else {
-                  toast.success('要面談対象者はいませんでした');
-                }
-              } catch (err) { toast.error('判定に失敗しました'); }
-            }}
-            className="text-xs px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
-            AI評価で要面談を自動判定
-          </button>
-          <span className="text-[10px] text-gray-400">直近2週間のAI評価平均50点未満のオペレーターに要面談フラグを設定</span>
-        </div>
+        <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">ステータスシート生成時にAIが面談の要否を自動判定します</p>
       </div>
 
       {/* ステータスシート一覧（シートがないオペレーターも含む） */}
@@ -565,6 +548,9 @@ export default function StatusSheetsPage() {
                             className="w-4 h-4 text-red-600 border-gray-300 rounded" />
                           <span className="text-xs font-medium text-gray-700">要面談</span>
                         </label>
+                        {sheet.needs_meeting && !sheet.meeting_completed && sheet.meeting_reason && (
+                          <span className="text-[10px] text-red-500 ml-2">{sheet.meeting_reason}</span>
+                        )}
                         {(sheet.needs_meeting || sheet.meeting_scheduled_date) && (
                           <>
                             <div className="flex items-center gap-1.5">

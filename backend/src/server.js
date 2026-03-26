@@ -173,6 +173,7 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN needs_meeting TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN meeting_scheduled_date DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN meeting_completed TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE status_sheets ADD COLUMN meeting_reason VARCHAR(255) DEFAULT NULL`); } catch (e) {}
   // 研修進捗テーブル
   try {
     await pool.execute(`

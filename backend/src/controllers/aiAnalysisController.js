@@ -478,14 +478,18 @@ const generateSheetForOperator = async (op, dateFrom, dateTo, createdBy) => {
   try {
     const [existing] = await pool.query('SELECT id FROM status_sheets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [op.id]);
     if (existing.length > 0) {
+      const needsMeeting = sheet.needs_meeting ? 1 : 0;
+      const meetingReason = sheet.meeting_reason || null;
       await pool.execute(
-        `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, targets = ?, scenario = ?, created_by = ? WHERE id = ?`,
-        [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), createdBy, existing[0].id]
+        `UPDATE status_sheets SET period_from = ?, period_to = ?, current_status = ?, training_plan = ?, next_steps = ?, targets = ?, scenario = ?, needs_meeting = ?, meeting_reason = ?, meeting_completed = 0, created_by = ? WHERE id = ?`,
+        [dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), needsMeeting, meetingReason, createdBy, existing[0].id]
       );
     } else {
+      const needsMeeting = sheet.needs_meeting ? 1 : 0;
+      const meetingReason = sheet.meeting_reason || null;
       await pool.execute(
-        `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, targets, scenario, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), createdBy]
+        `INSERT INTO status_sheets (user_id, period_from, period_to, current_status, training_plan, next_steps, targets, scenario, needs_meeting, meeting_reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [op.id, dateFrom, dateTo, JSON.stringify(sheet.current_status || {}), JSON.stringify(sheet.training_plan || {}), JSON.stringify(sheet.next_steps || []), JSON.stringify(sheet.targets || null), JSON.stringify(sheet.scenario || null), needsMeeting, meetingReason, createdBy]
       );
     }
   } catch (dbErr) {
@@ -557,7 +561,7 @@ const getStatusSheets = async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT ss.id, ss.user_id, u.name as user_name, u.operator_level, ss.period_from, ss.period_to,
               ss.current_status, ss.training_plan, ss.next_steps, ss.targets, ss.scenario,
-              ss.is_published, ss.needs_meeting, ss.meeting_scheduled_date, ss.meeting_completed,
+              ss.is_published, ss.needs_meeting, ss.meeting_scheduled_date, ss.meeting_completed, ss.meeting_reason,
               ss.created_at, ss.updated_at, cb.name as created_by_name
        FROM status_sheets ss
        JOIN users u ON ss.user_id = u.id
