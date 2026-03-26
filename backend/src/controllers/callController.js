@@ -526,11 +526,15 @@ const refreshTranscriptsBulk = async (req, res, next) => {
     }
 
     const eligible = rows.filter(r => r.phone_number && r.call_started_at);
-    let found = 0;
     const transcriptMap = await findTranscriptsBatch(eligible);
-    for (const [callId, transcript] of transcriptMap) {
-      await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
-      found++;
+    const found = transcriptMap.size;
+    // バッチ更新（並列5件ずつ）
+    const entries = Array.from(transcriptMap.entries());
+    for (let i = 0; i < entries.length; i += 5) {
+      const batch = entries.slice(i, i + 5);
+      await Promise.all(batch.map(([callId, transcript]) =>
+        pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId])
+      ));
     }
 
     logger.info(`文字起こし一括取得: ${found}/${eligible.length}件`);

@@ -2,7 +2,7 @@
  * 育成ステータスシート管理ページ
  * 各オペレーターの育成状況・プラン・ネクストステップを一覧・生成・編集
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
@@ -27,7 +27,7 @@ export default function StatusSheetsPage() {
   const [publishingId, setPublishingId] = useState(null);
   const [editingTargets, setEditingTargets] = useState(null); // userId being edited
   const [targetForm, setTargetForm] = useState({});
-  const [sortedEntries, setSortedEntries] = useState([]);
+  // sortedEntries is now useMemo (below)
 
   // チーム目標
   const [teamTargets, setTeamTargets] = useState(null);
@@ -187,56 +187,33 @@ export default function StatusSheetsPage() {
     }
   };
 
-  // ソート済みエントリをsheets/operators/trainingData変更時に計算
-  useEffect(() => {
-    if (!operators.length) return;
-    // user_idの重複を排除
-    const seenUserIds = new Set();
-    const uniqueSheets = sheets.filter(s => {
-      if (seenUserIds.has(s.user_id)) return false;
-      seenUserIds.add(s.user_id);
-      return true;
-    });
-    const sheetUserIds = new Set(uniqueSheets.map(s => s.user_id));
+  // ソート済みエントリ（operatorsベースで1人1エントリ保証）
+  const sortedEntries = useMemo(() => {
+    if (!operators.length) return [];
+    const sheetMap = new Map();
+    sheets.forEach(s => { if (!sheetMap.has(s.user_id)) sheetMap.set(s.user_id, s); });
     const levelOrder = { '初級': 0, '中級': 1, '上級': 2, 'リーダー': 2 };
-    // operators から重複排除してプレースホルダー追加
-    const uniqueOps = operators.filter(op => !sheetUserIds.has(op.id));
-    const seenOps = new Set();
-    const dedupedOps = uniqueOps.filter(op => {
-      if (seenOps.has(op.id)) return false;
-      seenOps.add(op.id);
-      return true;
-    });
-
-    const entries = [
-      ...uniqueSheets,
-      ...dedupedOps.map(op => ({
+    const entries = operators.map(op => {
+      const sheet = sheetMap.get(op.id);
+      if (sheet) return { ...sheet, operator_level: op.operator_level || sheet.operator_level };
+      return {
         id: null, user_id: op.id, user_name: op.name, operator_level: op.operator_level || null,
         current_status: null, training_plan: null, next_steps: null, targets: null, scenario: null,
         updated_at: null, period_from: null, period_to: null, _placeholder: true,
-      }))
-    ];
-
-    // 最終重複排除
-    const finalSeen = new Set();
-    const dedupedEntries = entries.filter(e => {
-      if (finalSeen.has(e.user_id)) return false;
-      finalSeen.add(e.user_id);
-      return true;
+      };
     });
-
-    dedupedEntries.sort((a, b) => {
+    entries.sort((a, b) => {
       const la = levelOrder[a.operator_level] ?? 99;
       const lb = levelOrder[b.operator_level] ?? 99;
       if (la !== lb) return la - lb;
       if (a.operator_level === '初級') {
         const aC = (trainingData[a.user_id] || []).filter(s => s.is_completed).length;
         const bC = (trainingData[b.user_id] || []).filter(s => s.is_completed).length;
-        return aC - bC;
+        if (aC !== bC) return aC - bC;
       }
       return (a.user_name || '').localeCompare(b.user_name || '');
     });
-    setSortedEntries(dedupedEntries);
+    return entries;
   }, [sheets, operators, trainingData]);
 
   const handleStartTargetEdit = (userId) => {
