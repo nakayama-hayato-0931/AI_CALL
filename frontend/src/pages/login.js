@@ -73,7 +73,7 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           <div className="w-14 h-14 bg-white/10 border-2 border-white/40 backdrop-blur-sm rounded-xl flex items-center justify-center mb-8">
-            <img src="/logo.svg" alt="Hitokiwa" className="w-8 h-8 invert" />
+            <img src="/logo-white.svg" alt="Hitokiwa" className="w-8 h-8" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Hitokiwa AI CallCenter</h1>
           <p className="text-blue-100/80 text-sm leading-relaxed">
@@ -107,7 +107,7 @@ export default function LoginPage() {
         <div className="w-full max-w-[380px]">
           <div className="lg:hidden mb-8 text-center">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/20">
-              <img src="/logo.svg" alt="Hitokiwa" className="w-7 h-7 invert" />
+              <img src="/logo-white.svg" alt="Hitokiwa" className="w-7 h-7" />
             </div>
             <h1 className="text-xl font-bold text-gray-900">Hitokiwa AI CallCenter</h1>
           </div>

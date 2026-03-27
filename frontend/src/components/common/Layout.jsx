@@ -194,7 +194,7 @@ export default function Layout({ children }) {
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/[0.12]">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 bg-white/10 border-2 border-white/40 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
-              <img src="/logo.svg" alt="Hitokiwa" className="w-5 h-5 invert" />
+              <img src="/logo-white.svg" alt="Hitokiwa" className="w-5 h-5" />
             </div>
             {sidebarOpen && (
               <div className="whitespace-nowrap">
