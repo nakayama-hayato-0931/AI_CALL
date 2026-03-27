@@ -73,7 +73,7 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           <div className="w-14 h-14 bg-white/10 border-2 border-white/40 backdrop-blur-sm rounded-xl flex items-center justify-center mb-8">
-            <img src="/logo-white.svg" alt="Hitokiwa" className="w-8 h-8" />
+            <img src="/logo-icon.png" alt="Hitokiwa" className="w-9 h-9 rounded-lg" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Hitokiwa AI CallCenter</h1>
           <p className="text-blue-100/80 text-sm leading-relaxed">
