@@ -72,9 +72,7 @@ export default function LoginPage() {
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full translate-y-1/3 -translate-x-1/3" />
 
         <div className="relative z-10">
-          <div className="w-14 h-14 bg-white/10 border-2 border-white/40 backdrop-blur-sm rounded-xl flex items-center justify-center mb-8">
-            <img src="/logo-icon.png" alt="Hitokiwa" className="w-9 h-9 rounded-lg" />
-          </div>
+          <img src="/logo-icon.png" alt="Hitokiwa" className="w-16 h-16 rounded-2xl shadow-lg shadow-black/10 mb-8" />
           <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Hitokiwa AI CallCenter</h1>
           <p className="text-blue-100/80 text-sm leading-relaxed">
             法人営業の架電効率を最大化する<br />AIコールセンター管理システム
