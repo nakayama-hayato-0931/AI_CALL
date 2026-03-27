@@ -162,8 +162,10 @@ const getDailyStats = async (req, res, next) => {
     // ユーザー条件
     let userCondition = '';
     let userParams = [];
+    let userJoin = '';
     if (scope === 'team') {
-      // 全ユーザー → user_id条件なし
+      // 全ユーザー → テストアカウントを除外
+      userJoin = 'JOIN users u ON c.user_id = u.id AND u.is_test_account = 0';
     } else if (scope === 'operator' && targetUserId) {
       userCondition = 'AND c.user_id = ?';
       userParams = [targetUserId];
@@ -183,6 +185,7 @@ const getDailyStats = async (req, res, next) => {
          CAST(SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_count,
          CAST(SUM(CASE WHEN is_project_created = 1 THEN 1 ELSE 0 END) AS SIGNED) as project_count
        FROM calls c
+       ${userJoin}
        WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
          ${userCondition}`,
       [dateFrom, dateTo, ...userParams]
@@ -229,8 +232,9 @@ const getDailyStats = async (req, res, next) => {
              ) - COALESCE(break_minutes, 0)
            ) as total_minutes,
            COUNT(*) as entry_count
-         FROM work_hours
-         WHERE date BETWEEN ? AND ?`,
+         FROM work_hours wh
+         JOIN users u ON wh.user_id = u.id AND u.is_test_account = 0
+         WHERE wh.date BETWEEN ? AND ?`,
         [dateFrom, dateTo]
       );
       if (whTeamRows[0] && whTeamRows[0].total_minutes) {
@@ -514,9 +518,13 @@ const getHourlyIndustryConnections = async (req, res, next) => {
 const getWorkHours = async (req, res, next) => {
   try {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
+    // 管理者/マネージャーは他ユーザーの稼働時間を参照可能
+    const targetUserId = (req.query.user_id && (req.user.role === 'admin' || req.user.role === 'manager'))
+      ? req.query.user_id
+      : req.user.id;
     const [rows] = await pool.execute(
       'SELECT start_time, end_time, break_minutes FROM work_hours WHERE user_id = ? AND date = ?',
-      [req.user.id, date]
+      [targetUserId, date]
     );
     return ApiResponse.success(res, rows[0] || null);
   } catch (err) {
@@ -530,18 +538,22 @@ const getWorkHours = async (req, res, next) => {
  */
 const saveWorkHours = async (req, res, next) => {
   try {
-    const { date, start_time, end_time, break_minutes } = req.body;
+    const { date, start_time, end_time, break_minutes, user_id } = req.body;
     if (!date || !start_time || !end_time) {
       return ApiResponse.badRequest(res, '日付・開始時間・終了時間は必須です');
     }
+    // 管理者/マネージャーは他ユーザーの稼働時間を編集可能
+    const targetUserId = (user_id && (req.user.role === 'admin' || req.user.role === 'manager'))
+      ? user_id
+      : req.user.id;
     const breakMin = parseInt(break_minutes) || 0;
     await pool.execute(
       `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes)
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
-      [req.user.id, date, start_time, end_time, breakMin]
+      [targetUserId, date, start_time, end_time, breakMin]
     );
-    return ApiResponse.success(res, { date, start_time, end_time, break_minutes: breakMin }, '稼働時間を保存しました');
+    return ApiResponse.success(res, { user_id: targetUserId, date, start_time, end_time, break_minutes: breakMin }, '稼働時間を保存しました');
   } catch (err) {
     next(err);
   }

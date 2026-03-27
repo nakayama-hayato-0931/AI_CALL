@@ -114,6 +114,9 @@ export default function DashboardPage() {
   const [breakMinutes, setBreakMinutes] = useState(60);
   const [savingWorkHours, setSavingWorkHours] = useState(false);
 
+  // 管理者用: オペレーター稼働時間編集
+  const [adminWorkHoursTarget, setAdminWorkHoursTarget] = useState(null); // { user_id, name }
+
   // 時間文字列を分に変換するヘルパー
   const parseTimeToMinutes = (t) => {
     const [h, m] = (t || '0:0').split(':').map(Number);
@@ -130,21 +133,56 @@ export default function DashboardPage() {
   const handleSaveWorkHours = async () => {
     setSavingWorkHours(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      await api.post('/api/dashboard/work-hours', {
-        date: today, start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0,
-      });
-      setStats(prev => ({
-        ...prev,
-        manualWorkHours: { start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0 },
-      }));
+      const targetDate = adminWorkHoursTarget ? kpiDate : new Date().toISOString().slice(0, 10);
+      const payload = {
+        date: targetDate, start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0,
+      };
+      // 管理者が他ユーザーの稼働時間を編集する場合
+      if (adminWorkHoursTarget) {
+        payload.user_id = adminWorkHoursTarget.user_id;
+      }
+      await api.post('/api/dashboard/work-hours', payload);
+      if (adminWorkHoursTarget) {
+        // 管理者テーブルを再取得
+        await fetchPerfData();
+        toast.success(`${adminWorkHoursTarget.name}の稼働時間を保存しました`);
+      } else {
+        setStats(prev => ({
+          ...prev,
+          manualWorkHours: { start_time: workStartTime, end_time: workEndTime, break_minutes: parseInt(breakMinutes) || 0 },
+        }));
+        toast.success('稼働時間を保存しました');
+      }
       setShowWorkHoursModal(false);
-      toast.success('稼働時間を保存しました');
+      setAdminWorkHoursTarget(null);
     } catch (err) {
       toast.error('保存に失敗しました');
     } finally {
       setSavingWorkHours(false);
     }
+  };
+
+  // 管理者: オペレーターの稼働時間編集モーダルを開く
+  const openAdminWorkHoursModal = async (op) => {
+    setAdminWorkHoursTarget({ user_id: op.user_id, name: op.name });
+    // 既存の稼働時間を取得
+    try {
+      const { data: res } = await api.get(`/api/dashboard/work-hours?date=${kpiDate}&user_id=${op.user_id}`);
+      if (res.data) {
+        setWorkStartTime(res.data.start_time || '09:30');
+        setWorkEndTime(res.data.end_time || '18:00');
+        setBreakMinutes(res.data.break_minutes ?? 60);
+      } else {
+        setWorkStartTime('09:30');
+        setWorkEndTime('18:00');
+        setBreakMinutes(60);
+      }
+    } catch {
+      setWorkStartTime('09:30');
+      setWorkEndTime('18:00');
+      setBreakMinutes(60);
+    }
+    setShowWorkHoursModal(true);
   };
 
   // コールデータコピー（値のみ改行区切り）
@@ -489,7 +527,18 @@ export default function DashboardPage() {
                           <span className="font-medium text-gray-800">{op.name}</span>
                         </div>
                       </td>
-                      <td className="table-cell text-right">{workH !== '-' ? `${workH}h` : '-'}</td>
+                      <td className="table-cell text-right">
+                        <button
+                          onClick={() => openAdminWorkHoursModal(op)}
+                          className="inline-flex items-center gap-1 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer group"
+                          title={`${op.name}の稼働時間を編集`}
+                        >
+                          <span>{workH !== '-' ? `${workH}h` : '-'}</span>
+                          <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                      </td>
                       <td className={`table-cell text-right ${targetColor(phNum(op.total_calls), 18)}`}>{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
                       <td className="table-cell text-right">{op.recall_done || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_done || 0)}/h</span></td>
@@ -635,9 +684,12 @@ export default function DashboardPage() {
 
       {/* 稼働時間入力モーダル */}
       {showWorkHoursModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowWorkHoursModal(false)}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => { setShowWorkHoursModal(false); setAdminWorkHoursTarget(null); }}>
           <div className="bg-white rounded-xl shadow-xl p-5 w-80 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-gray-800 mb-4">稼働時間を入力</h3>
+            <h3 className="text-sm font-bold text-gray-800 mb-4">
+              {adminWorkHoursTarget ? `${adminWorkHoursTarget.name}の稼働時間を入力` : '稼働時間を入力'}
+              {adminWorkHoursTarget && <span className="block text-[11px] font-normal text-gray-400 mt-0.5">{kpiDate}</span>}
+            </h3>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
@@ -662,7 +714,7 @@ export default function DashboardPage() {
               )}
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={() => setShowWorkHoursModal(false)}
+              <button onClick={() => { setShowWorkHoursModal(false); setAdminWorkHoursTarget(null); }}
                 className="flex-1 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
                 キャンセル
               </button>

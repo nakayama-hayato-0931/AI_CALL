@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" fill="currentColor">
+  <!-- Head -->
+  <circle cx="52" cy="18" r="8" />
+  <!-- Main sweeping body curve -->
+  <path d="M35 10 C20 30, 15 60, 30 90 C35 100, 45 105, 55 95 C40 85, 38 65, 45 45 C48 35, 55 25, 65 30 C50 15, 40 12, 35 10Z" />
+  <!-- Lower C-shaped curve -->
+  <path d="M55 42 C70 35, 80 50, 70 65 C65 72, 55 70, 52 62 C58 58, 62 52, 58 45 C56 42, 55 42, 55 42Z" />
+</svg>

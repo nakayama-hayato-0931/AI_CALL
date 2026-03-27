@@ -20,6 +20,12 @@ const startCall = async (req, res, next) => {
       return ApiResponse.badRequest(res, '企業IDは必須です');
     }
 
+    // テストアカウント: DBに書き込まずダミーIDを返す
+    if (req.user.isTestAccount) {
+      logger.info(`[TEST] 架電開始(テスト): user=${userId}, company=${company_id}`);
+      return ApiResponse.created(res, { callId: `test-${Date.now()}` }, '架電を開始しました（テストモード）');
+    }
+
     // 企業存在チェック + ロック検証
     const [companies] = await pool.execute(
       'SELECT id, locked_by_user_id FROM companies WHERE id = ?',
@@ -71,6 +77,13 @@ const startCall = async (req, res, next) => {
  * 通話結果を登録（ロックも解除）
  */
 const endCall = async (req, res, next) => {
+  // テストアカウント: DBに書き込まずダミーレスポンスを返す
+  if (req.user.isTestAccount) {
+    const { result_code } = req.body;
+    logger.info(`[TEST] 通話結果登録(テスト): call=${req.params.id}, result=${result_code}`);
+    return ApiResponse.success(res, { callId: req.params.id, projectId: result_code === 'PROJECT' ? `test-proj-${Date.now()}` : null }, '通話結果を保存しました（テストモード）');
+  }
+
   const conn = await pool.getConnection();
   try {
     const { id } = req.params;
@@ -195,6 +208,11 @@ const endCall = async (req, res, next) => {
  * 結果未入力のまま架電終了 → callsレコードを削除
  */
 const cancelCall = async (req, res, next) => {
+  // テストアカウント: そもそもDBにデータがないので即成功
+  if (req.user.isTestAccount) {
+    return ApiResponse.success(res, null, '通話記録を取り消しました（テストモード）');
+  }
+
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -242,6 +260,12 @@ const cancelCallBeacon = async (req, res, next) => {
  * 架電スキップ（通話せずに記録、ロック解除）
  */
 const skipCall = async (req, res, next) => {
+  // テストアカウント: DB書き込みスキップ
+  if (req.user.isTestAccount) {
+    logger.info(`[TEST] 架電スキップ(テスト): user=${req.user.id}, company=${req.body.company_id}`);
+    return ApiResponse.success(res, null, 'スキップしました（テストモード）');
+  }
+
   const conn = await pool.getConnection();
   try {
     const { company_id, memo } = req.body;
@@ -458,7 +482,7 @@ const updateCall = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 ORDER BY name"
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 AND is_test_account = 0 ORDER BY name"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {

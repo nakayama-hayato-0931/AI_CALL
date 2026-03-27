@@ -199,7 +199,7 @@ const runMigrations = async () => {
   }
   // 既存オペレーターの研修進捗を初期化
   try {
-    const [ops] = await pool.query("SELECT id FROM users WHERE role = 'operator' AND is_active = 1");
+    const [ops] = await pool.query("SELECT id FROM users WHERE role = 'operator' AND is_active = 1 AND is_test_account = 0");
     const steps = [
       [1, '座学研修/サービス理解'], [2, 'トークスクリプト読み込み'], [3, 'ロープレ'],
       [4, 'コールシステム説明'], [5, '架電開始'], [6, '改善点フィードバック'], [7, '面談実施'],

@@ -54,6 +54,8 @@ export default function CallPage() {
   const [callId, setCallId] = useState(null);
   const [calling, setCalling] = useState(false);
   const [autoMode, setAutoMode] = useState(false);
+  const [autoPaused, setAutoPaused] = useState(false);
+  const autoPausedRef = useRef(false);
 
   // 結果入力
   const [resultCode, setResultCode] = useState('');
@@ -401,6 +403,8 @@ export default function CallPage() {
       setCallId(data.data.callId);
       setCalling(true);
       setAutoMode(true);
+      setAutoPaused(false);
+      autoPausedRef.current = false;
       // ZoomPhone起動: zoomphonecall://電話番号 でZoom Phoneアプリを起動
       const phoneForZoom = company.phone_number.startsWith('0')
         ? '+81' + company.phone_number.slice(1)
@@ -438,6 +442,7 @@ export default function CallPage() {
       toast.success('通話結果を保存しました');
       const prevId = selectedTargetId;
       const wasAutoMode = autoMode;
+      const wasPaused = autoPausedRef.current;
 
       // フォームを即座にリセット（次の架電先に引き継がないようにする）
       resetForm();
@@ -445,6 +450,8 @@ export default function CallPage() {
       // 興味あり: Gmail開く + 自動架電停止
       if (resultCode === 'INTERESTED') {
         setAutoMode(false);
+        setAutoPaused(false);
+        autoPausedRef.current = false;
         setCalling(false);
         setCallId(null);
         window.open(GMAIL_URL, '_blank');
@@ -455,6 +462,8 @@ export default function CallPage() {
       // 案件化: ダッシュボード+Gmail開く + モーダル表示 + 自動架電停止
       if (resultCode === 'PROJECT') {
         setAutoMode(false);
+        setAutoPaused(false);
+        autoPausedRef.current = false;
         setCalling(false);
         setCallId(null);
         window.open(DASHBOARD_URL, '_blank');
@@ -469,9 +478,13 @@ export default function CallPage() {
       setCalling(false);
       setCallId(null);
 
-      if (wasAutoMode) {
+      if (wasAutoMode && !wasPaused) {
         // 自動架電モード: 次へ進み自動で架電開始
         await autoAdvanceAndCall(prevId);
+      } else if (wasAutoMode && wasPaused) {
+        // 一時停止中: 次の架電先に進むが架電はしない
+        await autoAdvanceToNext(prevId);
+        toast('一時停止中です。再開ボタンで自動架電を再開できます。', { icon: '⏸️' });
       } else {
         // 手動モード: 次の架電先に進むだけ（架電開始は手動）
         await autoAdvanceToNext(prevId);
@@ -728,8 +741,10 @@ export default function CallPage() {
                     <div className="absolute inset-0 w-36 h-36 rounded-full bg-red-400/30 pulse-ring" />
                     <button
                       onClick={() => {
-                        // 通話中状態を解除（callIdは保持 → 結果入力可能）
+                        // 通話中状態を解除 + 一時停止（callIdは保持 → 結果入力可能）
                         setCalling(false);
+                        setAutoPaused(true);
+                        autoPausedRef.current = true;
                       }}
                       className="relative w-36 h-36 rounded-full bg-gradient-to-br from-red-400 to-red-600 text-white text-lg font-bold shadow-lg shadow-red-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-red-500/30 active:scale-95 flex items-center justify-center"
                     >
@@ -737,7 +752,7 @@ export default function CallPage() {
                         <svg className="w-8 h-8 mx-auto mb-1.5" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M3.68 16.07l3.92-3.11c.28-.22.47-.56.47-.95v-3.56c2.67-.89 5.56-.89 8.23 0V12c0 .38.18.73.47.95l3.92 3.11c.56.45 1.4.06 1.4-.65V5.33c0-.36-.18-.7-.5-.87A18.03 18.03 0 0012 2.42c-3.27 0-6.38.85-9.09 2.43a.97.97 0 00-.5.87v9.72c0 .71.84 1.1 1.4.65l-.13.02z" />
                         </svg>
-                        <span className="text-sm font-bold">自動架電停止</span>
+                        <span className="text-sm font-bold">通話終了</span>
                       </div>
                     </button>
                   </div>
@@ -750,13 +765,49 @@ export default function CallPage() {
                   </div>
                 )}
                 {autoMode && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[11px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded-full">🔄 自動架電モード</span>
-                    <button
-                      onClick={() => setAutoMode(false)}
-                      className="text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-colors"
-                      title="自動架電を停止"
-                    >✕ 停止</button>
+                  <div className="mt-2 flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      {autoPaused ? (
+                        <span className="text-[11px] text-amber-600 font-medium bg-amber-50 px-2.5 py-1 rounded-full">⏸️ 一時停止中</span>
+                      ) : (
+                        <span className="text-[11px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded-full">🔄 自動架電モード</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {autoPaused ? (
+                        <button
+                          onClick={() => {
+                            setAutoPaused(false);
+                            autoPausedRef.current = false;
+                            // 企業が選択済みなら即座に架電開始
+                            if (company && !calling) {
+                              handleStartCall();
+                            }
+                          }}
+                          className="text-[11px] text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-full transition-colors font-medium"
+                        >▶ 再開</button>
+                      ) : (
+                        !calling && (
+                          <button
+                            onClick={() => {
+                              setAutoPaused(true);
+                              autoPausedRef.current = true;
+                              toast('一時停止しました', { icon: '⏸️' });
+                            }}
+                            className="text-[11px] text-amber-600 hover:bg-amber-50 px-2.5 py-1.5 rounded-full transition-colors font-medium border border-amber-200"
+                          >⏸ 一時停止</button>
+                        )
+                      )}
+                      <button
+                        onClick={() => {
+                          setAutoMode(false);
+                          setAutoPaused(false);
+                          autoPausedRef.current = false;
+                        }}
+                        className="text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50 px-2 py-1.5 rounded-full transition-colors"
+                        title="自動架電を完全停止"
+                      >✕ 停止</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -839,7 +890,7 @@ export default function CallPage() {
                     resultCode && callId ? 'btn-primary animate-pulse' : 'btn-primary'
                   }`}
                 >
-                  {autoMode ? '保存して次へ架電 ▶' : '保存して次へ'}
+                  {autoMode && !autoPaused ? '保存して次へ架電 ▶' : '保存して次へ'}
                 </button>
                 {resultCode && callId && (
                   <p className="text-xs text-red-500 text-center mt-1 font-medium">結果を保存してください</p>

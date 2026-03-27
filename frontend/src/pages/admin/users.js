@@ -120,6 +120,14 @@ export default function AdminUsers() {
     } catch (err) { toast.error('更新に失敗しました'); }
   };
 
+  const handleToggleTestAccount = async (u) => {
+    try {
+      await api.put(`/api/admin/users/${u.id}`, { is_test_account: u.is_test_account ? 0 : 1 });
+      toast.success(u.is_test_account ? 'テストモードを解除しました' : 'テストアカウントに設定しました');
+      fetchUsers();
+    } catch (err) { toast.error('更新に失敗しました'); }
+  };
+
   if (!user || user.role !== 'admin') return null;
 
   return (
@@ -273,6 +281,7 @@ export default function AdminUsers() {
               <th className="table-header">ランク</th>
               <th className="table-header">交通費</th>
               <th className="table-header">ステータス</th>
+              <th className="table-header">モード</th>
               <th className="table-header">作成日</th>
               <th className="table-header">操作</th>
             </tr>
@@ -280,7 +289,10 @@ export default function AdminUsers() {
           <tbody>
             {users.map(u => (
               <tr key={u.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
-                <td className="table-cell font-medium">{u.name}</td>
+                <td className="table-cell font-medium">
+                  {u.name}
+                  {u.is_test_account ? <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 text-amber-600 text-[10px] font-medium rounded-full">TEST</span> : null}
+                </td>
                 <td className="table-cell text-gray-500">{u.email || <span className="text-gray-300">-</span>}</td>
                 <td className="table-cell">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_STYLES[u.role] || 'bg-gray-100 text-gray-700'}`}>
@@ -309,6 +321,11 @@ export default function AdminUsers() {
                 <td className="table-cell">
                   <button onClick={() => handleToggleActive(u)} className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                     {u.is_active ? '有効' : '無効'}
+                  </button>
+                </td>
+                <td className="table-cell">
+                  <button onClick={() => handleToggleTestAccount(u)} className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.is_test_account ? 'bg-amber-100 text-amber-600' : 'bg-gray-50 text-gray-300'}`}>
+                    {u.is_test_account ? 'TEST' : '通常'}
                   </button>
                 </td>
                 <td className="table-cell text-gray-400">{new Date(u.created_at).toLocaleDateString('ja-JP')}</td>

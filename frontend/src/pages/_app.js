@@ -10,7 +10,7 @@ export default function App({ Component, pageProps }) {
   return (
     <>
       <Head>
-        <title>AI CallCenter</title>
+        <title>Hitokiwa AI CallCenter</title>
       </Head>
       <Toaster
         position="top-right"

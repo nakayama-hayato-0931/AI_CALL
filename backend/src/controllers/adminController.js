@@ -17,7 +17,7 @@ const { getDateRange } = require('../utils/periodHelper');
 const getUsers = async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, email, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at, updated_at FROM users ORDER BY created_at DESC'
+      'SELECT id, name, email, role, is_active, is_test_account, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -108,7 +108,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours } = req.body;
+    const { name, email, password, role, is_active, is_test_account, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours } = req.body;
 
     const [existing] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -141,6 +141,7 @@ const updateUser = async (req, res, next) => {
     if (email !== undefined) { updates.push('email = ?'); params.push(email || null); }
     if (role !== undefined) { updates.push('role = ?'); params.push(role); }
     if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active); }
+    if (is_test_account !== undefined) { updates.push('is_test_account = ?'); params.push(is_test_account ? 1 : 0); }
     if (operator_level !== undefined) { updates.push('operator_level = ?'); params.push(operator_level || null); }
     if (commute_type !== undefined) { updates.push('commute_type = ?'); params.push(commute_type || null); }
     if (commute_teiki_monthly !== undefined) { updates.push('commute_teiki_monthly = ?'); params.push(commute_teiki_monthly != null ? Number(commute_teiki_monthly) : null); }
@@ -271,7 +272,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
       FROM users u
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-      WHERE u.role = 'operator' AND u.is_active = 1
+      WHERE u.role = 'operator' AND u.is_active = 1 AND u.is_test_account = 0
       GROUP BY u.id, u.name
       ORDER BY u.id ASC`,
       [dateFrom, dateTo]

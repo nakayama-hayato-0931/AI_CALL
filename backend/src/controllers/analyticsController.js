@@ -222,7 +222,7 @@ const getQualityMetrics = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
+      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -451,7 +451,7 @@ const getCpaAll = async (req, res, next) => {
 
     // アクティブオペレーター（交通費情報含む）
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
+      "SELECT id, name, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // コスト（全員分一括）
@@ -683,7 +683,7 @@ const getQualityAll = async (req, res, next) => {
     }
 
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' ORDER BY id ASC"
+      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得

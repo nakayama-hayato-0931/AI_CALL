@@ -193,15 +193,13 @@ export default function Layout({ children }) {
         {/* ロゴエリア */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/[0.12]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 bg-white/10 border-2 border-white/40 rounded-xl flex items-center justify-center flex-shrink-0">
-              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-              </svg>
+            <div className="w-8 h-8 bg-white/10 border-2 border-white/40 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <img src="/logo.svg" alt="Hitokiwa" className="w-5 h-5 invert" />
             </div>
             {sidebarOpen && (
               <div className="whitespace-nowrap">
-                <span className="font-semibold text-sm text-white tracking-tight">AI CallCenter</span>
-                <span className="block text-[10px] text-white/50 font-medium -mt-0.5">CRM System</span>
+                <span className="font-semibold text-sm text-white tracking-tight">Hitokiwa</span>
+                <span className="block text-[10px] text-white/50 font-medium -mt-0.5">AI CallCenter</span>
               </div>
             )}
           </div>
@@ -280,6 +278,11 @@ export default function Layout({ children }) {
 
       {/* メインコンテンツ */}
       <main className="flex-1 overflow-auto">
+        {user.is_test_account && (
+          <div className="bg-amber-400 text-amber-900 text-center py-1.5 text-xs font-bold tracking-wide">
+            TEST MODE - データは記録されません
+          </div>
+        )}
         <div className="p-6 max-w-[1600px]">{children}</div>
       </main>
     </div>

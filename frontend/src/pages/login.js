@@ -72,12 +72,10 @@ export default function LoginPage() {
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full translate-y-1/3 -translate-x-1/3" />
 
         <div className="relative z-10">
-          <div className="w-12 h-12 bg-white/10 border-2 border-white/40 backdrop-blur-sm rounded-xl flex items-center justify-center mb-8">
-            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-            </svg>
+          <div className="w-14 h-14 bg-white/10 border-2 border-white/40 backdrop-blur-sm rounded-xl flex items-center justify-center mb-8">
+            <img src="/logo.svg" alt="Hitokiwa" className="w-8 h-8 invert" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">AI CallCenter</h1>
+          <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Hitokiwa AI CallCenter</h1>
           <p className="text-blue-100/80 text-sm leading-relaxed">
             法人営業の架電効率を最大化する<br />AIコールセンター管理システム
           </p>
@@ -109,11 +107,9 @@ export default function LoginPage() {
         <div className="w-full max-w-[380px]">
           <div className="lg:hidden mb-8 text-center">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/20">
-              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-              </svg>
+              <img src="/logo.svg" alt="Hitokiwa" className="w-7 h-7 invert" />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">AI CallCenter</h1>
+            <h1 className="text-xl font-bold text-gray-900">Hitokiwa AI CallCenter</h1>
           </div>
 
           {/* Step 1: ロール選択 */}
@@ -275,7 +271,7 @@ export default function LoginPage() {
             </>
           )}
 
-          <p className="text-xs text-gray-400 text-center mt-8">AI CallCenter CRM v1.0</p>
+          <p className="text-xs text-gray-400 text-center mt-8">Hitokiwa AI CallCenter v1.0</p>
         </div>
       </div>
     </div>

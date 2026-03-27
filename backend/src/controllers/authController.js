@@ -24,13 +24,13 @@ const login = async (req, res, next) => {
     if (user_id) {
       // オペレーター: user_id + password でログイン
       [rows] = await pool.execute(
-        'SELECT id, name, email, password_hash, role FROM users WHERE id = ? AND is_active = 1',
+        'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE id = ? AND is_active = 1',
         [user_id]
       );
     } else {
       // その他: email + password でログイン
       [rows] = await pool.execute(
-        'SELECT id, name, email, password_hash, role FROM users WHERE email = ? AND is_active = 1',
+        'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE email = ? AND is_active = 1',
         [email]
       );
     }
@@ -49,7 +49,7 @@ const login = async (req, res, next) => {
 
     // JWTトークン発行
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, isTestAccount: !!user.is_test_account },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
@@ -70,6 +70,7 @@ const login = async (req, res, next) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        is_test_account: !!user.is_test_account,
         operator_level: extra.operator_level,
         target_work_hours: extra.target_work_hours,
         target_calls_per_h: extra.target_calls_per_h,
@@ -90,7 +91,7 @@ const login = async (req, res, next) => {
 const getMe = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT id, name, email, role, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, role, is_test_account, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
 
@@ -111,7 +112,7 @@ const getMe = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 ORDER BY name ASC"
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {

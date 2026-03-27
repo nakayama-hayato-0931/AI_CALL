@@ -74,7 +74,7 @@ const getTeamAnalysis = async (req, res, next) => {
       FROM users u
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-      WHERE u.role = 'operator' AND u.is_active = 1
+      WHERE u.role = 'operator' AND u.is_active = 1 AND u.is_test_account = 0
       GROUP BY u.id, u.name
       ORDER BY total_calls DESC`,
       [dateFrom, dateTo]
@@ -522,7 +522,7 @@ const generateStatusSheets = async (req, res, next) => {
 
     // 全アクティブオペレーター取得
     const [operators] = await pool.query(
-      `SELECT u.id, u.name, u.operator_level FROM users u WHERE u.role = 'operator' AND u.is_active = 1 ORDER BY u.name`
+      `SELECT u.id, u.name, u.operator_level FROM users u WHERE u.role = 'operator' AND u.is_active = 1 AND u.is_test_account = 0 ORDER BY u.name`
     );
 
     if (operators.length === 0) {
@@ -635,7 +635,7 @@ const generateSingleStatusSheet = async (req, res, next) => {
 
     // オペレーター取得
     const [opRows] = await pool.query(
-      `SELECT id, name, operator_level FROM users WHERE id = ? AND role = 'operator' AND is_active = 1`,
+      `SELECT id, name, operator_level FROM users WHERE id = ? AND role = 'operator' AND is_active = 1 AND is_test_account = 0`,
       [userId]
     );
     if (opRows.length === 0) {
