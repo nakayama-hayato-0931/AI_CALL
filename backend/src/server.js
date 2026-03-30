@@ -33,6 +33,9 @@ const analyticsRoutes = require('./routes/analytics');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Railway等のリバースプロキシ対応（express-rate-limitに必要）
+app.set('trust proxy', 1);
+
 // ============================================
 // ミドルウェア
 // ============================================
