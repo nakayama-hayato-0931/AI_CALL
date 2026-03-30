@@ -468,7 +468,7 @@ export default function StatusSheetsPage() {
                         <p className={`text-sm font-medium ${sheet.needs_meeting && !sheet.meeting_completed ? 'text-red-600' : 'text-gray-800'}`}>
                           {sheet.user_name}
                         </p>
-                        {sheet.needs_meeting && !sheet.meeting_completed && (
+                        {!!sheet.needs_meeting && !sheet.meeting_completed && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded font-medium">要面談</span>
                         )}
                       </div>
