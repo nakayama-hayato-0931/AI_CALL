@@ -276,7 +276,7 @@ export default function Layout({ children }) {
 
       {/* メインコンテンツ */}
       <main className="flex-1 overflow-auto">
-        {user.is_test_account && (
+        {!!user.is_test_account && (
           <div className="bg-amber-400 text-amber-900 text-center py-1.5 text-xs font-bold tracking-wide">
             TEST MODE - データは記録されません
           </div>

@@ -256,10 +256,13 @@ const importCostCsv = async (req, res, next) => {
       await pool.execute('DELETE FROM cost_records WHERE date BETWEEN ? AND ?', [minDate, maxDate]);
     }
 
-    // ユーザー名→IDマッピング
+    // ユーザー名→IDマッピング（スペース除去で正規化して照合）
     const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
     const nameMap = new Map();
-    users.forEach(u => nameMap.set(u.name.trim(), u.id));
+    users.forEach(u => {
+      nameMap.set(u.name.trim(), u.id);
+      nameMap.set(u.name.replace(/\s+/g, ''), u.id);
+    });
 
     let imported = 0;
     let errors = [];
@@ -790,10 +793,14 @@ const importStampCsv = async (req, res, next) => {
       return ApiResponse.badRequest(res, '打刻ログCSVのフォーマットではありません。ヘッダーに「勤務区分」が必要です。');
     }
 
-    // ユーザー名→IDマッピング
+    // ユーザー名→IDマッピング（スペース除去で正規化して照合）
     const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
     const nameMap = new Map();
-    users.forEach(u => nameMap.set(u.name.trim(), u.id));
+    users.forEach(u => {
+      nameMap.set(u.name.trim(), u.id);
+      // スペース除去版も登録（CSVにスペースがない場合に対応）
+      nameMap.set(u.name.replace(/\s+/g, ''), u.id);
+    });
 
     // 打刻データをパース
     // { "2026-03-27_中田倫哉": { name, date, stamps: [{time, type}] } }
