@@ -60,6 +60,14 @@ export default function AnalyticsPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  // 任意期間
+  const [customFrom, setCustomFrom] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [customTo, setCustomTo] = useState(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
   const [tab, setTab] = useState('cpa'); // cpa | quality
 
   // 月別・累計用（単一データ）
@@ -78,6 +86,10 @@ export default function AnalyticsPage() {
   // PDF
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUploading, setPdfUploading] = useState(false);
+
+  // 打刻ログCSV
+  const [stampFile, setStampFile] = useState(null);
+  const [stampUploading, setStampUploading] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin' && user.role !== 'manager') {
@@ -104,6 +116,17 @@ export default function AnalyticsPage() {
         setWeeklyData(results);
         setCpaData(null);
         setQualData(null);
+      } else if (periodMode === 'custom') {
+        // 任意期間
+        if (!customFrom || !customTo) return;
+        const params = { period: 'custom', date_from: customFrom, date_to: customTo };
+        const [cpaRes, qualRes] = await Promise.all([
+          api.get('/api/analytics/cpa-all', { params }),
+          api.get('/api/analytics/quality-all', { params }),
+        ]);
+        setCpaData(cpaRes.data.data);
+        setQualData(qualRes.data.data);
+        setWeeklyData([]);
       } else {
         // 月別・累計
         const params = periodMode === 'monthly'
@@ -122,7 +145,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [periodMode, selectedMonth]);
+  }, [periodMode, selectedMonth, customFrom, customTo]);
 
   useEffect(() => {
     if (user && (user.role === 'admin' || user.role === 'manager')) {
@@ -171,6 +194,28 @@ export default function AnalyticsPage() {
       toast.error('PDFインポートに失敗しました');
     } finally {
       setPdfUploading(false);
+    }
+  };
+
+  const handleStampUpload = async () => {
+    if (!stampFile) return;
+    setStampUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', stampFile);
+      const { data } = await api.post('/api/analytics/import-stamp-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`打刻ログ: ${data.data.imported}件インポートしました`);
+      if (data.data.errors?.length > 0) {
+        data.data.errors.forEach(e => toast.error(e, { duration: 5000 }));
+      }
+      setStampFile(null);
+      fetchData();
+    } catch (err) {
+      toast.error('打刻ログインポートに失敗しました');
+    } finally {
+      setStampUploading(false);
     }
   };
 
@@ -336,6 +381,7 @@ export default function AnalyticsPage() {
                 { value: 'monthly', label: '月別' },
                 { value: 'weekly', label: '週別' },
                 { value: 'cumulative', label: '累計' },
+                { value: 'custom', label: '任意' },
               ].map(m => (
                 <button key={m.value}
                   onClick={() => setPeriodMode(m.value)}
@@ -346,14 +392,31 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* 月選択 */}
-          {periodMode !== 'cumulative' && (
+          {/* 月選択（月別・週別のみ） */}
+          {(periodMode === 'monthly' || periodMode === 'weekly') && (
             <div>
               <label className="input-label">月</label>
               <select className="input text-sm" value={selectedMonth}
                 onChange={e => setSelectedMonth(e.target.value)}>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
+            </div>
+          )}
+
+          {/* 任意期間の日付ピッカー */}
+          {periodMode === 'custom' && (
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="input-label">開始日</label>
+                <input type="date" className="input text-sm" value={customFrom}
+                  onChange={e => setCustomFrom(e.target.value)} />
+              </div>
+              <span className="pb-2 text-gray-400">〜</span>
+              <div>
+                <label className="input-label">終了日</label>
+                <input type="date" className="input text-sm" value={customTo}
+                  onChange={e => setCustomTo(e.target.value)} />
+              </div>
             </div>
           )}
 
@@ -398,6 +461,18 @@ export default function AnalyticsPage() {
             </button>
           </div>
           <span className="text-[10px] text-gray-400">PDF: 出勤表PDF（日付・名前・開始・終了・休憩を自動抽出）</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
+          <span className="text-xs text-gray-500 font-medium">打刻ログ取込:</span>
+          <div className="flex items-center gap-2">
+            <input type="file" accept=".csv" onChange={e => setStampFile(e.target.files?.[0] || null)}
+              className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 w-48" />
+            <button onClick={handleStampUpload} disabled={!stampFile || stampUploading}
+              className="px-3 py-1 text-xs font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-40 transition-colors whitespace-nowrap">
+              {stampUploading ? '処理中...' : '打刻ログ取込'}
+            </button>
+          </div>
+          <span className="text-[10px] text-gray-400">勤怠打刻ログCSV（Shift-JIS対応・出勤/退勤/休憩から稼働時間を自動計算）</span>
         </div>
       </div>
 

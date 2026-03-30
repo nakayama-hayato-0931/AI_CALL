@@ -759,4 +759,129 @@ const getQualityAll = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, getCpaAll, getQualityAll };
+/**
+ * POST /api/analytics/import-stamp-csv
+ * 勤怠打刻ログCSVインポート（Shift-JIS対応）
+ * CSV: 社員ID,打刻日時,勤務区分,打刻拠点,社員番号,氏名,部門,拠点,位置情報,デバイス
+ * 勤務区分: 出勤 / 退勤 / 休憩開始 / 休憩終了
+ */
+const importStampCsv = async (req, res, next) => {
+  try {
+    if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
+
+    const iconv = require('iconv-lite');
+    // Shift-JIS → UTF-8 変換（UTF-8の場合はそのまま）
+    let content;
+    const buf = req.file.buffer;
+    // BOM or ASCII header check
+    const head = buf.slice(0, 20).toString('utf-8');
+    if (head.includes('社員ID') || head.includes('打刻')) {
+      content = buf.toString('utf-8');
+    } else {
+      content = iconv.decode(buf, 'Shift_JIS');
+    }
+
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return ApiResponse.badRequest(res, 'データがありません');
+
+    // ヘッダー検証
+    const header = lines[0];
+    if (!header.includes('勤務区分')) {
+      return ApiResponse.badRequest(res, '打刻ログCSVのフォーマットではありません。ヘッダーに「勤務区分」が必要です。');
+    }
+
+    // ユーザー名→IDマッピング
+    const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
+    const nameMap = new Map();
+    users.forEach(u => nameMap.set(u.name.trim(), u.id));
+
+    // 打刻データをパース
+    // { "2026-03-27_中田倫哉": { name, date, stamps: [{time, type}] } }
+    const dayMap = new Map();
+
+    for (let i = 1; i < lines.length; i++) {
+      // CSV パース（ダブルクォート考慮）
+      const cols = lines[i].match(/(".*?"|[^,]*)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || [];
+      if (cols.length < 6) continue;
+
+      const stampDatetime = cols[1]; // 2026/03/27 18:28:48
+      const stampType = cols[2];     // 出勤/退勤/休憩開始/休憩終了
+      const name = cols[5];
+
+      if (!stampDatetime || !stampType || !name) continue;
+      if (!['出勤', '退勤', '休憩開始', '休憩終了'].includes(stampType)) continue;
+
+      // 日付と時刻を分離
+      const dtMatch = stampDatetime.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+      if (!dtMatch) continue;
+
+      const dateStr = `${dtMatch[1]}-${dtMatch[2]}-${dtMatch[3]}`;
+      const timeStr = `${dtMatch[4]}:${dtMatch[5]}`;
+      const key = `${dateStr}_${name}`;
+
+      if (!dayMap.has(key)) {
+        dayMap.set(key, { name, date: dateStr, stamps: [] });
+      }
+      dayMap.get(key).stamps.push({ time: timeStr, type: stampType, minutes: parseInt(dtMatch[4]) * 60 + parseInt(dtMatch[5]) });
+    }
+
+    // 日別・人別にcost_recordsを生成
+    const csvDates = new Set();
+    dayMap.forEach(v => csvDates.add(v.date));
+
+    if (csvDates.size > 0) {
+      const sortedDates = [...csvDates].sort();
+      await pool.execute('DELETE FROM cost_records WHERE date BETWEEN ? AND ?', [sortedDates[0], sortedDates[sortedDates.length - 1]]);
+    }
+
+    let imported = 0;
+    const errors = [];
+
+    for (const [key, entry] of dayMap) {
+      const userId = nameMap.get(entry.name);
+      if (!userId) {
+        errors.push(`${entry.date} ${entry.name}: ユーザーが見つかりません`);
+        continue;
+      }
+
+      const stamps = entry.stamps;
+      // 出勤時刻を探す
+      const arrival = stamps.find(s => s.type === '出勤');
+      const departure = stamps.find(s => s.type === '退勤');
+
+      if (!arrival || !departure) {
+        errors.push(`${entry.date} ${entry.name}: 出勤または退勤の打刻がありません`);
+        continue;
+      }
+
+      // 休憩時間を計算（休憩開始〜休憩終了のペア）
+      const breakStarts = stamps.filter(s => s.type === '休憩開始').sort((a, b) => a.minutes - b.minutes);
+      const breakEnds = stamps.filter(s => s.type === '休憩終了').sort((a, b) => a.minutes - b.minutes);
+      let breakMinutes = 0;
+      for (let b = 0; b < breakStarts.length; b++) {
+        if (b < breakEnds.length) {
+          breakMinutes += breakEnds[b].minutes - breakStarts[b].minutes;
+        }
+      }
+
+      try {
+        await pool.execute(
+          `INSERT INTO cost_records (user_id, date, start_time, end_time, break_minutes)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
+          [userId, entry.date, arrival.time, departure.time, breakMinutes]
+        );
+        imported++;
+      } catch (e) {
+        errors.push(`${entry.date} ${entry.name}: ${e.message}`);
+      }
+    }
+
+    logger.info(`打刻ログCSVインポート: ${imported}件成功, ${errors.length}件エラー`);
+    return ApiResponse.success(res, { imported, errors: errors.slice(0, 20) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll };
