@@ -33,6 +33,7 @@ export default function StatusSheetsPage() {
   const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, currentName: '' });
   const [generatingSingle, setGeneratingSingle] = useState(null);
   const [selectedOperator, setSelectedOperator] = useState('');
   const [expandedUser, setExpandedUser] = useState(null);
@@ -138,7 +139,10 @@ export default function StatusSheetsPage() {
       const opsToGenerate = operators.filter(op => !op.is_test_account);
       const withSheets = [];
       const skipped = [];
-      for (const op of opsToGenerate) {
+      setGenerateProgress({ current: 0, total: opsToGenerate.length, currentName: '' });
+      for (let idx = 0; idx < opsToGenerate.length; idx++) {
+        const op = opsToGenerate[idx];
+        setGenerateProgress({ current: idx, total: opsToGenerate.length, currentName: op.name });
         try {
           const { data } = await directApi.post(`/api/ai/analysis/status-sheets/${op.id}/generate`, {});
           if (data.success && data.data?.sheet) {
@@ -150,6 +154,7 @@ export default function StatusSheetsPage() {
           skipped.push({ name: op.name, message: err.response?.data?.message || 'エラー' });
         }
       }
+      setGenerateProgress(p => ({ ...p, current: p.total, currentName: '完了' }));
       await fetchSheets();
       if (withSheets.length > 0) {
         let msg = `${withSheets.length}件のステータスシートを生成しました。\n\n生成済み: ${withSheets.map(s => s.name).join('、')}`;
@@ -431,8 +436,23 @@ export default function StatusSheetsPage() {
             </button>
           </div>
         )}
-        {generating && (
-          <p className="text-xs text-gray-400 mt-2">全オペレーターのステータスシートをAIが生成中です。数分かかる場合があります。</p>
+        {generating && generateProgress.total > 0 && (
+          <div className="mt-3 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">
+                {generateProgress.currentName ? `生成中: ${generateProgress.currentName}` : '準備中...'}
+              </span>
+              <span className="text-blue-600 font-medium">
+                {generateProgress.current}/{generateProgress.total}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${(generateProgress.current / generateProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
         )}
         <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">ステータスシート生成時にAIが面談の要否を自動判定します</p>
       </div>
