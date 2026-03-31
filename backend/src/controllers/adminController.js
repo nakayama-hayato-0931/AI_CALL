@@ -43,7 +43,7 @@ const createUser = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'オペレーター以外はメールアドレスが必須です');
     }
 
-    const validRoles = ['admin', 'manager', 'operator', 'sales'];
+    const validRoles = ['admin', 'manager', 'operator', 'sales', 'consultant'];
     if (role && !validRoles.includes(role)) {
       return ApiResponse.badRequest(res, `ロールは ${validRoles.join(', ')} のいずれかを指定してください`);
     }
