@@ -21,13 +21,14 @@ export default function SalesPerformancePage() {
   const [loading, setLoading] = useState(true);
   const [periodMode, setPeriodMode] = useState('monthly');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedWeekDate, setSelectedWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) return;
     fetchData();
-  }, [user, periodMode, selectedMonth, customFrom, customTo]);
+  }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -38,6 +39,15 @@ export default function SalesPerformancePage() {
         const lastDay = new Date(y, m, 0).getDate();
         dateFrom = `${selectedMonth}-01`;
         dateTo = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      } else if (periodMode === 'weekly') {
+        const d = new Date(selectedWeekDate);
+        const day = d.getDay();
+        const mon = new Date(d);
+        mon.setDate(d.getDate() - ((day + 6) % 7));
+        const sun = new Date(mon);
+        sun.setDate(mon.getDate() + 6);
+        dateFrom = mon.toISOString().slice(0, 10);
+        dateTo = sun.toISOString().slice(0, 10);
       } else if (periodMode === 'cumulative') {
         dateFrom = '2000-01-01';
         dateTo = '2099-12-31';
@@ -73,6 +83,7 @@ export default function SalesPerformancePage() {
           <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
             {[
               { value: 'monthly', label: '月別' },
+              { value: 'weekly', label: '週別' },
               { value: 'cumulative', label: '累計' },
               { value: 'custom', label: '任意' },
             ].map(p => (
@@ -86,6 +97,10 @@ export default function SalesPerformancePage() {
             <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="input text-xs">
               {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
+          )}
+          {periodMode === 'weekly' && (
+            <input type="date" value={selectedWeekDate} onChange={e => setSelectedWeekDate(e.target.value)}
+              className="input text-xs" />
           )}
           {periodMode === 'custom' && (
             <>
