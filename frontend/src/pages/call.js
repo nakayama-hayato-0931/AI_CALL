@@ -71,6 +71,11 @@ export default function CallPage() {
   const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist' | 'special'
   const [selectedIndustry, setSelectedIndustry] = useState('');
 
+  // 特別リスト手動追加
+  const [showSpecialAdd, setShowSpecialAdd] = useState(false);
+  const [specialForm, setSpecialForm] = useState({ company_name: '', phone_number: '' });
+  const [specialAdding, setSpecialAdding] = useState(false);
+
   // 未保存の結果がある場合のページ離脱防止
   useEffect(() => {
     const hasUnsaved = !!resultCode && !!callId;
@@ -587,6 +592,57 @@ export default function CallPage() {
                     <option key={ind} value={ind}>{ind}</option>
                   ))}
                 </select>
+              )}
+              {pickupMode === 'special' && (
+                <div className="mt-2">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2">
+                    <p className="text-[10px] text-red-600 font-bold">失注やバラシになった案件に再架電する場合のみ使用可</p>
+                  </div>
+                  <button
+                    onClick={() => setShowSpecialAdd(!showSpecialAdd)}
+                    className="w-full text-[11px] text-blue-600 hover:bg-blue-50 py-1.5 rounded-md transition-colors font-medium"
+                  >{showSpecialAdd ? '閉じる' : '+ 手動追加'}</button>
+                  {showSpecialAdd && (
+                    <div className="mt-2 space-y-1.5">
+                      <input
+                        type="text"
+                        placeholder="企業名 *"
+                        value={specialForm.company_name}
+                        onChange={e => setSpecialForm(f => ({ ...f, company_name: e.target.value }))}
+                        className="input text-xs w-full"
+                      />
+                      <input
+                        type="text"
+                        placeholder="電話番号 *"
+                        value={specialForm.phone_number}
+                        onChange={e => setSpecialForm(f => ({ ...f, phone_number: e.target.value }))}
+                        className="input text-xs w-full"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!specialForm.company_name.trim() || !specialForm.phone_number.trim()) {
+                            toast.error('企業名と電話番号は必須です');
+                            return;
+                          }
+                          setSpecialAdding(true);
+                          try {
+                            await api.post('/api/csv/manual-special', specialForm);
+                            toast.success('特別リストに追加しました');
+                            setSpecialForm({ company_name: '', phone_number: '' });
+                            setShowSpecialAdd(false);
+                            fetchCallList();
+                          } catch (err) {
+                            toast.error(err.response?.data?.message || '追加に失敗しました');
+                          } finally {
+                            setSpecialAdding(false);
+                          }
+                        }}
+                        disabled={specialAdding}
+                        className="w-full btn-primary text-xs py-1.5 disabled:opacity-50"
+                      >{specialAdding ? '追加中...' : '追加'}</button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

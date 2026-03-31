@@ -45,7 +45,7 @@ router.post('/manual-exclusion', requireManager, manualAddExclusion);
 // POST /api/csv/import-special - 特別リストインポート (マネージャー以上)
 router.post('/import-special', requireManager, upload.single('file'), importSpecialList);
 
-// POST /api/csv/manual-special - 特別リスト手動登録 (マネージャー以上)
-router.post('/manual-special', requireManager, manualAddSpecial);
+// POST /api/csv/manual-special - 特別リスト手動登録 (全ユーザー: 失注・バラシ案件の再架電用)
+router.post('/manual-special', manualAddSpecial);
 
 module.exports = router;
