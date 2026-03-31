@@ -548,10 +548,10 @@ export default function StatusSheetsPage() {
                             className="w-4 h-4 text-red-600 border-gray-300 rounded" />
                           <span className="text-xs font-medium text-gray-700">要面談</span>
                         </label>
-                        {sheet.needs_meeting && !sheet.meeting_completed && sheet.meeting_reason && (
+                        {!!sheet.needs_meeting && !sheet.meeting_completed && sheet.meeting_reason && (
                           <span className="text-[10px] text-red-500 ml-2">{sheet.meeting_reason}</span>
                         )}
-                        {(sheet.needs_meeting || sheet.meeting_scheduled_date) && (
+                        {(!!sheet.needs_meeting || sheet.meeting_scheduled_date) && (
                           <>
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] text-gray-500">予定日:</span>
