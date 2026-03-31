@@ -465,10 +465,15 @@ export default function CallPage() {
       // 案件化: ダッシュボード+Gmail開く + モーダル表示 + 自動架電停止
       if (resultCode === 'PROJECT') {
         if (isProspect) {
-          // 見込案件: モーダル・Gmail・ダッシュボードは開かず、自動架電も続行可能
-          toast.success('見込案件として保存しました');
+          // 見込案件: Gmail・ダッシュボードは開かないが、モーダルは表示
+          setAutoMode(false);
+          setAutoPaused(false);
+          autoPausedRef.current = false;
           setCalling(false);
           setCallId(null);
+          setSavedProjectId(response.data.data.projectId);
+          setShowProjectModal(true);
+          toast.success('見込案件として保存しました');
         } else {
           setAutoMode(false);
           setAutoPaused(false);
