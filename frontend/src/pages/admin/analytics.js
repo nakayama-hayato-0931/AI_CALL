@@ -287,6 +287,36 @@ export default function AnalyticsPage() {
                 </td>
               ))}
             </tr>
+            {/* 平均行 */}
+            {(() => {
+              const activeOps = data.operators.filter(op => op.calls > 0 || op.cost > 0);
+              const n = activeOps.length || 1;
+              const avg = {};
+              cpaColumns.forEach(col => {
+                if (['projectRate', 'roas'].includes(col.key)) {
+                  // 率系は全体値をそのまま使わず個別平均
+                  const sum = activeOps.reduce((s, op) => s + (Number(op[col.key]) || 0), 0);
+                  avg[col.key] = sum / n;
+                } else {
+                  const sum = activeOps.reduce((s, op) => s + (Number(op[col.key]) || 0), 0);
+                  avg[col.key] = sum / n;
+                }
+              });
+              avg.workHours = activeOps.reduce((s, op) => s + (Number(op.workHours) || 0), 0) / n;
+              return (
+                <tr className="bg-amber-50/40 border-b-2 border-amber-200">
+                  <td className="py-2 px-3 font-bold text-amber-700 sticky left-0 z-10 bg-amber-50/40">平均</td>
+                  {cpaColumns.map(col => (
+                    <td key={col.key} className="py-2 px-3 text-right font-medium text-amber-700">
+                      {formatCell(Math.round(avg[col.key] * 10) / 10, col.format)}
+                      {col.key === 'cost' && avg.workHours > 0 && (
+                        <span className="text-[10px] text-amber-400 font-normal ml-1">{avg.workHours.toFixed(1)}h</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
             {/* 各オペレーター行 */}
             {data.operators.map((op, i) => (
               <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
@@ -341,6 +371,31 @@ export default function AnalyticsPage() {
                 </td>
               ))}
             </tr>
+            {/* 平均行 */}
+            {(() => {
+              const activeOps = data.operators.filter(op => op.total > 0);
+              const n = activeOps.length || 1;
+              const avg = {};
+              qualColumns.forEach(col => {
+                avg[col.key] = activeOps.reduce((s, op) => s + (Number(op[col.key]) || 0), 0) / n;
+                if (col.pctKey) {
+                  avg[col.pctKey] = activeOps.reduce((s, op) => s + (Number(op[col.pctKey]) || 0), 0) / n;
+                }
+              });
+              return (
+                <tr className="bg-amber-50/40 border-b-2 border-amber-200">
+                  <td className="py-2 px-3 font-bold text-amber-700 sticky left-0 z-10 bg-amber-50/40">平均</td>
+                  {qualColumns.map(col => (
+                    <td key={col.key} className="py-2 px-3 text-right font-medium text-amber-700">
+                      <span>{fmt(Math.round(avg[col.key] * 10) / 10)}</span>
+                      {col.pctKey && (
+                        <span className="ml-1 text-[10px] text-amber-400">({fmtPct(avg[col.pctKey])})</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
             {/* 各オペレーター行 */}
             {data.operators.map((op, i) => (
               <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
