@@ -891,4 +891,107 @@ const importStampCsv = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll };
+/**
+ * GET /api/analytics/sales-performance
+ * 営業別売上・内定・面接パフォーマンス一覧
+ */
+const getSalesPerformance = async (req, res, next) => {
+  try {
+    const { date_from, date_to } = req.query;
+    let dateFrom = '2000-01-01', dateTo = '2099-12-31';
+    if (date_from) dateFrom = date_from;
+    if (date_to) dateTo = date_to;
+
+    // 営業ユーザー一覧
+    const [salesUsers] = await pool.query(
+      "SELECT id, name FROM users WHERE role = 'sales' AND is_active = 1 ORDER BY name"
+    );
+
+    // 営業別集計クエリ
+    const [rows] = await pool.query(
+      `SELECT
+        p.sales_user_id,
+        COUNT(DISTINCT p.id) as total_projects,
+        CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
+        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+        COALESCE(SUM(p.interview_attendees), 0) as total_attendees,
+        CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
+      FROM projects p
+      WHERE p.is_legacy = 0 AND p.is_prospect = 0
+        AND p.sales_user_id IS NOT NULL
+        AND DATE(p.created_at) BETWEEN ? AND ?
+      GROUP BY p.sales_user_id`,
+      [dateFrom, dateTo]
+    );
+
+    // 内定者集計（国内/海外別）
+    const [hireRows] = await pool.query(
+      `SELECT
+        p.sales_user_id,
+        COUNT(*) as total_hires,
+        CAST(SUM(CASE WHEN ph.course IN ('国内','転職') THEN 1 ELSE 0 END) AS SIGNED) as domestic_hires,
+        CAST(SUM(CASE WHEN ph.course = '海外' THEN 1 ELSE 0 END) AS SIGNED) as overseas_hires,
+        COALESCE(SUM(ph.initial_payment), 0) as initial_payment,
+        COALESCE(SUM(ph.expected_revenue), 0) as expected_revenue
+      FROM project_hires ph
+      JOIN projects p ON ph.project_id = p.id
+      WHERE p.is_legacy = 0 AND p.is_prospect = 0
+        AND p.sales_user_id IS NOT NULL
+        AND ph.is_cancelled = 0
+        AND DATE(p.created_at) BETWEEN ? AND ?
+      GROUP BY p.sales_user_id`,
+      [dateFrom, dateTo]
+    );
+
+    // マージ
+    const projMap = new Map();
+    rows.forEach(r => projMap.set(r.sales_user_id, r));
+    const hireMap = new Map();
+    hireRows.forEach(r => hireMap.set(r.sales_user_id, r));
+
+    const salesData = salesUsers.map(su => {
+      const proj = projMap.get(su.id) || {};
+      const hire = hireMap.get(su.id) || {};
+      const interviews = Number(proj.interview_count) || 0;
+      const naiteiCo = Number(proj.naitei_companies) || 0;
+      const totalHires = Number(hire.total_hires) || 0;
+      return {
+        userId: su.id,
+        name: su.name,
+        naiteiCompanies: naiteiCo,
+        totalHires,
+        domesticHires: Number(hire.domestic_hires) || 0,
+        overseasHires: Number(hire.overseas_hires) || 0,
+        interviewCount: interviews,
+        totalAttendees: Number(proj.total_attendees) || 0,
+        passRate: interviews > 0 ? ((naiteiCo / interviews) * 100).toFixed(1) : '0',
+        hiresPerInterview: interviews > 0 ? (totalHires / interviews).toFixed(2) : '0',
+        barashiCount: Number(proj.barashi_count) || 0,
+        initialPayment: Number(hire.initial_payment) || 0,
+        expectedRevenue: Number(hire.expected_revenue) || 0,
+      };
+    });
+
+    // 合計行
+    const team = salesData.reduce((acc, s) => {
+      acc.naiteiCompanies += s.naiteiCompanies;
+      acc.totalHires += s.totalHires;
+      acc.domesticHires += s.domesticHires;
+      acc.overseasHires += s.overseasHires;
+      acc.interviewCount += s.interviewCount;
+      acc.totalAttendees += s.totalAttendees;
+      acc.barashiCount += s.barashiCount;
+      acc.initialPayment += s.initialPayment;
+      acc.expectedRevenue += s.expectedRevenue;
+      return acc;
+    }, { naiteiCompanies: 0, totalHires: 0, domesticHires: 0, overseasHires: 0, interviewCount: 0, totalAttendees: 0, barashiCount: 0, initialPayment: 0, expectedRevenue: 0 });
+    team.passRate = team.interviewCount > 0 ? ((team.naiteiCompanies / team.interviewCount) * 100).toFixed(1) : '0';
+    team.hiresPerInterview = team.interviewCount > 0 ? (team.totalHires / team.interviewCount).toFixed(2) : '0';
+
+    return ApiResponse.success(res, { team, sales: salesData, dateFrom, dateTo });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance };

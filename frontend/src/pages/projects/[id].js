@@ -36,7 +36,7 @@ export default function ProjectDetailPage() {
   const [callHistory, setCallHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    status: '', interview_date: '', interview_type: '',
+    status: '', interview_date: '', interview_type: '', interview_attendees: '',
     document_screening: '', mail_sent: '', mail_replied: '', phone_confirmed: '', job_number: '', memo: '',
     contact_person: '', contact_info: '', dashboard_checked: false,
   });
@@ -131,6 +131,7 @@ export default function ProjectDetailPage() {
         status: p.status || '',
         interview_date: p.interview_date ? p.interview_date.slice(0, 16) : '',
         interview_type: p.interview_type || '',
+        interview_attendees: p.interview_attendees || '',
         document_screening: p.document_screening || '',
         mail_sent: p.mail_sent ? p.mail_sent.slice(0, 10) : '',
         mail_replied: p.mail_replied ? p.mail_replied.slice(0, 10) : '',
@@ -159,6 +160,7 @@ export default function ProjectDetailPage() {
         ...form,
         interview_date: form.interview_date || null,
         interview_type: form.interview_type || null,
+        interview_attendees: form.interview_attendees ? Number(form.interview_attendees) : null,
         document_screening: form.document_screening || null,
         job_number: form.job_number || null,
         mail_sent: form.mail_sent || null,
@@ -412,6 +414,19 @@ export default function ProjectDetailPage() {
                       <option value="in_person">対面</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="input-label">面接人数</label>
+                    <input
+                      type="number" min="0"
+                      value={form.interview_attendees}
+                      onChange={(e) => setForm({ ...form, interview_attendees: e.target.value })}
+                      className="input"
+                      placeholder="人数"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="input-label">書類選考</label>
                     <select

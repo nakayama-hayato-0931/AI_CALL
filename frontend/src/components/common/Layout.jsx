@@ -105,6 +105,7 @@ const getNavSections = (role) => {
         label: '分析',
         items: [
           { href: '/admin/analytics', label: 'CPA/案件質分析', icon: 'performance' },
+          { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
           { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
           { href: '/admin/call-logs', label: '架電結果ログ', icon: 'log' },
           { href: '/admin/status-sheets', label: 'ステータスシート', icon: 'status' },

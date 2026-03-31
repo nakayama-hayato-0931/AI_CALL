@@ -194,6 +194,7 @@ const updateProject = async (req, res, next) => {
       contact_person,
       contact_info,
       dashboard_checked,
+      interview_attendees,
       // 企業情報の編集フィールド
       company_name,
       industry,
@@ -217,6 +218,7 @@ const updateProject = async (req, res, next) => {
 
     if (interview_date !== undefined) { updates.push('interview_date = ?'); updateParams.push(interview_date || null); }
     if (interview_type !== undefined) { updates.push('interview_type = ?'); updateParams.push(interview_type || null); }
+    if (interview_attendees !== undefined) { updates.push('interview_attendees = ?'); updateParams.push(interview_attendees || null); }
     if (document_screening !== undefined) { updates.push('document_screening = ?'); updateParams.push(document_screening || null); }
     if (mail_sent !== undefined) { updates.push('mail_sent = ?'); updateParams.push(mail_sent || null); }
     if (mail_replied !== undefined) { updates.push('mail_replied = ?'); updateParams.push(mail_replied || null); }
