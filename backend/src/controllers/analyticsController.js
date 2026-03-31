@@ -926,9 +926,10 @@ const getSalesPerformance = async (req, res, next) => {
     const [hireRows] = await pool.query(
       `SELECT
         p.sales_user_id,
-        COUNT(*) as total_hires,
-        CAST(SUM(CASE WHEN ph.course IN ('国内','転職') THEN 1 ELSE 0 END) AS SIGNED) as domestic_hires,
+        CAST(SUM(CASE WHEN ph.course != '転職' THEN 1 ELSE 0 END) AS SIGNED) as total_hires,
+        CAST(SUM(CASE WHEN ph.course = '国内' THEN 1 ELSE 0 END) AS SIGNED) as domestic_hires,
         CAST(SUM(CASE WHEN ph.course = '海外' THEN 1 ELSE 0 END) AS SIGNED) as overseas_hires,
+        CAST(SUM(CASE WHEN ph.course = '転職' THEN 1 ELSE 0 END) AS SIGNED) as tenshoku_hires,
         COALESCE(SUM(ph.initial_payment), 0) as initial_payment,
         COALESCE(SUM(ph.expected_revenue), 0) as expected_revenue
       FROM project_hires ph
@@ -960,6 +961,7 @@ const getSalesPerformance = async (req, res, next) => {
         totalHires,
         domesticHires: Number(hire.domestic_hires) || 0,
         overseasHires: Number(hire.overseas_hires) || 0,
+        tenshokuHires: Number(hire.tenshoku_hires) || 0,
         interviewCount: interviews,
         totalAttendees: Number(proj.total_attendees) || 0,
         passRate: interviews > 0 ? ((naiteiCo / interviews) * 100).toFixed(1) : '0',
@@ -976,13 +978,14 @@ const getSalesPerformance = async (req, res, next) => {
       acc.totalHires += s.totalHires;
       acc.domesticHires += s.domesticHires;
       acc.overseasHires += s.overseasHires;
+      acc.tenshokuHires += s.tenshokuHires;
       acc.interviewCount += s.interviewCount;
       acc.totalAttendees += s.totalAttendees;
       acc.barashiCount += s.barashiCount;
       acc.initialPayment += s.initialPayment;
       acc.expectedRevenue += s.expectedRevenue;
       return acc;
-    }, { naiteiCompanies: 0, totalHires: 0, domesticHires: 0, overseasHires: 0, interviewCount: 0, totalAttendees: 0, barashiCount: 0, initialPayment: 0, expectedRevenue: 0 });
+    }, { naiteiCompanies: 0, totalHires: 0, domesticHires: 0, overseasHires: 0, tenshokuHires: 0, interviewCount: 0, totalAttendees: 0, barashiCount: 0, initialPayment: 0, expectedRevenue: 0 });
     team.passRate = team.interviewCount > 0 ? ((team.naiteiCompanies / team.interviewCount) * 100).toFixed(1) : '0';
     team.hiresPerInterview = team.interviewCount > 0 ? (team.totalHires / team.interviewCount).toFixed(2) : '0';
 

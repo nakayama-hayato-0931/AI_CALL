@@ -52,6 +52,7 @@ export default function ProjectDetailPage() {
   const [hireEditing, setHireEditing] = useState(false);
   const [hireSaving, setHireSaving] = useState(false);
   const [showHireModal, setShowHireModal] = useState(false);
+  const [showFugokakuModal, setShowFugokakuModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -75,10 +76,16 @@ export default function ProjectDetailPage() {
     setHireSaving(true);
     try {
       await api.put(`/api/projects/${id}/hires`, { hires });
+      // 内定日・面接人数も同時に保存
+      await api.put(`/api/projects/${id}`, {
+        naitei_date: form.naitei_date || null,
+        interview_attendees: form.interview_attendees ? Number(form.interview_attendees) : null,
+      });
       toast.success('内定者情報を保存しました');
       setHireEditing(false);
       setShowHireModal(false);
       fetchHires();
+      fetchProject();
     } catch (err) {
       toast.error('内定者情報の保存に失敗しました');
     } finally {
@@ -338,6 +345,10 @@ export default function ProjectDetailPage() {
                       // 内定選択時にモーダルを自動表示（オペレーター以外、2026年3月以降の案件のみ）
                       if (newStatus === 'NAITEI' && !isOperator && project?.created_at && new Date(project.created_at) >= new Date('2026-03-01')) {
                         setTimeout(() => openHireModal(), 100);
+                      }
+                      // 不合格選択時に面接人数モーダルを自動表示
+                      if (newStatus === 'FUGOKAKU') {
+                        setTimeout(() => setShowFugokakuModal(true), 100);
                       }
                     }}
                     className="input"
@@ -612,17 +623,30 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">内定人数</label>
-                <select
-                  value={hireCount}
-                  onChange={(e) => handleHireCountChange(e.target.value)}
-                  className="input w-24 text-sm"
-                >
-                  {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
-                    <option key={n} value={n}>{n}名</option>
-                  ))}
-                </select>
+              {/* 内定日・面接人数 */}
+              <div className="grid grid-cols-3 gap-3 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">内定日 *</label>
+                  <input type="date" value={form.naitei_date}
+                    onChange={(e) => setForm({ ...form, naitei_date: e.target.value })}
+                    className="input text-sm mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">面接人数</label>
+                  <input type="number" min="0" value={form.interview_attendees}
+                    onChange={(e) => setForm({ ...form, interview_attendees: e.target.value })}
+                    className="input text-sm mt-0.5" placeholder="人数" />
+                </div>
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">内定人数</label>
+                  <select value={hireCount}
+                    onChange={(e) => handleHireCountChange(e.target.value)}
+                    className="input text-sm mt-0.5">
+                    {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
+                      <option key={n} value={n}>{n}名</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {hires.map((hire, idx) => (
@@ -719,6 +743,46 @@ export default function ProjectDetailPage() {
                   {hireSaving ? '保存中...' : '保存する'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 不合格時の面接人数入力モーダル */}
+      {showFugokakuModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowFugokakuModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-red-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-gray-900">面接結果: 不合格</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{project?.company_name}</p>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="text-xs text-gray-600 font-medium">面接人数 *</label>
+                <input type="number" min="1" value={form.interview_attendees}
+                  onChange={(e) => setForm({ ...form, interview_attendees: e.target.value })}
+                  className="input text-sm mt-1" placeholder="面接した人数" />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowFugokakuModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">キャンセル</button>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.put(`/api/projects/${id}`, {
+                      status: 'FUGOKAKU',
+                      interview_attendees: form.interview_attendees ? Number(form.interview_attendees) : null,
+                    });
+                    toast.success('面接結果を保存しました');
+                    setShowFugokakuModal(false);
+                    fetchProject();
+                  } catch (err) { toast.error('保存に失敗しました'); }
+                }}
+                disabled={!form.interview_attendees}
+                className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                保存
+              </button>
             </div>
           </div>
         </div>

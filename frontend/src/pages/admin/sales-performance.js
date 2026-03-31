@@ -159,6 +159,7 @@ export default function SalesPerformancePage() {
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">合計内定数</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">国内内定数</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">海外内定数</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">転職内定数</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">面接数</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">面接者数</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap bg-blue-50/50 text-blue-700">合格率</th>
@@ -176,6 +177,7 @@ export default function SalesPerformancePage() {
                   <td className="py-2.5 px-3 text-right font-bold text-blue-700">{data.team.totalHires}</td>
                   <td className="py-2.5 px-3 text-right font-bold text-blue-700">{data.team.domesticHires}</td>
                   <td className="py-2.5 px-3 text-right font-bold text-blue-700">{data.team.overseasHires}</td>
+                  <td className="py-2.5 px-3 text-right font-bold text-blue-700">{data.team.tenshokuHires}</td>
                   <ClickCell value={data.team.interviewCount} salesUserId={null} salesName="全体" type="interview" typeLabel="面接" className="font-bold text-blue-700" />
                   <td className="py-2.5 px-3 text-right font-bold text-blue-700">{data.team.totalAttendees}</td>
                   <td className="py-2.5 px-3 text-right font-bold text-blue-700 bg-blue-50/60">{data.team.passRate}%</td>
@@ -192,6 +194,7 @@ export default function SalesPerformancePage() {
                     <td className="py-2 px-3 text-right font-semibold">{s.totalHires}</td>
                     <td className="py-2 px-3 text-right">{s.domesticHires}</td>
                     <td className="py-2 px-3 text-right">{s.overseasHires}</td>
+                    <td className="py-2 px-3 text-right">{s.tenshokuHires}</td>
                     <ClickCell value={s.interviewCount} salesUserId={s.userId} salesName={s.name} type="interview" typeLabel="面接" />
                     <td className="py-2 px-3 text-right">{s.totalAttendees}</td>
                     <td className="py-2 px-3 text-right font-semibold bg-blue-50/30">{s.passRate}%</td>
