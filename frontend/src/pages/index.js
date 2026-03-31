@@ -623,22 +623,20 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-gray-100">
-                      <td className={`table-cell text-right cursor-pointer transition-colors group ${
+                      <td className={`table-cell text-right cursor-pointer transition-colors ${
                         !wh?.start_time && !wh?.totalMinutes && !stats?.workMinutes
                           ? 'bg-amber-50 hover:bg-amber-100'
                           : 'hover:bg-blue-50'
-                      }`} onClick={() => setShowWorkHoursModal(true)}>
+                      }`} onClick={() => setShowWorkHoursModal(true)} title="クリックで稼働時間を入力">
                         {!wh?.start_time && !wh?.totalMinutes && !stats?.workMinutes ? (
-                          <div>
-                            <span className="font-bold text-sm text-amber-600">0 <span className="text-xs font-medium">分</span></span>
-                            <p className="text-[9px] text-amber-500 group-hover:text-amber-700 font-medium animate-pulse">クリックで入力</p>
-                          </div>
+                          <>
+                            <span className="font-bold text-sm text-amber-600 animate-pulse">未入力</span>
+                          </>
                         ) : (
-                          <div>
+                          <>
                             <span className="font-bold text-sm">{displayWorkValue}</span>
                             <span className="text-gray-400 ml-0.5">{displayWorkSuffix}</span>
-                            <p className="text-[9px] text-blue-400 group-hover:text-blue-600">クリックで入力</p>
-                          </div>
+                          </>
                         )}
                       </td>
                       <td className="table-cell text-right">
