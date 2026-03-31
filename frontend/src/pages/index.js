@@ -629,9 +629,10 @@ export default function DashboardPage() {
                           : 'hover:bg-blue-50'
                       }`} onClick={() => setShowWorkHoursModal(true)} title="クリックで稼働時間を入力">
                         {!wh?.start_time && !wh?.totalMinutes && !stats?.workMinutes ? (
-                          <>
-                            <span className="font-bold text-sm text-amber-600 animate-pulse">未入力</span>
-                          </>
+                          <div>
+                            <span className="font-bold text-sm text-amber-600">未入力</span>
+                            <p className="text-[9px] text-amber-500 font-medium animate-pulse">稼働時間を入力してください</p>
+                          </div>
                         ) : (
                           <>
                             <span className="font-bold text-sm">{displayWorkValue}</span>
