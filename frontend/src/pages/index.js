@@ -228,8 +228,27 @@ export default function DashboardPage() {
     const d = new Date().getDate();
     return Math.min(Math.ceil(d / 7), 5);
   });
-  const [analysis, setAnalysis] = useState(null);
+  const [analysis, setAnalysis] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('dashboardAnalysis');
+        return saved ? JSON.parse(saved) : null;
+      } catch { return null; }
+    }
+    return null;
+  });
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // 分析結果をsessionStorageに保持
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (analysis) {
+        sessionStorage.setItem('dashboardAnalysis', JSON.stringify(analysis));
+      } else {
+        sessionStorage.removeItem('dashboardAnalysis');
+      }
+    }
+  }, [analysis]);
 
   // 月内の週リストを計算
   const getWeeksInMonth = (yearMonth) => {
