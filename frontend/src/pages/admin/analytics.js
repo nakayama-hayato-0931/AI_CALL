@@ -289,26 +289,28 @@ export default function AnalyticsPage() {
             </tr>
             {/* 平均行 */}
             {(() => {
-              const activeOps = data.operators.filter(op => op.calls > 0 || op.cost > 0);
+              const activeOps = data.operators.filter(op => op.callCount > 0 || op.cost > 0);
               const n = activeOps.length || 1;
-              const avg = {};
-              cpaColumns.forEach(col => {
-                if (['projectRate', 'roas'].includes(col.key)) {
-                  // 率系は全体値をそのまま使わず個別平均
-                  const sum = activeOps.reduce((s, op) => s + (Number(op[col.key]) || 0), 0);
-                  avg[col.key] = sum / n;
-                } else {
-                  const sum = activeOps.reduce((s, op) => s + (Number(op[col.key]) || 0), 0);
-                  avg[col.key] = sum / n;
-                }
+              // 合計値を先に計算
+              const sum = {};
+              ['cost', 'callCount', 'projectCount', 'interviewCount', 'naiteiCount', 'fugokakuCount', 'barashiLostCount', 'initialPayment', 'expectedRevenue'].forEach(k => {
+                sum[k] = activeOps.reduce((s, op) => s + (Number(op[k]) || 0), 0);
               });
-              avg.workHours = activeOps.reduce((s, op) => s + (Number(op.workHours) || 0), 0) / n;
+              sum.workHours = activeOps.reduce((s, op) => s + (Number(op.workHours) || 0), 0);
+              // 平均 = 合計 / 人数
+              const avg = {};
+              Object.keys(sum).forEach(k => { avg[k] = sum[k] / n; });
+              // 比率系は平均値から再計算（単純平均ではなく）
+              avg.projectRate = avg.callCount > 0 ? (avg.projectCount / avg.callCount * 100) : 0;
+              avg.projectCpa = avg.projectCount > 0 ? Math.round(avg.cost / avg.projectCount) : 0;
+              avg.interviewCpa = avg.interviewCount > 0 ? Math.round(avg.cost / avg.interviewCount) : 0;
+              avg.roas = avg.cost > 0 ? (avg.initialPayment / avg.cost * 100) : 0;
               return (
                 <tr className="bg-amber-50/40 border-b-2 border-amber-200">
                   <td className="py-2 px-3 font-bold text-amber-700 sticky left-0 z-10 bg-amber-50/40">平均</td>
                   {cpaColumns.map(col => (
                     <td key={col.key} className="py-2 px-3 text-right font-medium text-amber-700">
-                      {formatCell(Math.round(avg[col.key] * 10) / 10, col.format)}
+                      {formatCell(Math.round(avg[col.key] * 100) / 100, col.format)}
                       {col.key === 'cost' && avg.workHours > 0 && (
                         <span className="text-[10px] text-amber-400 font-normal ml-1">{avg.workHours.toFixed(1)}h</span>
                       )}
