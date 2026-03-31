@@ -3,10 +3,25 @@
  * KPI表示 + グラフ (時間帯別コール、業種別案件化率) + AI総合分析
  */
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+
+// AI分析用: バックエンドに直接リクエスト（Next.js rewriteプロキシのタイムアウト回避）
+const getDirectApi = () => {
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const instance = axios.create({ baseURL: backendUrl, timeout: 180000, headers: { 'Content-Type': 'application/json' } });
+  instance.interceptors.request.use((config) => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+  return instance;
+};
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -379,26 +394,26 @@ export default function DashboardPage() {
       setAnalysis(null);
       const range = calcAnalysisRange();
 
-      const aiTimeout = { timeout: 120000 }; // AI分析は最大120秒
+      const directApi = getDirectApi();
       if (analysisScope === 'team') {
-        const { data } = await api.post('/api/ai/analysis/team', {
+        const { data } = await directApi.post('/api/ai/analysis/team', {
           period: analysisPeriod,
           ...range,
-        }, aiTimeout);
+        });
         if (data.success) setAnalysis(data.data);
       } else if (analysisTargetUserId) {
         // データ取得
-        const { data } = await api.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
+        const { data } = await directApi.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
           params: { period: analysisPeriod, ...range },
         });
         if (data.success) {
           setAnalysis(data.data);
           // AIコーチングも同時に取得
           try {
-            const { data: coachData } = await api.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
+            const { data: coachData } = await directApi.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
               period: analysisPeriod,
               ...range,
-            }, aiTimeout);
+            });
             if (coachData.success) {
               setAnalysis(prev => ({ ...prev, coaching: coachData.data }));
             }
