@@ -34,7 +34,7 @@ const MODEL = 'claude-sonnet-4-6';
 /**
  * Claude API 呼び出しヘルパー（aiEvaluationService と同パターン）
  */
-const callClaude = async (systemPrompt, userContent, maxTokens = 2000, temperature = 0.4) => {
+const callClaude = async (systemPrompt, userContent, maxTokens = 4096, temperature = 0.4) => {
   const response = await anthropic.messages.create({
     model: MODEL,
     max_tokens: maxTokens,
@@ -46,8 +46,10 @@ const callClaude = async (systemPrompt, userContent, maxTokens = 2000, temperatu
   });
 
   const text = response.content[0].text;
+  logger.info(`Claude応答: stop_reason=${response.stop_reason}, length=${text.length}`);
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
+    logger.error('JSON抽出失敗。応答先頭500文字:', text.slice(0, 500));
     throw new Error('AIの応答からJSONを抽出できませんでした');
   }
   try {
