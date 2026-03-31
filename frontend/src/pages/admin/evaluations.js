@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
-import api from '../../utils/api';
+import api, { directApi } from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const PERIODS = [
@@ -162,10 +162,10 @@ export default function AdminEvaluations() {
       let hasMore = true;
       let isFirst = true;
       while (hasMore) {
-        const { data } = await api.post('/api/ai/evaluate-daily', {
+        const { data } = await directApi.post('/api/ai/evaluate-daily', {
           date: targetDate,
           target_user_id: targetUserId,
-        }, { timeout: 120000 });
+        });
         totalEvaluated += data.data.evaluatedCount;
         const remaining = data.data.remainingUnevaluated || 0;
         const total = isFirst ? (totalEvaluated + remaining) : (evalProgress?.total || totalEvaluated + remaining);
@@ -199,7 +199,7 @@ export default function AdminEvaluations() {
   const handleSuggestScripts = async (evalId) => {
     setSuggestingId(evalId);
     try {
-      const { data } = await api.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`, {}, { timeout: 120000 });
+      const { data } = await directApi.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`, {});
       const sug = data.data.suggestions || [];
       if (sug.length === 0) {
         toast('この通話からはスクリプト提案がありませんでした', { icon: 'ℹ️' });

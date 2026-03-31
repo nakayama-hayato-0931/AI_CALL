@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../../components/common/Layout';
 import useAuth from '../../../hooks/useAuth';
-import api from '../../../utils/api';
+import api, { directApi } from '../../../utils/api';
 import toast from 'react-hot-toast';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -102,7 +102,7 @@ export default function OperatorDetailPage() {
     try {
       setCoachingLoading(true);
       setCoaching(null);
-      const { data: res } = await api.post(`/api/ai/analysis/operator/${id}/coaching`, { period, date });
+      const { data: res } = await directApi.post(`/api/ai/analysis/operator/${id}/coaching`, { period, date });
       if (res.success) {
         if (res.data.coaching) {
           setCoaching(res.data.coaching);

@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/common/Layout';
-import api from '../utils/api';
+import api, { directApi } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const RESULT_BADGES = {
@@ -133,7 +133,7 @@ export default function AIEvaluationPage() {
   const handleBatchEvaluate = async () => {
     setEvaluating(true);
     try {
-      const { data } = await api.post('/api/ai/evaluate-daily', { date }, { timeout: 120000 });
+      const { data } = await directApi.post('/api/ai/evaluate-daily', { date });
       toast.success(data.message || 'AI評価完了');
       // データ再取得
       await fetchCalls();

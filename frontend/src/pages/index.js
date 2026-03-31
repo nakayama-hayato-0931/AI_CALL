@@ -3,25 +3,10 @@
  * KPI表示 + グラフ (時間帯別コール、業種別案件化率) + AI総合分析
  */
 import { useState, useEffect } from 'react';
-import axios from 'axios';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
-import api from '../utils/api';
+import api, { directApi } from '../utils/api';
 import toast from 'react-hot-toast';
-
-// AI分析用: バックエンドに直接リクエスト（Next.js rewriteプロキシのタイムアウト回避）
-const getDirectApi = () => {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
-  const instance = axios.create({ baseURL: backendUrl, timeout: 180000, headers: { 'Content-Type': 'application/json' } });
-  instance.interceptors.request.use((config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
-  return instance;
-};
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -394,7 +379,7 @@ export default function DashboardPage() {
       setAnalysis(null);
       const range = calcAnalysisRange();
 
-      const directApi = getDirectApi();
+            // directApi: バックエンド直接リクエスト（タイムアウト回避）
       if (analysisScope === 'team') {
         const { data } = await directApi.post('/api/ai/analysis/team', {
           period: analysisPeriod,

@@ -3,29 +3,10 @@
  * 各オペレーターの育成状況・プラン・ネクストステップを一覧・生成・編集
  */
 import { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
-import api from '../../utils/api';
+import api, { directApi } from '../../utils/api';
 import toast from 'react-hot-toast';
-
-// AI生成用: バックエンドに直接リクエスト（Next.js rewriteプロキシのタイムアウト回避）
-const createDirectApi = () => {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
-  const instance = axios.create({
-    baseURL: backendUrl,
-    timeout: 180000, // 3分
-    headers: { 'Content-Type': 'application/json' },
-  });
-  instance.interceptors.request.use((config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
-  return instance;
-};
 
 export default function StatusSheetsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -134,7 +115,7 @@ export default function StatusSheetsPage() {
   const handleGenerate = async () => {
     try {
       setGenerating(true);
-      const directApi = createDirectApi();
+      // directApi: バックエンド直接リクエスト
       // 1人ずつ順次生成（タイムアウト回避）
       const opsToGenerate = operators.filter(op => !op.is_test_account);
       const withSheets = [];
@@ -175,7 +156,7 @@ export default function StatusSheetsPage() {
   const handleGenerateSingle = async (opId, opName) => {
     try {
       setGeneratingSingle(opId);
-      const directApi = createDirectApi();
+      // directApi: バックエンド直接リクエスト
       const { data } = await directApi.post(`/api/ai/analysis/status-sheets/${opId}/generate`, {});
       if (data.success && data.data?.sheet?.sheet) {
         setAlertMessage(`${opName}のステータスシートを生成しました。`);
