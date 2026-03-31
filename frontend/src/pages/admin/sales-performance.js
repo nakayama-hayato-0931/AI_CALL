@@ -26,7 +26,7 @@ export default function SalesPerformancePage() {
   const [customTo, setCustomTo] = useState('');
 
   useEffect(() => {
-    if (user && !['admin', 'manager', 'consultant'].includes(user.role)) return;
+    if (user && !['admin', 'manager', 'consultant', 'sales'].includes(user.role)) return;
     fetchData();
   }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo]);
 
@@ -65,7 +65,7 @@ export default function SalesPerformancePage() {
     }
   };
 
-  if (!user || !['admin', 'manager', 'consultant'].includes(user.role)) return null;
+  if (!user || !['admin', 'manager', 'consultant', 'sales'].includes(user.role)) return null;
 
   const fmt = (v) => v != null ? v.toLocaleString() : '0';
   const fmtYen = (v) => v ? `¥${v.toLocaleString()}` : '¥0';

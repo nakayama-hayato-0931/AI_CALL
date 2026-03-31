@@ -10,6 +10,15 @@ const { authenticate, requireManager, requireEditor } = require('../middlewares/
 const pool = require('../../config/database');
 
 router.use(authenticate);
+
+// 営業売上一覧は営業ユーザーもアクセス可能（requireManagerの前に定義）
+router.get('/sales-performance', (req, res, next) => {
+  if (!['admin', 'manager', 'consultant', 'sales'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: '権限がありません' });
+  }
+  next();
+}, getSalesPerformance);
+
 router.use(requireManager);
 
 router.get('/cpa', getCpaMetrics);
@@ -17,7 +26,6 @@ router.get('/quality', getQualityMetrics);
 router.get('/cpa-all', getCpaAll);
 router.get('/quality-all', getQualityAll);
 router.get('/operators', getOperators);
-router.get('/sales-performance', getSalesPerformance);
 router.post('/import-cost-csv', requireEditor, upload.single('file'), importCostCsv);
 router.post('/import-cost-pdf', requireEditor, upload.single('file'), importCostPdf);
 router.post('/import-stamp-csv', requireEditor, upload.single('file'), importStampCsv);
