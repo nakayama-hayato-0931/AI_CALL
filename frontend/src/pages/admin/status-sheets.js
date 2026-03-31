@@ -114,42 +114,31 @@ export default function StatusSheetsPage() {
   const handleGenerate = async () => {
     try {
       setGenerating(true);
-      // 直近2週間固定
-      const now = new Date();
-      const twoWeeksAgo = new Date(now);
-      twoWeeksAgo.setDate(now.getDate() - 14);
-      const { data } = await api.post('/api/ai/analysis/status-sheets', {
-        period: 'weekly',
-        date_from: twoWeeksAgo.toISOString().slice(0, 10),
-        date_to: now.toISOString().slice(0, 10),
-      }, { timeout: 300000 });
-      if (data.success) {
-        const generated = data.data?.sheets || [];
-        const withSheets = generated.filter(s => s.sheet);
-        const skipped = generated.filter(s => !s.sheet);
-        if (withSheets.length > 0) {
-          const mapped = withSheets.map(s => ({
-            id: s.userId,
-            user_id: s.userId,
-            user_name: s.name,
-            period_from: data.data.dateFrom,
-            period_to: data.data.dateTo,
-            current_status: s.sheet.current_status,
-            training_plan: s.sheet.training_plan,
-            next_steps: s.sheet.next_steps,
-            updated_at: new Date().toISOString(),
-          }));
-          setSheets(mapped);
-          setExpandedUser(mapped[0]?.user_id || null);
-          let msg = `${withSheets.length}件のステータスシートを生成しました。\n\n生成済み: ${withSheets.map(s => s.name).join('、')}`;
-          if (skipped.length > 0) {
-            msg += `\n\nスキップ: ${skipped.map(s => `${s.name}（${s.message || 'データなし'}）`).join('、')}`;
+      // 1人ずつ順次生成（タイムアウト回避）
+      const opsToGenerate = operators.filter(op => !op.is_test_account);
+      const withSheets = [];
+      const skipped = [];
+      for (const op of opsToGenerate) {
+        try {
+          const { data } = await api.post(`/api/ai/analysis/status-sheets/${op.id}/generate`, {}, { timeout: 120000 });
+          if (data.success && data.data?.sheet) {
+            withSheets.push({ userId: op.id, name: op.name, sheet: data.data.sheet });
+          } else {
+            skipped.push({ name: op.name, message: data.data?.message || 'データなし' });
           }
-          setAlertMessage(msg);
-        } else {
-          setAlertMessage(`生成できませんでした。\n\n${skipped.map(s => `${s.name}: ${s.message || 'データなし'}`).join('\n')}`);
+        } catch (err) {
+          skipped.push({ name: op.name, message: err.response?.data?.message || 'エラー' });
         }
-        fetchSheets();
+      }
+      await fetchSheets();
+      if (withSheets.length > 0) {
+        let msg = `${withSheets.length}件のステータスシートを生成しました。\n\n生成済み: ${withSheets.map(s => s.name).join('、')}`;
+        if (skipped.length > 0) {
+          msg += `\n\nスキップ: ${skipped.map(s => `${s.name}（${s.message || 'データなし'}）`).join('、')}`;
+        }
+        setAlertMessage(msg);
+      } else {
+        setAlertMessage(`生成できませんでした。\n\n${skipped.map(s => `${s.name}: ${s.message || 'データなし'}`).join('\n')}`);
       }
     } catch (err) {
       setAlertMessage(`生成に失敗しました: ${err.response?.data?.message || err.message}`);
