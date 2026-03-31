@@ -269,18 +269,22 @@ export default function DashboardPage() {
   // 期間からdate_from/date_toを計算
   const calcAnalysisRange = () => {
     const pad = (n) => String(n).padStart(2, '0');
-    switch (analysisPeriod) {
+    switch (kpiPeriod) {
       case 'daily':
-        return { date_from: analysisDate, date_to: analysisDate };
+        return { date_from: kpiDate, date_to: kpiDate };
       case 'weekly': {
-        const [year, m] = analysisMonth.split('-').map(Number);
-        const lastDay = new Date(year, m, 0).getDate();
-        const fromDay = (analysisWeek - 1) * 7 + 1;
-        const toDay = analysisWeek === 5 ? lastDay : Math.min(analysisWeek * 7, lastDay);
-        return { date_from: `${year}-${pad(m)}-${pad(fromDay)}`, date_to: `${year}-${pad(m)}-${pad(toDay)}` };
+        // kpiDateが属する週（月〜日）を計算
+        const d = new Date(kpiDate);
+        const day = d.getDay();
+        const mon = new Date(d);
+        mon.setDate(d.getDate() - ((day + 6) % 7));
+        const sun = new Date(mon);
+        sun.setDate(mon.getDate() + 6);
+        return { date_from: mon.toISOString().slice(0,10), date_to: sun.toISOString().slice(0,10) };
       }
       case 'monthly': {
-        const [year, m] = analysisMonth.split('-').map(Number);
+        const ym = kpiDate.slice(0, 7);
+        const [year, m] = ym.split('-').map(Number);
         const lastDay = new Date(year, m, 0).getDate();
         return { date_from: `${year}-${pad(m)}-01`, date_to: `${year}-${pad(m)}-${pad(lastDay)}` };
       }
@@ -382,21 +386,21 @@ export default function DashboardPage() {
             // directApi: バックエンド直接リクエスト（タイムアウト回避）
       if (analysisScope === 'team') {
         const { data } = await directApi.post('/api/ai/analysis/team', {
-          period: analysisPeriod,
+          period: kpiPeriod,
           ...range,
         });
         if (data.success) setAnalysis(data.data);
       } else if (analysisTargetUserId) {
         // データ取得
         const { data } = await directApi.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
-          params: { period: analysisPeriod, ...range },
+          params: { period: kpiPeriod, ...range },
         });
         if (data.success) {
           setAnalysis(data.data);
           // AIコーチングも同時に取得
           try {
             const { data: coachData } = await directApi.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
-              period: analysisPeriod,
+              period: kpiPeriod,
               ...range,
             });
             if (coachData.success) {
@@ -768,7 +772,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* スコープ切替 + 期間セレクター + 実行ボタン */}
+          {/* スコープ切替 + 実行ボタン（期間は上部タブと共通） */}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               <button onClick={() => { setAnalysisScope('team'); setAnalysis(null); }}
@@ -791,36 +795,6 @@ export default function DashboardPage() {
                   <option key={op.id} value={op.id}>{op.name}</option>
                 ))}
               </select>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-              {PERIODS.map(p => (
-                <button key={p.value} onClick={() => setAnalysisPeriod(p.value)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    analysisPeriod === p.value ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}>{p.label}</button>
-              ))}
-            </div>
-            {analysisPeriod === 'daily' && (
-              <input type="date" className="input text-sm" value={analysisDate}
-                onChange={e => setAnalysisDate(e.target.value)} />
-            )}
-            {analysisPeriod === 'weekly' && (
-              <>
-                <input type="month" className="input text-sm" value={analysisMonth}
-                  onChange={e => { setAnalysisMonth(e.target.value); setAnalysisWeek(1); }} />
-                <select className="input text-sm" value={analysisWeek}
-                  onChange={e => setAnalysisWeek(Number(e.target.value))}>
-                  {getWeeksInMonth(analysisMonth).map(w => (
-                    <option key={w.num} value={w.num}>{w.label}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            {analysisPeriod === 'monthly' && (
-              <input type="month" className="input text-sm" value={analysisMonth}
-                onChange={e => setAnalysisMonth(e.target.value)} />
             )}
             <button onClick={handleTeamAnalysis} disabled={analysisLoading}
               className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
