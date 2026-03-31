@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance } = require('../controllers/analyticsController');
+const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail } = require('../controllers/analyticsController');
 const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 const pool = require('../../config/database');
 
@@ -18,6 +18,13 @@ router.get('/sales-performance', (req, res, next) => {
   }
   next();
 }, getSalesPerformance);
+
+router.get('/sales-detail', (req, res, next) => {
+  if (!['admin', 'manager', 'consultant', 'sales'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: '権限がありません' });
+  }
+  next();
+}, getSalesDetail);
 
 router.use(requireManager);
 

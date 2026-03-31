@@ -36,7 +36,7 @@ export default function ProjectDetailPage() {
   const [callHistory, setCallHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    status: '', interview_date: '', interview_type: '', interview_attendees: '',
+    status: '', interview_date: '', interview_type: '', interview_attendees: '', naitei_date: '',
     document_screening: '', mail_sent: '', mail_replied: '', phone_confirmed: '', job_number: '', memo: '',
     contact_person: '', contact_info: '', dashboard_checked: false,
   });
@@ -132,6 +132,7 @@ export default function ProjectDetailPage() {
         interview_date: p.interview_date ? p.interview_date.slice(0, 16) : '',
         interview_type: p.interview_type || '',
         interview_attendees: p.interview_attendees || '',
+        naitei_date: p.naitei_date ? p.naitei_date.slice(0, 10) : '',
         document_screening: p.document_screening || '',
         mail_sent: p.mail_sent ? p.mail_sent.slice(0, 10) : '',
         mail_replied: p.mail_replied ? p.mail_replied.slice(0, 10) : '',
@@ -161,6 +162,7 @@ export default function ProjectDetailPage() {
         interview_date: form.interview_date || null,
         interview_type: form.interview_type || null,
         interview_attendees: form.interview_attendees ? Number(form.interview_attendees) : null,
+        naitei_date: form.naitei_date || null,
         document_screening: form.document_screening || null,
         job_number: form.job_number || null,
         mail_sent: form.mail_sent || null,
@@ -425,6 +427,17 @@ export default function ProjectDetailPage() {
                     />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="input-label">内定日</label>
+                    <input
+                      type="date"
+                      value={form.naitei_date}
+                      onChange={(e) => setForm({ ...form, naitei_date: e.target.value })}
+                      className="input"
+                    />
+                  </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>

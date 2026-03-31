@@ -907,24 +907,22 @@ const getSalesPerformance = async (req, res, next) => {
       "SELECT id, name FROM users WHERE role = 'sales' AND is_active = 1 ORDER BY name"
     );
 
-    // 営業別集計クエリ
+    // 営業別集計クエリ（内定日ベース: naitei_date、面接/バラシは created_at ベース）
     const [rows] = await pool.query(
       `SELECT
         p.sales_user_id,
-        COUNT(DISTINCT p.id) as total_projects,
-        CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
-        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
-        COALESCE(SUM(p.interview_attendees), 0) as total_attendees,
-        CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
+        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND p.naitei_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
+        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND DATE(p.created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+        COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND DATE(p.created_at) BETWEEN ? AND ? THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
+        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND DATE(p.created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
       FROM projects p
       WHERE p.is_legacy = 0 AND p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
-        AND DATE(p.created_at) BETWEEN ? AND ?
       GROUP BY p.sales_user_id`,
-      [dateFrom, dateTo]
+      [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
     );
 
-    // 内定者集計（国内/海外別）
+    // 内定者集計（国内/海外別、内定日ベース）
     const [hireRows] = await pool.query(
       `SELECT
         p.sales_user_id,
@@ -938,7 +936,7 @@ const getSalesPerformance = async (req, res, next) => {
       WHERE p.is_legacy = 0 AND p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
         AND ph.is_cancelled = 0
-        AND DATE(p.created_at) BETWEEN ? AND ?
+        AND p.naitei_date BETWEEN ? AND ?
       GROUP BY p.sales_user_id`,
       [dateFrom, dateTo]
     );
@@ -994,4 +992,54 @@ const getSalesPerformance = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance };
+/**
+ * GET /api/analytics/sales-detail
+ * 営業売上の明細（数値クリック時に表示）
+ * ?sales_user_id=N&type=naitei|interview|barashi&date_from=&date_to=
+ */
+const getSalesDetail = async (req, res, next) => {
+  try {
+    const { sales_user_id, type, date_from, date_to } = req.query;
+    let dateFrom = date_from || '2000-01-01', dateTo = date_to || '2099-12-31';
+    let statusFilter = '';
+    let dateCol = 'DATE(p.created_at)';
+
+    if (type === 'naitei') {
+      statusFilter = "AND p.status = 'NAITEI'";
+      dateCol = 'p.naitei_date';
+    } else if (type === 'interview') {
+      statusFilter = "AND p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')";
+    } else if (type === 'barashi') {
+      statusFilter = "AND p.status = 'BARASHI'";
+    }
+
+    let userFilter = '';
+    const params = [dateFrom, dateTo];
+    if (sales_user_id) {
+      userFilter = 'AND p.sales_user_id = ?';
+      params.push(sales_user_id);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT p.id, p.job_number, COALESCE(c.company_name, p.legacy_company_name) as company_name,
+              p.status, p.naitei_date, p.interview_attendees, su.name as sales_name,
+              (SELECT COUNT(*) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) as hire_count,
+              (SELECT COALESCE(SUM(ph.initial_payment), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) as initial_payment,
+              (SELECT COALESCE(SUM(ph.expected_revenue), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) as expected_revenue
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND p.sales_user_id IS NOT NULL
+         AND ${dateCol} BETWEEN ? AND ?
+         ${statusFilter} ${userFilter}
+       ORDER BY p.naitei_date DESC, p.created_at DESC`,
+      params
+    );
+
+    return ApiResponse.success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail };
