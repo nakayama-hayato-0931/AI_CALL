@@ -1081,7 +1081,20 @@ export default function DashboardPage() {
           ) : analysis && !analysis.analysis && !analysis.stats ? (
             <p className="text-sm text-gray-400 text-center py-4">{analysis.message || 'データがありません'}</p>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-4">期間を選択して「分析実行」を押してください</p>
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-400">期間を選択して「分析実行」を押してください</p>
+              {typeof window !== 'undefined' && sessionStorage.getItem('dashboardAnalysis') && (
+                <button
+                  onClick={() => {
+                    try {
+                      const saved = JSON.parse(sessionStorage.getItem('dashboardAnalysis'));
+                      if (saved) setAnalysis(saved);
+                    } catch {}
+                  }}
+                  className="mt-2 text-xs text-blue-500 hover:text-blue-700 underline transition-colors"
+                >前回の分析結果を表示</button>
+              )}
+            </div>
           )}
         </div>
       )}
