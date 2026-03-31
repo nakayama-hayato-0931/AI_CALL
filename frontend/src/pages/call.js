@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import ProjectModal from '../components/ProjectModal';
+import useAuth from '../hooks/useAuth';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -39,6 +40,8 @@ const reasonColors = {
 
 export default function CallPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isManager = user?.role === 'admin' || user?.role === 'manager';
 
   // 架電リスト
   const [targetList, setTargetList] = useState([]);
@@ -75,6 +78,8 @@ export default function CallPage() {
   const [showSpecialAdd, setShowSpecialAdd] = useState(false);
   const [specialForm, setSpecialForm] = useState({ company_name: '', phone_number: '' });
   const [specialAdding, setSpecialAdding] = useState(false);
+  const [specialOperatorId, setSpecialOperatorId] = useState('');
+  const [operatorList, setOperatorList] = useState([]);
 
   // 未保存の結果がある場合のページ離脱防止
   useEffect(() => {
@@ -149,6 +154,15 @@ export default function CallPage() {
   useEffect(() => {
     fetchCallList();
   }, [fetchCallList]);
+
+  // 管理者: オペレーター一覧取得（特別リスト割り当て用）
+  useEffect(() => {
+    if (isManager) {
+      api.get('/api/auth/operators').then(res => {
+        if (res.data.success) setOperatorList(res.data.data);
+      }).catch(() => {});
+    }
+  }, [isManager]);
 
   // ピックアップ: 架電リストページからのロック済み企業を自動読み込み
   useEffect(() => {
@@ -618,6 +632,18 @@ export default function CallPage() {
                         onChange={e => setSpecialForm(f => ({ ...f, phone_number: e.target.value }))}
                         className="input text-xs w-full"
                       />
+                      {isManager && operatorList.length > 0 && (
+                        <select
+                          value={specialOperatorId}
+                          onChange={e => setSpecialOperatorId(e.target.value)}
+                          className="input text-xs w-full"
+                        >
+                          <option value="">優先オペレーターを選択</option>
+                          {operatorList.map(op => (
+                            <option key={op.id} value={op.id}>{op.name}</option>
+                          ))}
+                        </select>
+                      )}
                       <button
                         onClick={async () => {
                           if (!specialForm.company_name.trim() || !specialForm.phone_number.trim()) {
@@ -626,9 +652,14 @@ export default function CallPage() {
                           }
                           setSpecialAdding(true);
                           try {
-                            await api.post('/api/csv/manual-special', specialForm);
+                            const payload = { ...specialForm };
+                            if (isManager && specialOperatorId) {
+                              payload.priority_operator_id = Number(specialOperatorId);
+                            }
+                            await api.post('/api/csv/manual-special', payload);
                             toast.success('特別リストに追加しました');
                             setSpecialForm({ company_name: '', phone_number: '' });
+                            setSpecialOperatorId('');
                             setShowSpecialAdd(false);
                             fetchCallList();
                           } catch (err) {

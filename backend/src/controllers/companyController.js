@@ -469,7 +469,14 @@ const getCallList = async (req, res, next) => {
     };
 
     // 特別リストモード: is_special=1の企業のみ
+    // オペレーター: 自分に割り当てられた企業 or 未割り当ての企業
+    // 管理者: 全て表示
     if (isSpecialList) {
+      const isManager = req.user.role === 'admin' || req.user.role === 'manager';
+      const specialAssignFilter = isManager
+        ? ''
+        : `AND (c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ${Number(userId)})
+           OR c.id NOT IN (SELECT ca.company_id FROM company_assignments ca))`;
       const [specialRows] = await pool.query(
         `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
                 'special' as reason,
@@ -478,6 +485,7 @@ const getCallList = async (req, res, next) => {
          FROM companies c
          WHERE c.exclusion_flag = 0 AND c.is_special = 1
            ${lockFilterSQL}
+           ${specialAssignFilter}
          ORDER BY c.created_at DESC
          LIMIT ?`,
         [userId, LIST_SIZE]

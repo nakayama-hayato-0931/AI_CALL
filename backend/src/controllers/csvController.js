@@ -807,7 +807,7 @@ const importSpecialList = async (req, res, next) => {
  */
 const manualAddSpecial = async (req, res, next) => {
   try {
-    const { company_name, phone_number, industry, job_type, comment, address, region } = req.body;
+    const { company_name, phone_number, industry, job_type, comment, address, region, priority_operator_id } = req.body;
 
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
@@ -820,13 +820,22 @@ const manualAddSpecial = async (req, res, next) => {
       return ApiResponse.badRequest(res, '有効な電話番号を入力してください');
     }
 
-    // 特別リスト内での重複チェックのみ
+    // 特別リスト内での重複チェック（誰に割り当てられているか返す）
     const [existing] = await pool.execute(
-      'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_special = 1',
+      `SELECT c.id, c.company_name, u.name as assigned_to
+       FROM companies c
+       LEFT JOIN company_assignments ca ON ca.company_id = c.id
+       LEFT JOIN users u ON u.id = ca.user_id
+       WHERE (c.phone_number = ? OR c.company_name = ?) AND c.is_special = 1
+       LIMIT 1`,
       [phoneNumber, companyName]
     );
     if (existing.length > 0) {
-      return ApiResponse.badRequest(res, '既に特別リストに登録済みです');
+      const assignedTo = existing[0].assigned_to;
+      const msg = assignedTo
+        ? `既に${assignedTo}の特別リストに登録済みです`
+        : '既に特別リストに登録済みです';
+      return ApiResponse.badRequest(res, msg);
     }
 
     const derivedRegion = region || extractRegionFromAddress(address);
@@ -837,8 +846,24 @@ const manualAddSpecial = async (req, res, next) => {
       [companyName, phoneNumber, industry || null, job_type || null, comment || null, derivedRegion, address || null]
     );
 
-    logger.info(`特別リスト手動登録: id=${insertResult.insertId}, user=${req.user.id}`);
-    return ApiResponse.created(res, { companyId: insertResult.insertId }, '特別リストに登録しました');
+    const companyId = insertResult.insertId;
+
+    // オペレーターの場合: 自分に自動割り当て
+    // 管理者の場合: priority_operator_id が指定されていれば割り当て
+    const assignUserId = (req.user.role === 'operator')
+      ? req.user.id
+      : (priority_operator_id || null);
+
+    if (assignUserId) {
+      await pool.execute(
+        'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+        [companyId, assignUserId, req.user.id]
+      );
+      logger.info(`特別リスト割り当て: company=${companyId}, operator=${assignUserId}, by=${req.user.id}`);
+    }
+
+    logger.info(`特別リスト手動登録: id=${companyId}, user=${req.user.id}`);
+    return ApiResponse.created(res, { companyId }, '特別リストに登録しました');
   } catch (err) {
     next(err);
   }
