@@ -438,6 +438,8 @@ export default function ProjectDetailPage() {
                       className="input"
                     />
                   </div>
+                  <div></div>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
