@@ -63,6 +63,7 @@ export default function CallPage() {
   const [recallAt, setRecallAt] = useState('');
   const [isEffective, setIsEffective] = useState(false);
   const [isPerson, setIsPerson] = useState(false);
+  const [isProspect, setIsProspect] = useState(false);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(null);
 
@@ -263,6 +264,7 @@ export default function CallPage() {
     setRecallAt('');
     setIsEffective(false);
     setIsPerson(false);
+    setIsProspect(false);
   };
 
   // 自動で次の架電先へ進む（ロック取得まで。架電開始は手動）
@@ -438,6 +440,7 @@ export default function CallPage() {
         recall_at: recallAt || null,
         is_effective_connection: isEffective,
         is_person_in_charge: isPerson,
+        is_prospect: resultCode === 'PROJECT' ? isProspect : false,
       });
       toast.success('通話結果を保存しました');
       const prevId = selectedTargetId;
@@ -461,15 +464,22 @@ export default function CallPage() {
 
       // 案件化: ダッシュボード+Gmail開く + モーダル表示 + 自動架電停止
       if (resultCode === 'PROJECT') {
-        setAutoMode(false);
-        setAutoPaused(false);
-        autoPausedRef.current = false;
-        setCalling(false);
-        setCallId(null);
-        window.open(DASHBOARD_URL, '_blank');
-        window.open(GMAIL_URL, '_blank');
-        setSavedProjectId(response.data.data.projectId);
-        setShowProjectModal(true);
+        if (isProspect) {
+          // 見込案件: モーダル・Gmail・ダッシュボードは開かず、自動架電も続行可能
+          toast.success('見込案件として保存しました');
+          setCalling(false);
+          setCallId(null);
+        } else {
+          setAutoMode(false);
+          setAutoPaused(false);
+          autoPausedRef.current = false;
+          setCalling(false);
+          setCallId(null);
+          window.open(DASHBOARD_URL, '_blank');
+          window.open(GMAIL_URL, '_blank');
+          setSavedProjectId(response.data.data.projectId);
+          setShowProjectModal(true);
+        }
         await autoAdvanceToNext(prevId);
         return;
       }
@@ -859,6 +869,27 @@ export default function CallPage() {
                     </label>
                   ))}
                 </div>
+
+                {resultCode === 'PROJECT' && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <label className="flex items-center gap-2.5 text-sm cursor-pointer group">
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                        isProspect ? 'bg-amber-500 border-amber-500' : 'border-gray-300 group-hover:border-amber-400'
+                      }`}>
+                        {isProspect && (
+                          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                      <input type="checkbox" checked={isProspect} onChange={(e) => setIsProspect(e.target.checked)} className="sr-only" />
+                      <span className="text-amber-700 font-medium">見込案件</span>
+                    </label>
+                    {isProspect && (
+                      <p className="text-[10px] text-amber-500 mt-1.5 ml-7">案件カウントに含まれません。案件管理から正式案件に変更できます。</p>
+                    )}
+                  </div>
+                )}
 
                 {resultCode === 'RECALL' && (
                   <div className="mb-4">

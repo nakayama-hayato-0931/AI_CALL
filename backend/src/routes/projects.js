@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects } = require('../controllers/projectController');
+const { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject } = require('../controllers/projectController');
 const { authenticate, requireManager } = require('../middlewares/auth');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -30,6 +30,9 @@ router.get('/:id/hires', getProjectHires);
 
 // PUT /api/projects/:id/hires - 内定者情報保存
 router.put('/:id/hires', saveProjectHires);
+
+// PUT /api/projects/:id/promote - 見込案件を正式案件に昇格
+router.put('/:id/promote', promoteProject);
 
 // PUT /api/projects/:id - 案件更新
 router.put('/:id', updateProject);

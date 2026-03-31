@@ -76,7 +76,7 @@ export default function ProjectsPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('current'); // 'current' or 'legacy'
+  const [activeTab, setActiveTab] = useState('current'); // 'current', 'prospect', or 'legacy'
 
   // 担当営業フィルタ
   const [salesUsers, setSalesUsers] = useState([]);
@@ -113,6 +113,7 @@ export default function ProjectsPage() {
     try {
       const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
       if (activeTab === 'legacy') params.append('is_legacy', '1');
+      if (activeTab === 'prospect') params.append('is_prospect', '1');
       if (statusFilter) params.append('status', statusFilter);
       if (selectedSalesUser) params.append('sales_user_id', selectedSalesUser);
       if (myOnly) params.append('my_only', '1');
@@ -255,6 +256,10 @@ export default function ProjectsPage() {
             <button onClick={() => { setActiveTab('current'); setPage(1); }}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'current' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               現在の案件
+            </button>
+            <button onClick={() => { setActiveTab('prospect'); setPage(1); }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'prospect' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              見込案件
             </button>
             <button onClick={() => { setActiveTab('legacy'); setPage(1); }}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'legacy' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -410,12 +415,30 @@ export default function ProjectsPage() {
                         })}
                         <td className="table-cell text-gray-600 whitespace-nowrap text-xs">{formatPhone(p.phone_number)}</td>
                         <td className="table-cell text-center">
-                          <button
-                            onClick={e => openCallLogs(e, p)}
-                            className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded font-medium transition-colors"
-                          >
-                            表示
-                          </button>
+                          <div className="flex items-center gap-1 justify-center">
+                            <button
+                              onClick={e => openCallLogs(e, p)}
+                              className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded font-medium transition-colors"
+                            >
+                              表示
+                            </button>
+                            {activeTab === 'prospect' && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm(`${p.company_name} を正式案件に昇格しますか？`)) return;
+                                  try {
+                                    await api.put(`/api/projects/${p.id}/promote`);
+                                    toast.success('正式案件に昇格しました');
+                                    fetchProjects();
+                                  } catch (err) { toast.error('昇格に失敗しました'); }
+                                }}
+                                className="px-2 py-1 text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded font-medium transition-colors whitespace-nowrap"
+                              >
+                                案件化
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="table-cell text-center">
                           <input type="checkbox" checked={!!p.log_confirmed} disabled

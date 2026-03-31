@@ -93,6 +93,7 @@ const endCall = async (req, res, next) => {
       recall_at,
       is_effective_connection,
       is_person_in_charge,
+      is_prospect,
     } = req.body;
 
     // バリデーション（SKIPも許可）
@@ -123,7 +124,7 @@ const endCall = async (req, res, next) => {
         recall_at || null,
         is_effective_connection ? 1 : 0,
         is_person_in_charge ? 1 : 0,
-        result_code === 'PROJECT' ? 1 : 0,
+        (result_code === 'PROJECT' && !is_prospect) ? 1 : 0,
         id,
       ]
     );
@@ -150,9 +151,9 @@ const endCall = async (req, res, next) => {
     let projectId = null;
     if (result_code === 'PROJECT') {
       const [projectResult] = await conn.execute(
-        `INSERT INTO projects (company_id, created_call_id, owner_user_id, status)
-         VALUES (?, ?, ?, 'NEW')`,
-        [call.company_id, id, call.user_id]
+        `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect)
+         VALUES (?, ?, ?, 'NEW', ?)`,
+        [call.company_id, id, call.user_id, is_prospect ? 1 : 0]
       );
       projectId = projectResult.insertId;
     }

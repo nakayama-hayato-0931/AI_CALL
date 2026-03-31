@@ -29,6 +29,15 @@ const getProjects = async (req, res, next) => {
       whereClauses.push('p.is_legacy = 0');
     }
 
+    // 見込案件フィルタ
+    const { is_prospect } = req.query;
+    if (is_prospect === '1') {
+      whereClauses.push('p.is_prospect = 1');
+    } else if (is_legacy !== '1') {
+      // 通常案件タブではis_prospect=0のみ表示
+      whereClauses.push('p.is_prospect = 0');
+    }
+
     // my_only=1 で自分の案件のみフィルタ
     const { my_only } = req.query;
     if (my_only === '1') {
@@ -702,4 +711,53 @@ const deleteProject = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects };
+/**
+ * PUT /api/projects/:id/promote
+ * 見込案件を正式案件に昇格
+ */
+const promoteProject = async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const { id } = req.params;
+
+    // 案件情報を取得
+    const [rows] = await conn.execute('SELECT * FROM projects WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      conn.release();
+      return ApiResponse.notFound(res, '案件が見つかりません');
+    }
+    const project = rows[0];
+    if (!project.is_prospect) {
+      conn.release();
+      return ApiResponse.badRequest(res, 'この案件は既に正式案件です');
+    }
+
+    await conn.beginTransaction();
+
+    // 見込フラグを解除、昇格日時を記録
+    await conn.execute(
+      'UPDATE projects SET is_prospect = 0, promoted_at = NOW() WHERE id = ?',
+      [id]
+    );
+
+    // 対応する通話レコードの is_project_created を1に更新（カウントに含める）
+    if (project.created_call_id) {
+      await conn.execute(
+        'UPDATE calls SET is_project_created = 1 WHERE id = ?',
+        [project.created_call_id]
+      );
+    }
+
+    await conn.commit();
+    conn.release();
+
+    logger.info(`見込案件を正式案件に昇格: project=${id}, call=${project.created_call_id}`);
+    return ApiResponse.success(res, null, '見込案件を正式案件に昇格しました');
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject };

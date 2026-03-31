@@ -1,0 +1,3 @@
+-- 見込案件フラグの追加
+ALTER TABLE projects ADD COLUMN is_prospect TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE projects ADD COLUMN promoted_at DATETIME DEFAULT NULL;
