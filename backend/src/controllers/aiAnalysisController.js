@@ -458,6 +458,17 @@ const generateSheetForOperator = async (op, dateFrom, dateTo, createdBy) => {
     return { userId: op.id, name: op.name, sheet: null, message: `AI生成失敗: ${aiErr.message}` };
   }
 
+  // 要面談除外: 1案件獲得あたり8時間以下の高パフォーマーは要面談対象外
+  const projects = stats.projects || 0;
+  if (projects > 0 && workHours > 0) {
+    const hoursPerProject = workHours / projects;
+    if (hoursPerProject <= 8) {
+      sheet.needs_meeting = false;
+      sheet.meeting_reason = null;
+      logger.info(`${op.name}: 案件効率${hoursPerProject.toFixed(1)}h/件 ≤ 8h → 要面談除外`);
+    }
+  }
+
   // org_targetsをDB設定値で上書き（AIが独自の値を生成するのを防止）
   try {
     const [ttRows] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'team_targets'");
