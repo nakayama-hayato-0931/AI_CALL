@@ -92,7 +92,7 @@ export default function AnalyticsPage() {
   const [stampUploading, setStampUploading] = useState(false);
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') {
+    if (user && !['admin','manager','consultant'].includes(user.role)) {
       router.push('/');
     }
   }, [user]);
@@ -148,7 +148,7 @@ export default function AnalyticsPage() {
   }, [periodMode, selectedMonth, customFrom, customTo]);
 
   useEffect(() => {
-    if (user && (user.role === 'admin' || user.role === 'manager')) {
+    if (user && (['admin','manager','consultant'].includes(user.role))) {
       fetchData();
     }
   }, [fetchData, user]);

@@ -21,7 +21,7 @@ export default function AdminRequests() {
   const [replyStatus, setReplyStatus] = useState('reviewed');
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
+    if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
   }, [user]);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function AdminRequests() {
     }
   };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
+  if (!user || (!['admin','manager','consultant'].includes(user.role))) return null;
 
   return (
     <Layout>

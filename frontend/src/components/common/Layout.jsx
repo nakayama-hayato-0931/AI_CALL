@@ -93,7 +93,7 @@ const icons = {
 
 // ナビゲーション定義（セクション分け）
 const getNavSections = (role) => {
-  if (role === 'admin' || role === 'manager') {
+  if (role === 'admin' || role === 'manager' || role === 'consultant') {
     const sections = [
       {
         label: 'メイン',

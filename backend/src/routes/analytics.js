@@ -6,7 +6,7 @@ const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll } = require('../controllers/analyticsController');
-const { authenticate, requireManager } = require('../middlewares/auth');
+const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 const pool = require('../../config/database');
 
 router.use(authenticate);
@@ -17,9 +17,9 @@ router.get('/quality', getQualityMetrics);
 router.get('/cpa-all', getCpaAll);
 router.get('/quality-all', getQualityAll);
 router.get('/operators', getOperators);
-router.post('/import-cost-csv', upload.single('file'), importCostCsv);
-router.post('/import-cost-pdf', upload.single('file'), importCostPdf);
-router.post('/import-stamp-csv', upload.single('file'), importStampCsv);
+router.post('/import-cost-csv', requireEditor, upload.single('file'), importCostCsv);
+router.post('/import-cost-pdf', requireEditor, upload.single('file'), importCostPdf);
+router.post('/import-stamp-csv', requireEditor, upload.single('file'), importStampCsv);
 
 // 過去CPAデータ投入
 router.post('/import-past-cpa', async (req, res) => {

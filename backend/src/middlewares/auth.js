@@ -51,13 +51,23 @@ const requireAdmin = (req, res, next) => {
 };
 
 /**
- * 管理者またはマネージャー権限チェック
+ * 管理者・マネージャー・コンサルタント権限チェック（閲覧系API用）
  */
 const requireManager = (req, res, next) => {
-  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+  if (!['admin', 'manager', 'consultant'].includes(req.user.role)) {
     return ApiResponse.forbidden(res, '管理者またはマネージャー権限が必要です');
   }
   next();
 };
 
-module.exports = { authenticate, requireAdmin, requireManager };
+/**
+ * 管理者・マネージャー権限チェック（編集系API用 — コンサルタント不可）
+ */
+const requireEditor = (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    return ApiResponse.forbidden(res, '編集権限が必要です（読み取り専用アカウントでは実行できません）');
+  }
+  next();
+};
+
+module.exports = { authenticate, requireAdmin, requireManager, requireEditor };

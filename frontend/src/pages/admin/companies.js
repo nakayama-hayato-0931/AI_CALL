@@ -66,7 +66,7 @@ export default function AdminCompanies() {
   const [editingTimeRule, setEditingTimeRule] = useState(null); // { id, industry_name, start_time, end_time, priority_weight }
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
+    if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
     if (user) fetchOperators();
   }, [user]);
 
@@ -355,7 +355,7 @@ export default function AdminCompanies() {
     return ordered;
   };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
+  if (!user || (!['admin','manager','consultant'].includes(user.role))) return null;
 
   return (
     <Layout>

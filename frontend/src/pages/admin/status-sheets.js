@@ -28,6 +28,7 @@ export default function StatusSheetsPage() {
   const [publishingId, setPublishingId] = useState(null);
   const [editingTargets, setEditingTargets] = useState(null); // userId being edited
   const [targetForm, setTargetForm] = useState({});
+  const isReadOnly = user?.role === 'consultant';
   // sortedEntries is now useMemo (below)
 
   // チーム目標
@@ -373,6 +374,10 @@ export default function StatusSheetsPage() {
 
       {/* 生成セクション */}
       <div className="card p-4 mb-6">
+        {isReadOnly ? (
+          <p className="text-xs text-gray-400">閲覧専用モードです</p>
+        ) : (
+        <>
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <span className="text-xs font-medium text-gray-600">直近2週間のAI評価データから生成</span>
           <button onClick={handleGenerate} disabled={generating || generatingSingle}
@@ -436,6 +441,8 @@ export default function StatusSheetsPage() {
           </div>
         )}
         <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">ステータスシート生成時にAIが面談の要否を自動判定します</p>
+        </>
+        )}
       </div>
 
       {/* ステータスシート一覧（シートがないオペレーターも含む） */}

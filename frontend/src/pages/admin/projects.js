@@ -98,7 +98,7 @@ export default function AdminProjects() {
   const [hireSaving, setHireSaving] = useState(false);
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
+    if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
     if (user) {
       fetchOperators();
       fetchSalesUsers();
@@ -282,7 +282,7 @@ export default function AdminProjects() {
     return `${Math.floor(sec / 60)}分${sec % 60}秒`;
   };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
+  if (!user || (!['admin','manager','consultant'].includes(user.role))) return null;
 
   return (
     <Layout>

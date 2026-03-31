@@ -109,7 +109,7 @@ export default function AdminEvaluations() {
   const [editingSuggestions, setEditingSuggestions] = useState([]);
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
+    if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
     if (user) fetchOperators();
   }, [user]);
 
@@ -239,7 +239,7 @@ export default function AdminEvaluations() {
     }
   };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
+  if (!user || (!['admin','manager','consultant'].includes(user.role))) return null;
 
   return (
     <Layout>

@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject } = require('../controllers/projectController');
-const { authenticate, requireManager } = require('../middlewares/auth');
+const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -14,7 +14,7 @@ router.use(authenticate);
 router.get('/', getProjects);
 
 // POST /api/projects/import-legacy - 移行前案件インポート
-router.post('/import-legacy', requireManager, upload.single('file'), importLegacyProjects);
+router.post('/import-legacy', requireEditor, upload.single('file'), importLegacyProjects);
 
 // GET /api/projects/sales-users - 営業ユーザー一覧
 router.get('/sales-users', getSalesUsers);
@@ -38,6 +38,6 @@ router.put('/:id/promote', promoteProject);
 router.put('/:id', updateProject);
 
 // DELETE /api/projects/:id - 案件削除（管理者のみ）
-router.delete('/:id', requireManager, deleteProject);
+router.delete('/:id', requireEditor, deleteProject);
 
 module.exports = router;

@@ -15,7 +15,7 @@ const {
   getAllEvaluations,
   suggestScripts,
 } = require('../controllers/aiController');
-const { authenticate, requireManager } = require('../middlewares/auth');
+const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 
 router.use(authenticate);
 
@@ -41,7 +41,7 @@ router.get('/latest-improvement', getLatestImprovement);
 router.get('/admin/evaluations', requireManager, getAllEvaluations);
 
 // POST /api/ai/admin/evaluations/:id/suggest-scripts - 管理者: スクリプト提案生成
-router.post('/admin/evaluations/:id/suggest-scripts', requireManager, suggestScripts);
+router.post('/admin/evaluations/:id/suggest-scripts', requireEditor, suggestScripts);
 
 // GET /api/ai/evaluations/:callId - 通話のAI評価取得
 router.get('/evaluations/:callId', getEvaluationByCallId);

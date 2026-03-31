@@ -21,7 +21,7 @@ export default function AdminPerformance() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    if (user && user.role !== 'admin' && user.role !== 'manager') { router.push('/'); return; }
+    if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
     if (user) fetchPerformance();
   }, [user, period, date]);
 
@@ -32,7 +32,7 @@ export default function AdminPerformance() {
     } catch (err) { toast.error('成績取得に失敗しました'); }
   };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null;
+  if (!user || (!['admin','manager','consultant'].includes(user.role))) return null;
 
   const totals = data?.operators?.reduce((acc, op) => ({
     total_calls: acc.total_calls + (op.total_calls || 0),

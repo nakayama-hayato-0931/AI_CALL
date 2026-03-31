@@ -6,7 +6,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion, importSpecialList, manualAddSpecial } = require('../controllers/csvController');
-const { authenticate, requireManager } = require('../middlewares/auth');
+const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 
 // Multer設定: CSV / XLS / XLSX ファイル許可
 const ALLOWED_EXTENSIONS = ['.csv', '.xls', '.xlsx'];
@@ -31,7 +31,7 @@ router.use(authenticate);
 router.post('/import', upload.single('file'), importCompanies);
 
 // POST /api/csv/import-exclusion?list_type=ng|existing_project - 除外リストインポート (マネージャー以上)
-router.post('/import-exclusion', requireManager, upload.single('file'), importExclusionList);
+router.post('/import-exclusion', requireEditor, upload.single('file'), importExclusionList);
 
 // GET /api/csv/exclusion-stats - 除外リスト統計（件数・最終更新日）
 router.get('/exclusion-stats', getExclusionStats);
@@ -40,10 +40,10 @@ router.get('/exclusion-stats', getExclusionStats);
 router.post('/manual-company', manualAddCompany);
 
 // POST /api/csv/manual-exclusion - NG/既存案件リスト手動登録 (マネージャー以上)
-router.post('/manual-exclusion', requireManager, manualAddExclusion);
+router.post('/manual-exclusion', requireEditor, manualAddExclusion);
 
 // POST /api/csv/import-special - 特別リストインポート (マネージャー以上)
-router.post('/import-special', requireManager, upload.single('file'), importSpecialList);
+router.post('/import-special', requireEditor, upload.single('file'), importSpecialList);
 
 // POST /api/csv/manual-special - 特別リスト手動登録 (全ユーザー: 失注・バラシ案件の再架電用)
 router.post('/manual-special', manualAddSpecial);
