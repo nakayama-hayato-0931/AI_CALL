@@ -76,7 +76,7 @@ export default function SalesProjects() {
   const [activeTab, setActiveTab] = useState('current');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [callTypeView, setCallTypeView] = useState('sales');
+  const [callTypeView, setCallTypeView] = useState('operator');
 
   // 担当営業
   const [salesUsers, setSalesUsers] = useState([]);
