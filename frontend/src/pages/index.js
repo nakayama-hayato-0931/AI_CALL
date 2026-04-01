@@ -103,6 +103,23 @@ export default function DashboardPage() {
   const [kpiPeriod, setKpiPeriod] = useState('daily');
   const [kpiDate, setKpiDate] = useState(new Date().toISOString().slice(0, 10));
   const isManagerRole = ['admin', 'manager', 'consultant'].includes(user?.role);
+  // 架電種別: 管理者はlocalStorage(adminView)、営業は固定sales
+  const [adminView, setAdminView] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('adminView') || 'operator';
+    return 'operator';
+  });
+  // localStorageの変更を監視
+  useEffect(() => {
+    const handler = () => setAdminView(localStorage.getItem('adminView') || 'operator');
+    window.addEventListener('storage', handler);
+    // 同一タブ内の変更も拾う
+    const interval = setInterval(() => {
+      const current = localStorage.getItem('adminView') || 'operator';
+      setAdminView(prev => prev !== current ? current : prev);
+    }, 500);
+    return () => { window.removeEventListener('storage', handler); clearInterval(interval); };
+  }, []);
+  const callType = user?.role === 'sales' ? 'sales' : (isManagerRole ? adminView : 'operator');
   const [kpiScope, setKpiScope] = useState(isManagerRole ? 'team' : 'self');
   const [kpiTargetUserId, setKpiTargetUserId] = useState(null);
   const [operators, setOperators] = useState([]);
@@ -326,11 +343,11 @@ export default function DashboardPage() {
     fetchStats();
     fetchChartData();
     if (isManager) fetchPerfData();
-  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId]);
+  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType]);
 
   const fetchStats = async () => {
     try {
-      const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate };
+      const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate, call_type: callType };
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -370,7 +387,7 @@ export default function DashboardPage() {
 
   const fetchPerfData = async () => {
     try {
-      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}`);
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}`);
       if (res.success) setPerfData(res.data);
     } catch (err) {
       console.error('オペレーター実績取得失敗:', err);

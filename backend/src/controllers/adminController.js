@@ -248,12 +248,14 @@ const deleteUser = async (req, res, next) => {
  */
 const getAllOperatorPerformance = async (req, res, next) => {
   try {
-    const { period = 'daily', date } = req.query;
+    const { period = 'daily', date, call_type } = req.query;
     const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
     if (!range) {
       return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
     }
     const { dateFrom, dateTo } = range;
+    const targetRole = call_type === 'sales' ? 'sales' : 'operator';
+    const callTypeFilter = call_type === 'sales' ? "AND c.call_type = 'sales'" : "AND c.call_type = 'operator'";
 
     const [rows] = await pool.query(
       `SELECT
@@ -270,12 +272,12 @@ const getAllOperatorPerformance = async (req, res, next) => {
         COALESCE(ROUND(AVG(ae.rebuttal_score), 1), 0) as avg_rebuttal,
         COALESCE(ROUND(AVG(ae.closing_score), 1), 0) as avg_closing
       FROM users u
-      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP'
+      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-      WHERE u.role = 'operator' AND u.is_active = 1 AND u.is_test_account = 0
+      WHERE u.role = ? AND u.is_active = 1 AND u.is_test_account = 0
       GROUP BY u.id, u.name
       ORDER BY u.id ASC`,
-      [dateFrom, dateTo]
+      [dateFrom, dateTo, targetRole]
     );
 
     // リコール消化数と稼働時間を各オペレーターに追加

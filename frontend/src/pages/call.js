@@ -128,11 +128,15 @@ export default function CallPage() {
   pickupModeRef.current = pickupMode;
   selectedIndustryRef.current = selectedIndustry;
 
+  // 架電種別（営業 or オペレーター）
+  const callType = user?.role === 'sales' ? 'sales' : 'operator';
+
   // モードパラメータ構築ヘルパー
   const getModeParams = useCallback(() => {
     const params = {};
     if (pickupMode !== 'auto') params.mode = pickupMode;
     if (pickupMode === 'industry' && selectedIndustry) params.industry = selectedIndustry;
+    params.call_type = callType;
     return params;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupMode, selectedIndustry]);
@@ -375,7 +379,7 @@ export default function CallPage() {
       resetForm();
 
       // 自動で架電開始
-      const callRes = await api.post('/api/calls/start', { company_id: nextCompany.id });
+      const callRes = await api.post('/api/calls/start', { company_id: nextCompany.id, call_type: callType });
       setCallId(callRes.data.data.callId);
       setCalling(true);
       const phoneForZoom = nextCompany.phone_number.startsWith('0')
@@ -420,7 +424,7 @@ export default function CallPage() {
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
-      const { data } = await api.post('/api/calls/start', { company_id: company.id });
+      const { data } = await api.post('/api/calls/start', { company_id: company.id, call_type: callType });
       setCallId(data.data.callId);
       setCalling(true);
       setAutoMode(true);

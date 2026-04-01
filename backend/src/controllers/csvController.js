@@ -231,11 +231,15 @@ const importCompanies = async (req, res, next) => {
       await conn.beginTransaction();
 
       const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+      // 営業リストフラグ（リクエストボディから取得）
+      const isSalesList = req.body.is_sales_list === '1' || req.body.is_sales_list === true ? 1 : 0;
 
       // 事前にDB全phone_numberをロード（重複チェック高速化）
       logger.info('Pre-loading phone sets...');
-      const [existingPhones] = await conn.query('SELECT phone_number FROM companies WHERE phone_number IS NOT NULL');
+      const [existingPhones] = await conn.query('SELECT phone_number, is_sales_list FROM companies WHERE phone_number IS NOT NULL');
       const dbPhoneSet = new Set(existingPhones.map(r => r.phone_number));
+      // 双方向重複チェック用: 相手側リストの電話番号セット
+      const crossListPhoneSet = new Set(existingPhones.filter(r => r.is_sales_list !== isSalesList).map(r => r.phone_number));
       logger.info(`Companies loaded: ${dbPhoneSet.size}`);
       const [excludedPhones] = await conn.query('SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL');
       const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
@@ -274,13 +278,22 @@ const importCompanies = async (req, res, next) => {
         // DB重複チェック（メモリ内Set使用）
         if (dbPhoneSet.has(phoneNumber)) { duplicateCount++; skippedCount++; continue; }
 
+        // 双方向重複チェック: 相手側リスト(オペ↔営業)に存在する場合はスキップ
+        if (crossListPhoneSet.has(phoneNumber)) {
+          const listName = isSalesList ? 'オペレーターリスト' : '営業リスト';
+          errors.push({ line: lineNum, message: `${listName}に存在するためスキップ: ${phoneNumber}` });
+          duplicateCount++;
+          skippedCount++;
+          continue;
+        }
+
         // 除外リストチェック（メモリ内Set使用）
         if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; continue; }
 
         const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId]
+          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId, isSalesList]
         );
 
         // ファイル内 + DB重複防止
@@ -514,7 +527,8 @@ const getExclusionStats = async (req, res, next) => {
  */
 const manualAddCompany = async (req, res, next) => {
   try {
-    const { company_name, phone_number, industry, job_type, comment, data_source, address, region } = req.body;
+    const { company_name, phone_number, industry, job_type, comment, data_source, address, region, is_sales_list } = req.body;
+    const isSalesList = is_sales_list ? 1 : 0;
 
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
@@ -537,22 +551,32 @@ const manualAddCompany = async (req, res, next) => {
       return ApiResponse.badRequest(res, `${listLabel}に登録済みのため追加できません`);
     }
 
-    // 重複チェック
+    // 同一リスト内の重複チェック
     const [existing] = await pool.execute(
-      'SELECT id FROM companies WHERE phone_number = ? OR company_name = ?',
-      [phoneNumber, companyName]
+      'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_sales_list = ?',
+      [phoneNumber, companyName, isSalesList]
     );
     if (existing.length > 0) {
       return ApiResponse.badRequest(res, '既に架電リストに登録済みです');
     }
 
+    // 双方向重複チェック: 相手側リストに存在する場合はスキップ
+    const [crossExisting] = await pool.execute(
+      'SELECT id FROM companies WHERE phone_number = ? AND is_sales_list = ?',
+      [phoneNumber, isSalesList ? 0 : 1]
+    );
+    if (crossExisting.length > 0) {
+      const listName = isSalesList ? 'オペレーターリスト' : '営業リスト';
+      return ApiResponse.badRequest(res, `${listName}に既に登録済みのため追加できません`);
+    }
+
     const derivedRegion = region || extractRegionFromAddress(address);
-    const importedByUserId = (req.user.role === 'operator') ? req.user.id : null;
+    const importedByUserId = (req.user.role === 'operator' || req.user.role === 'sales') ? req.user.id : null;
 
     const [insertResult] = await pool.execute(
-      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyName, phoneNumber, industry || null, job_type || null, comment || null, data_source || null, derivedRegion, address || null, importedByUserId]
+      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyName, phoneNumber, industry || null, job_type || null, comment || null, data_source || null, derivedRegion, address || null, importedByUserId, isSalesList]
     );
 
     // オペレーター: 自動割り当て

@@ -13,8 +13,9 @@ const { findTranscript, findTranscriptsBatch } = require('../services/googleShee
  */
 const startCall = async (req, res, next) => {
   try {
-    const { company_id } = req.body;
+    const { company_id, call_type } = req.body;
     const userId = req.user.id;
+    const resolvedCallType = call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
 
     if (!company_id) {
       return ApiResponse.badRequest(res, '企業IDは必須です');
@@ -53,9 +54,9 @@ const startCall = async (req, res, next) => {
     }
 
     const [result] = await pool.execute(
-      `INSERT INTO calls (user_id, company_id, call_started_at)
-       VALUES (?, ?, NOW())`,
-      [userId, company_id]
+      `INSERT INTO calls (user_id, company_id, call_started_at, call_type)
+       VALUES (?, ?, NOW(), ?)`,
+      [userId, company_id, resolvedCallType]
     );
 
     // 企業のlast_called_atを更新

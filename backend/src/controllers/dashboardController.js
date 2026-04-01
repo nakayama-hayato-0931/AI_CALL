@@ -148,9 +148,12 @@ const getDailyStats = async (req, res, next) => {
     const scope = req.query.scope || 'self';
     const targetUserId = req.query.target_user_id;
     const userRole = req.user.role;
+    // 架電種別フィルタ（営業/オペレーター分離）
+    const callType = req.query.call_type || (userRole === 'sales' ? 'sales' : 'operator');
+    const callTypeFilter = "AND c.call_type = '" + (callType === 'sales' ? 'sales' : 'operator') + "'";
 
-    // scope=team/operator は manager以上のみ
-    if ((scope === 'team' || scope === 'operator') && userRole !== 'admin' && userRole !== 'manager') {
+    // scope=team/operator は manager以上のみ（consultant, salesも許可）
+    if ((scope === 'team' || scope === 'operator') && !['admin', 'manager', 'consultant', 'sales'].includes(userRole)) {
       return ApiResponse.forbidden(res, '権限がありません');
     }
 
@@ -164,8 +167,9 @@ const getDailyStats = async (req, res, next) => {
     let userParams = [];
     let userJoin = '';
     if (scope === 'team') {
-      // 全ユーザー → テストアカウントを除外
-      userJoin = 'JOIN users u ON c.user_id = u.id AND u.is_test_account = 0';
+      // 全ユーザー → テストアカウントを除外、架電種別でロールをフィルタ
+      const roleFilter = callType === 'sales' ? "AND u.role = 'sales'" : "AND u.role = 'operator'";
+      userJoin = `JOIN users u ON c.user_id = u.id AND u.is_test_account = 0 ${roleFilter}`;
     } else if (scope === 'operator' && targetUserId) {
       userCondition = 'AND c.user_id = ?';
       userParams = [targetUserId];
@@ -187,7 +191,7 @@ const getDailyStats = async (req, res, next) => {
        FROM calls c
        ${userJoin}
        WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
-         ${userCondition}`,
+         ${callTypeFilter} ${userCondition}`,
       [dateFrom, dateTo, ...userParams]
     );
 

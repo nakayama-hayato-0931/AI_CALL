@@ -92,8 +92,10 @@ const icons = {
 };
 
 // ナビゲーション定義（セクション分け）
-const getNavSections = (role) => {
+const getNavSections = (role, adminView) => {
   if (role === 'admin' || role === 'manager' || role === 'consultant') {
+    // 管理者: オペレーター管理/営業管理で切替
+    const isSalesView = adminView === 'sales';
     const sections = [
       {
         label: 'メイン',
@@ -104,11 +106,11 @@ const getNavSections = (role) => {
       {
         label: '分析',
         items: [
-          { href: '/admin/analytics', label: 'CPA/案件質分析', icon: 'performance' },
+          ...(!isSalesView ? [{ href: '/admin/analytics', label: 'CPA/案件質分析', icon: 'performance' }] : []),
           { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
           { href: '/admin/evaluations', label: 'AI評価一覧', icon: 'ai' },
           { href: '/admin/call-logs', label: '架電結果ログ', icon: 'log' },
-          { href: '/admin/status-sheets', label: 'ステータスシート', icon: 'status' },
+          ...(!isSalesView ? [{ href: '/admin/status-sheets', label: 'ステータスシート', icon: 'status' }] : []),
         ],
       },
       {
@@ -117,9 +119,9 @@ const getNavSections = (role) => {
           { href: '/admin/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
-          { href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' },
+          ...(!isSalesView ? [{ href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' }] : []),
           ...(role === 'admin' ? [{ href: '/admin/users', label: 'ユーザー管理', icon: 'users' }] : []),
-          { href: '/admin/requests', label: 'メッセージ管理', icon: 'request' },
+          ...(!isSalesView ? [{ href: '/admin/requests', label: 'メッセージ管理', icon: 'request' }] : []),
         ],
       },
     ];
@@ -128,11 +130,19 @@ const getNavSections = (role) => {
   if (role === 'sales') {
     return [
       {
-        label: null,
+        label: '業務',
         items: [
-          { href: '/sales/projects', label: '案件管理', icon: 'project' },
+          { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
+          { href: '/call', label: '架電画面', icon: 'call' },
+        ],
+      },
+      {
+        label: '記録',
+        items: [
+          { href: '/logs', label: 'AI評価', icon: 'ai' },
+          { href: '/call-results', label: '架電結果', icon: 'log' },
+          { href: '/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
-          { href: '/requests', label: 'メッセージ', icon: 'request' },
         ],
       },
     ];
@@ -179,10 +189,19 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isAdminRole = ['admin', 'manager', 'consultant'].includes(user?.role);
+  const [adminView, setAdminView] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('adminView') || 'operator';
+    return 'operator';
+  });
+  const handleAdminViewChange = (view) => {
+    setAdminView(view);
+    if (typeof window !== 'undefined') localStorage.setItem('adminView', view);
+  };
 
   if (!user) return null;
 
-  const sections = getNavSections(user.role);
+  const sections = getNavSections(user.role, adminView);
 
   return (
     <div className="flex h-screen bg-gray-50/80">
@@ -210,6 +229,22 @@ export default function Layout({ children }) {
             {sidebarOpen ? icons.collapse : icons.expand}
           </button>
         </div>
+
+        {/* 管理者: オペレーター/営業切替 */}
+        {isAdminRole && sidebarOpen && (
+          <div className="px-3 py-2 border-b border-white/[0.12]">
+            <div className="flex bg-white/10 rounded-lg p-0.5">
+              <button onClick={() => handleAdminViewChange('operator')}
+                className={`flex-1 text-[10px] font-medium py-1.5 rounded-md transition-all ${
+                  adminView === 'operator' ? 'bg-white/20 text-white shadow-sm' : 'text-white/50 hover:text-white/70'
+                }`}>オペレーター</button>
+              <button onClick={() => handleAdminViewChange('sales')}
+                className={`flex-1 text-[10px] font-medium py-1.5 rounded-md transition-all ${
+                  adminView === 'sales' ? 'bg-emerald-500/40 text-white shadow-sm' : 'text-white/50 hover:text-white/70'
+                }`}>営業</button>
+            </div>
+          </div>
+        )}
 
         {/* ナビゲーション（セクション分け） */}
         <nav className="flex-1 py-3 px-2.5 space-y-4 overflow-y-auto">
