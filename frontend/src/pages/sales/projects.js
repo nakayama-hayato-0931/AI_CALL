@@ -76,6 +76,7 @@ export default function SalesProjects() {
   const [activeTab, setActiveTab] = useState('current');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [callTypeView, setCallTypeView] = useState('sales');
 
   // 担当営業
   const [salesUsers, setSalesUsers] = useState([]);
@@ -102,7 +103,7 @@ export default function SalesProjects() {
       fetchProjects();
       fetchSalesUsers();
     }
-  }, [user, status, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search]);
+  }, [user, status, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search, callTypeView]);
 
   const fetchProjects = async () => {
     try {
@@ -114,7 +115,7 @@ export default function SalesProjects() {
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
       if (search) params.append('search', search);
-      if (activeTab !== 'legacy') params.append('call_type', 'sales');
+      if (activeTab !== 'legacy') params.append('call_type', callTypeView);
       const { data } = await api.get(`/api/projects?${params}`);
       if (data.success) {
         setProjects(data.data.projects);
@@ -259,6 +260,16 @@ export default function SalesProjects() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-gray-900">案件一覧</h1>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => { setCallTypeView('sales'); setPage(1); }}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${callTypeView === 'sales' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              営業案件
+            </button>
+            <button onClick={() => { setCallTypeView('operator'); setPage(1); }}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${callTypeView === 'operator' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              オペレーター案件
+            </button>
+          </div>
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button onClick={() => { setActiveTab('current'); setPage(1); }}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'current' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
