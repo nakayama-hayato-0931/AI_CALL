@@ -75,6 +75,14 @@ const getProjects = async (req, res, next) => {
       params.push(date_to + ' 23:59:59');
     }
 
+    // フリーワード検索（求人番号 or 企業名）
+    const { search } = req.query;
+    if (search) {
+      whereClauses.push('(COALESCE(c.company_name, p.legacy_company_name) LIKE ? OR p.job_number LIKE ?)');
+      const s = `%${search}%`;
+      params.push(s, s);
+    }
+
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     // ソート

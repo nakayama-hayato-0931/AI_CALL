@@ -76,6 +76,8 @@ export default function ProjectsPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('current'); // 'current', 'prospect', or 'legacy'
 
   // 担当営業フィルタ
@@ -100,7 +102,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
-  }, [statusFilter, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab]);
+  }, [statusFilter, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search]);
 
   const fetchSalesUsers = async () => {
     try {
@@ -119,6 +121,7 @@ export default function ProjectsPage() {
       if (myOnly) params.append('my_only', '1');
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
+      if (search) params.append('search', search);
       const { data } = await api.get(`/api/projects?${params}`);
       if (data.success) {
         setProjects(data.data.projects);
@@ -277,6 +280,16 @@ export default function ProjectsPage() {
 
       {/* フィルター */}
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="input-label">検索</label>
+          <div className="flex gap-1">
+            <input type="text" className="input text-sm w-48" placeholder="求人番号 or 企業名"
+              value={searchInput} onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }} />
+            <button onClick={() => { setSearch(searchInput); setPage(1); }}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">検索</button>
+          </div>
+        </div>
         <div>
           <label className="input-label">ステータス</label>
           <select className="input text-sm" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
