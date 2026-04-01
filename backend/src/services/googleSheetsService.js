@@ -153,7 +153,11 @@ const findTranscript = async (phoneNumber, callStartedAt) => {
   try {
     const index = await getTranscriptIndex();
     const normalizedPhone = normalize(phoneNumber);
-    const callTime = new Date(callStartedAt).getTime();
+    // dateStrings:true対応 — 文字列をJSTとしてパース
+    const callTimeStr = String(callStartedAt);
+    const callTime = callTimeStr.includes('T') || callTimeStr.includes('Z')
+      ? new Date(callStartedAt).getTime()
+      : new Date(callTimeStr.replace(' ', 'T') + '+09:00').getTime();
 
     const entries = index.get(normalizedPhone);
     if (!entries) return null;
@@ -182,7 +186,10 @@ const findTranscriptsBatch = async (calls) => {
       const phone = normalize(call.phone_number);
       const entries = index.get(phone);
       if (!entries) continue;
-      const callTime = new Date(call.call_started_at).getTime();
+      const ts = String(call.call_started_at);
+      const callTime = ts.includes('T') || ts.includes('Z')
+        ? new Date(call.call_started_at).getTime()
+        : new Date(ts.replace(' ', 'T') + '+09:00').getTime();
       for (const entry of entries) {
         if (entry.time && Math.abs(callTime - entry.time) <= 5 * 60 * 1000) {
           results.set(call.id, entry.transcript);
