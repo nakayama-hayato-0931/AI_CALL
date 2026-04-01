@@ -38,7 +38,7 @@ const getCompanies = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { search, industry, region, show_excluded, list_type } = req.query;
+    const { search, industry, region, show_excluded, list_type, is_sales_list } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -53,6 +53,13 @@ const getCompanies = async (req, res, next) => {
       whereClauses.push('c.is_special = 1');
     } else {
       whereClauses.push('c.is_special = 0');
+    }
+
+    // 営業/オペレーターリスト分離
+    if (is_sales_list === '1') {
+      whereClauses.push('c.is_sales_list = 1');
+    } else {
+      whereClauses.push('c.is_sales_list = 0');
     }
 
     if (search) {
@@ -285,7 +292,7 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
            ${lockFilterSQL}
          ORDER BY c.created_at DESC
          LIMIT 1`,
@@ -491,7 +498,7 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
            ${lockFilterSQL}
            ${specialAssignFilter}
          ORDER BY c.created_at DESC
