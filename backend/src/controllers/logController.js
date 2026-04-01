@@ -62,8 +62,9 @@ const searchLogs = async (req, res, next) => {
  */
 const getDailyCalls = async (req, res, next) => {
   try {
-    const { date, dateFrom, dateTo } = req.query;
+    const { date, dateFrom, dateTo, call_type } = req.query;
     const userId = req.user.id;
+    const callTypeFilter = call_type ? `AND c.call_type = '${call_type === 'sales' ? 'sales' : 'operator'}'` : '';
 
     if (!date && (!dateFrom || !dateTo)) {
       return ApiResponse.badRequest(res, '日付または期間を指定してください');
@@ -88,7 +89,7 @@ const getDailyCalls = async (req, res, next) => {
        LEFT JOIN companies co ON c.company_id = co.id
        LEFT JOIN users u ON c.user_id = u.id
        LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-       WHERE c.user_id = ? AND ${dateCondition} AND c.result_code != 'SKIP'
+       WHERE c.user_id = ? AND ${dateCondition} AND c.result_code != 'SKIP' ${callTypeFilter}
        ORDER BY c.call_started_at ASC`,
       queryParams
     );

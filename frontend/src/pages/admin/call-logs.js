@@ -51,11 +51,24 @@ export default function AdminCallLogsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [operators, setOperators] = useState([]);
 
+  // 架電種別（管理者切替連動）
+  const [callType, setCallType] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('adminView') || 'operator';
+    return 'operator';
+  });
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const v = localStorage.getItem('adminView') || 'operator';
+      setCallType(prev => prev !== v ? v : prev);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
   // 展開（文字起こし表示）
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
-    if (user && !['admin', 'manager'].includes(user.role)) {
+    if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
       router.push('/');
       return;
     }
@@ -64,7 +77,7 @@ export default function AdminCallLogsPage() {
 
   useEffect(() => {
     if (user) fetchCalls();
-  }, [user, page, viewMode, date, dateFrom, dateTo, resultCode, operatorId, search]);
+  }, [user, page, viewMode, date, dateFrom, dateTo, resultCode, operatorId, search, callType]);
 
   const fetchOperators = async () => {
     try {
@@ -87,6 +100,7 @@ export default function AdminCallLogsPage() {
       if (operatorId) params.user_id = operatorId;
       if (resultCode) params.result_code = resultCode;
       if (search) params.search = search;
+      if (callType) params.call_type = callType;
 
       const { data } = await api.get('/api/calls', { params });
       if (data.success) {
@@ -135,7 +149,12 @@ export default function AdminCallLogsPage() {
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">架電結果ログ</h1>
-          <p className="text-sm text-gray-400 mt-0.5">全オペレーターの架電結果を確認</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {callType === 'sales' ? '営業' : 'オペレーター'}の架電結果を確認
+            <span className={`ml-2 text-[10px] px-2 py-0.5 rounded-full font-medium ${callType === 'sales' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+              {callType === 'sales' ? '営業モード' : 'オペレーターモード'}
+            </span>
+          </p>
         </div>
       </div>
 

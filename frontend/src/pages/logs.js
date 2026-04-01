@@ -92,6 +92,9 @@ export default function AIEvaluationPage() {
     setLoading(true);
     try {
       const params = mode === 'daily' ? { date } : { dateFrom, dateTo };
+      // 営業ユーザーはsalesの架電のみ表示
+      const savedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      if (savedUser.role === 'sales') params.call_type = 'sales';
       const { data } = await api.get('/api/logs/daily', { params });
       setCalls(data.data.calls || []);
     } catch (err) {

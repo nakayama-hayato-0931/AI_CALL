@@ -314,10 +314,16 @@ const getCalls = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { user_id, company_id, result_code, date_from, date_to, search } = req.query;
+    const { user_id, company_id, result_code, date_from, date_to, search, call_type } = req.query;
 
     let whereClauses = ["c.result_code IS NOT NULL AND c.result_code != 'SKIP'"];
     let params = [];
+
+    // 架電種別フィルタ（営業/オペレーター分離）
+    if (call_type) {
+      whereClauses.push('c.call_type = ?');
+      params.push(call_type);
+    }
 
     if (user_id) {
       whereClauses.push('c.user_id = ?');
