@@ -13,7 +13,7 @@ const ALLOWED_EXTENSIONS = ['.csv', '.xls', '.xlsx'];
 const upload = multer({
   dest: path.join(__dirname, '../../uploads/'),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB上限
+    fileSize: 50 * 1024 * 1024, // 50MB上限
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
