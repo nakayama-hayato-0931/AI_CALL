@@ -408,7 +408,7 @@ export default function ProjectsPage() {
                                     fetchProjects();
                                   } catch (err) { toast.error('更新に失敗しました'); }
                                 }}
-                                className="sr-only"
+                                className="opacity-0 absolute w-0 h-0"
                               />
                             </td>
                           );
