@@ -90,6 +90,8 @@ export default function CallResultsPage() {
       else if (operatorId) params.user_id = operatorId;
       if (resultCode) params.result_code = resultCode;
       if (search) params.search = search;
+      // 営業ユーザーは営業の架電のみ表示
+      if (user?.role === 'sales') params.call_type = 'sales';
 
       const { data } = await api.get('/api/calls', { params });
       if (data.success) {
