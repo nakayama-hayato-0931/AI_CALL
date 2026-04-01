@@ -132,7 +132,7 @@ export default function CallResultsPage() {
     return `${Math.floor(sec / 60)}分${sec % 60}秒`;
   };
 
-  if (!user || user.role === 'sales') return null;
+  if (!user) return null;
 
   return (
     <Layout>
