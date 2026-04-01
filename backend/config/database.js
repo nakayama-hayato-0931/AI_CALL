@@ -21,6 +21,8 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
   // タイムゾーン
   timezone: '+09:00',
+  // DATE/DATETIME型を文字列として返す（タイムゾーン変換による日付ズレ防止）
+  dateStrings: true,
 });
 
 // 接続テスト + セッションタイムゾーンをJSTに設定
