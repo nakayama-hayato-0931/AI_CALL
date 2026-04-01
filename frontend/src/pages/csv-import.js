@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
-import api from '../utils/api';
+import api, { directApi } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const LOCK_TIMEOUT_MINUTES = 5;
@@ -223,7 +223,7 @@ export default function CallListPage() {
       else if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
       else if (importTab === 'existing') url = '/api/csv/import-exclusion?list_type=existing_project';
 
-      const { data } = await api.post(url, formData, {
+      const { data } = await directApi.post(url, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportResult(data.data);
