@@ -459,14 +459,35 @@ export default function ProjectsPage() {
               </table>
             </div>
 
-            {pagination.totalPages > 1 && (
-              <div className="flex justify-center gap-2 mt-4 py-4 border-t border-gray-100">
-                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setPage(p)}
-                    className={`px-3 py-1 rounded text-sm ${p === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{p}</button>
-                ))}
-              </div>
-            )}
+            {pagination.totalPages > 1 && (() => {
+              const tp = pagination.totalPages;
+              const pages = [];
+              // 常に表示: 1, 2, ..., 現在-1, 現在, 現在+1, ..., 最終-1, 最終
+              const show = new Set([1, 2, tp - 1, tp, page - 1, page, page + 1]);
+              for (let i = 1; i <= tp; i++) { if (show.has(i)) pages.push(i); }
+              const items = [];
+              let prev = 0;
+              for (const p of pages) {
+                if (p - prev > 1) items.push({ type: 'ellipsis', key: `e${p}` });
+                items.push({ type: 'page', value: p, key: p });
+                prev = p;
+              }
+              return (
+                <div className="flex items-center justify-center gap-1 mt-4 py-4 border-t border-gray-100">
+                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                    className="px-2 py-1 rounded text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-30">&lt;</button>
+                  {items.map(item => item.type === 'ellipsis' ? (
+                    <span key={item.key} className="px-1 text-gray-400 text-sm">...</span>
+                  ) : (
+                    <button key={item.key} onClick={() => setPage(item.value)}
+                      className={`min-w-[32px] px-2 py-1 rounded text-sm ${item.value === page ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{item.value}</button>
+                  ))}
+                  <button onClick={() => setPage(Math.min(tp, page + 1))} disabled={page === tp}
+                    className="px-2 py-1 rounded text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-30">&gt;</button>
+                  <span className="text-[10px] text-gray-400 ml-2">{page}/{tp}ページ ({pagination.total}件)</span>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>
