@@ -60,7 +60,7 @@ export default function CallResultsPage() {
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
-    if (user && user.role === 'sales') { router.push('/'); return; }
+    // 営業も架電結果を閲覧可能
     if (user) fetchOperators();
   }, [user]);
 
