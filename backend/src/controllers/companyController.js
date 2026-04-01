@@ -437,6 +437,10 @@ const getCallList = async (req, res, next) => {
     const currentTime = now.toTimeString().slice(0, 8);
     const LIST_SIZE = 10;
 
+    // 架電種別（営業 or オペレーター）
+    const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
+    const salesListFilter = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
+
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
     const industryParam = req.query.industry || '';
