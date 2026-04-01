@@ -79,6 +79,19 @@ export default function AdminProjects() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
+  // 架電種別（管理者切替連動）
+  const [callType, setCallType] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('adminView') || 'operator';
+    return 'operator';
+  });
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const v = localStorage.getItem('adminView') || 'operator';
+      setCallType(prev => prev !== v ? v : prev);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
   // 移行前インポート
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -109,7 +122,7 @@ export default function AdminProjects() {
 
   useEffect(() => {
     if (user) fetchProjects();
-  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search]);
+  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search, callType]);
 
   const fetchOperators = async () => {
     try {
@@ -157,6 +170,7 @@ export default function AdminProjects() {
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
       if (search) params.append('search', search);
+      if (callType && activeTab !== 'legacy') params.append('call_type', callType);
       const { data } = await api.get(`/api/projects?${params}`);
       if (data.success) {
         setProjects(data.data.projects);
@@ -290,7 +304,11 @@ export default function AdminProjects() {
   return (
     <Layout>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-900">案件管理</h1>
+        <h1 className="text-xl font-bold text-gray-900">案件管理
+          <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${callType === 'sales' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+            {callType === 'sales' ? '営業' : 'オペレーター'}
+          </span>
+        </h1>
         <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             myOnly ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

@@ -122,6 +122,7 @@ export default function ProjectsPage() {
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
       if (search) params.append('search', search);
+      if (activeTab !== 'legacy') params.append('call_type', 'operator');
       const { data } = await api.get(`/api/projects?${params}`);
       if (data.success) {
         setProjects(data.data.projects);

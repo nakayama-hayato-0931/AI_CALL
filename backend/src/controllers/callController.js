@@ -152,9 +152,9 @@ const endCall = async (req, res, next) => {
     let projectId = null;
     if (result_code === 'PROJECT') {
       const [projectResult] = await conn.execute(
-        `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect)
-         VALUES (?, ?, ?, 'NEW', ?)`,
-        [call.company_id, id, call.user_id, is_prospect ? 1 : 0]
+        `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
+         VALUES (?, ?, ?, 'NEW', ?, ?)`,
+        [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
       );
       projectId = projectResult.insertId;
     }
