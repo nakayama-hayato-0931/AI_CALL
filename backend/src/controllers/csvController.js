@@ -357,7 +357,8 @@ const importCompanies = async (req, res, next) => {
     }, `${insertedCount}件をインポートしました${assignMsg}`);
   } catch (err) {
     cleanupFile(req.file?.path);
-    next(err);
+    logger.error('インポートエラー詳細:', err.message, err.stack?.slice(0, 500));
+    return res.status(500).json({ success: false, message: `インポートエラー: ${err.message}` });
   }
 };
 
