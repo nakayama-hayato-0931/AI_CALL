@@ -273,6 +273,28 @@ const getDailyStats = async (req, res, next) => {
       }
     }
 
+    // 案件数: projectsテーブルから直接カウント（手動追加案件も含む）
+    let projUserCondition = '';
+    let projUserParams = [];
+    if (scope === 'team') {
+      // チーム全体
+    } else if (scope === 'operator' && targetUserId) {
+      projUserCondition = 'AND p.owner_user_id = ?';
+      projUserParams = [targetUserId];
+    } else {
+      projUserCondition = 'AND p.owner_user_id = ?';
+      projUserParams = [req.user.id];
+    }
+    const projCallTypeFilter = "AND p.call_type = '" + (callType === 'sales' ? 'sales' : 'operator') + "'";
+    const [projRows] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM projects p
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND DATE(p.created_at) BETWEEN ? AND ?
+         ${projCallTypeFilter} ${projUserCondition}`,
+      [dateFrom, dateTo, ...projUserParams]
+    );
+    const projectCount = Math.max(Number(s.project_count) || 0, Number(projRows[0].cnt) || 0);
+
     return ApiResponse.success(res, {
       date,
       period,
@@ -285,7 +307,7 @@ const getDailyStats = async (req, res, next) => {
       recallDone: recallDoneRows[0].recall_done,
       effectiveCount: s.effective_count,
       personCount: s.person_count,
-      projectCount: s.project_count,
+      projectCount,
       manualWorkHours,
     });
   } catch (err) {
