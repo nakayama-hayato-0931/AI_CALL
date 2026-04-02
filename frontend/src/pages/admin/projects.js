@@ -474,7 +474,7 @@ export default function AdminProjects() {
                       <select
                         value={p.sales_user_id || ''}
                         onChange={e => handleSalesAssign(e, p.id)}
-                        className={`select-no-arrow text-xs font-medium rounded-full px-2.5 py-0.5 border-0 cursor-pointer text-center ${
+                        className={`select-no-arrow text-xs font-medium rounded-full px-2 py-0.5 border-0 cursor-pointer text-center max-w-[80px] truncate ${
                           p.sales_user_id ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
                         }`}
                       >
