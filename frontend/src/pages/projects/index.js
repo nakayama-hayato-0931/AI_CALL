@@ -80,6 +80,11 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('current'); // 'current', 'prospect', or 'legacy'
 
+  // 手動案件追加
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [manualForm, setManualForm] = useState({ company_name: '', phone_number: '', status: '', job_number: '', interview_date: '', interview_type: '', memo: '', contact_person: '', contact_info: '', created_date: '' });
+  const [manualSaving, setManualSaving] = useState(false);
+
   // 担当営業フィルタ
   const [salesUsers, setSalesUsers] = useState([]);
   const [selectedSalesUser, setSelectedSalesUser] = useState('');
@@ -271,12 +276,19 @@ export default function ProjectsPage() {
             </button>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setShowManualAdd(true); setManualForm({ company_name: '', phone_number: '', status: '', job_number: '', interview_date: '', interview_type: '', memo: '', contact_person: '', contact_info: '', created_date: '' }); }}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-all flex items-center gap-1.5">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            手動追加
+          </button>
         <button onClick={() => { setMyOnly(!myOnly); setPage(1); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             myOnly ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}>
           {myOnly ? '自分の案件のみ' : '全員の案件'}
         </button>
+        </div>
       </div>
 
       {/* フィルター */}
@@ -659,6 +671,59 @@ export default function ProjectsPage() {
                   {hireSaving ? '保存中...' : '保存する'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 手動案件追加モーダル */}
+      {showManualAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowManualAdd(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-emerald-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-gray-900">案件を手動追加</h2>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><label className="text-xs text-gray-600 font-medium">企業名 *</label>
+                  <input type="text" value={manualForm.company_name} onChange={e => setManualForm(f => ({ ...f, company_name: e.target.value }))} className="input text-sm mt-0.5" placeholder="株式会社○○" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">電話番号</label>
+                  <input type="text" value={manualForm.phone_number} onChange={e => setManualForm(f => ({ ...f, phone_number: e.target.value }))} className="input text-sm mt-0.5" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">求人番号</label>
+                  <input type="text" value={manualForm.job_number} onChange={e => setManualForm(f => ({ ...f, job_number: e.target.value }))} className="input text-sm mt-0.5" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">ステータス</label>
+                  <select value={manualForm.status} onChange={e => setManualForm(f => ({ ...f, status: e.target.value }))} className="input text-sm mt-0.5">
+                    <option value="">未選択</option><option value="BOSHUCHU">募集中</option><option value="MENSETSU_KAKUTEI">面接確定</option><option value="KEKKA_MACHI">結果待ち</option><option value="NAITEI">内定</option>
+                  </select></div>
+                <div><label className="text-xs text-gray-600 font-medium">案件獲得日</label>
+                  <input type="date" value={manualForm.created_date} onChange={e => setManualForm(f => ({ ...f, created_date: e.target.value }))} className="input text-sm mt-0.5" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">面接日</label>
+                  <input type="datetime-local" value={manualForm.interview_date} onChange={e => setManualForm(f => ({ ...f, interview_date: e.target.value }))} className="input text-sm mt-0.5" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">面接形式</label>
+                  <select value={manualForm.interview_type} onChange={e => setManualForm(f => ({ ...f, interview_type: e.target.value }))} className="input text-sm mt-0.5">
+                    <option value="">未選択</option><option value="online">オンライン</option><option value="in_person">対面</option>
+                  </select></div>
+                <div><label className="text-xs text-gray-600 font-medium">担当者</label>
+                  <input type="text" value={manualForm.contact_person} onChange={e => setManualForm(f => ({ ...f, contact_person: e.target.value }))} className="input text-sm mt-0.5" /></div>
+                <div><label className="text-xs text-gray-600 font-medium">連絡先</label>
+                  <input type="text" value={manualForm.contact_info} onChange={e => setManualForm(f => ({ ...f, contact_info: e.target.value }))} className="input text-sm mt-0.5" /></div>
+              </div>
+              <div><label className="text-xs text-gray-600 font-medium">メモ</label>
+                <textarea value={manualForm.memo} onChange={e => setManualForm(f => ({ ...f, memo: e.target.value }))} className="input text-sm mt-0.5" rows={3} /></div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowManualAdd(false)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">キャンセル</button>
+              <button onClick={async () => {
+                if (!manualForm.company_name.trim()) { toast.error('企業名は必須です'); return; }
+                setManualSaving(true);
+                try {
+                  await api.post('/api/projects/manual', { ...manualForm, call_type: 'operator' });
+                  toast.success('案件を追加しました'); setShowManualAdd(false); fetchProjects();
+                } catch (err) { toast.error(err.response?.data?.message || '追加に失敗しました'); }
+                finally { setManualSaving(false); }
+              }} disabled={manualSaving || !manualForm.company_name.trim()}
+                className="px-6 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40">
+                {manualSaving ? '保存中...' : '追加'}</button>
             </div>
           </div>
         </div>
