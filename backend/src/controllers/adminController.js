@@ -306,6 +306,18 @@ const getAllOperatorPerformance = async (req, res, next) => {
       } catch (e) {
         op.work_minutes = 0;
       }
+
+      // 案件数: projectsテーブルから直接カウント（手動追加案件も含む）
+      try {
+        const projCTFilter = call_type === 'sales' ? "AND p.call_type = 'sales'" : "AND p.call_type = 'operator'";
+        const [projRows] = await pool.query(
+          `SELECT COUNT(*) as cnt FROM projects p
+           WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0
+             AND DATE(p.created_at) BETWEEN ? AND ? ${projCTFilter}`,
+          [op.user_id, dateFrom, dateTo]
+        );
+        op.projects = Number(projRows[0]?.cnt) || 0;
+      } catch (e) { /* keep calls-based count */ }
     }
 
     return ApiResponse.success(res, {
