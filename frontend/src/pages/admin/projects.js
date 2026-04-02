@@ -474,7 +474,9 @@ export default function AdminProjects() {
                       <select
                         value={p.sales_user_id || ''}
                         onChange={e => handleSalesAssign(e, p.id)}
-                        className="w-full text-xs border border-gray-200 rounded px-1 py-0.5 bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+                        className={`select-no-arrow text-xs font-medium rounded-full px-2.5 py-0.5 border-0 cursor-pointer text-center ${
+                          p.sales_user_id ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+                        }`}
                       >
                         <option value="">未割当</option>
                         {salesUsers.map(su => (
