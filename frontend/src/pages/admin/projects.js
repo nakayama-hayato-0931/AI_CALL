@@ -111,6 +111,11 @@ export default function AdminProjects() {
   const [hires, setHires] = useState([]);
   const [hireCount, setHireCount] = useState(1);
   const [hireSaving, setHireSaving] = useState(false);
+  const [modalNaiteiDate, setModalNaiteiDate] = useState('');
+  const [modalAttendees, setModalAttendees] = useState('');
+  // 不合格モーダル
+  const [fugokakuModal, setFugokakuModal] = useState(null);
+  const [fugokakuAttendees, setFugokakuAttendees] = useState('');
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -211,8 +216,14 @@ export default function AdminProjects() {
       const proj = projects.find(p => p.id === projectId);
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus } : p));
       toast.success('ステータスを更新しました');
-      if (newStatus === 'NAITEI' && proj?.created_at && new Date(proj.created_at) >= new Date('2026-03-01')) {
+      if (newStatus === 'NAITEI') {
+        setModalNaiteiDate('');
+        setModalAttendees('');
         openHireModal(projectId, proj?.company_name || '');
+      }
+      if (newStatus === 'FUGOKAKU') {
+        setFugokakuAttendees('');
+        setFugokakuModal({ projectId, companyName: proj?.company_name || '' });
       }
     } catch (err) {
       toast.error('ステータスの更新に失敗しました');
@@ -247,8 +258,14 @@ export default function AdminProjects() {
     setHireSaving(true);
     try {
       await api.put(`/api/projects/${hireModal.projectId}/hires`, { hires });
+      // 内定日・面接人数も保存
+      await api.put(`/api/projects/${hireModal.projectId}`, {
+        naitei_date: modalNaiteiDate || null,
+        interview_attendees: modalAttendees ? Number(modalAttendees) : null,
+      });
       toast.success('内定者情報を保存しました');
       setHireModal(null);
+      fetchProjects();
     } catch { toast.error('内定者情報の保存に失敗しました'); }
     finally { setHireSaving(false); }
   };
@@ -658,11 +675,21 @@ export default function AdminProjects() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">内定人数</label>
-                <select value={hireCount} onChange={(e) => handleHireCountChange(e.target.value)} className="input w-24 text-sm">
-                  {[0,1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}名</option>)}
-                </select>
+              <div className="grid grid-cols-3 gap-3 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">内定日</label>
+                  <input type="date" value={modalNaiteiDate} onChange={e => setModalNaiteiDate(e.target.value)} className="input text-sm mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">面接人数</label>
+                  <input type="number" min="0" value={modalAttendees} onChange={e => setModalAttendees(e.target.value)} className="input text-sm mt-0.5" placeholder="人数" />
+                </div>
+                <div>
+                  <label className="text-xs text-blue-600 font-medium">内定人数</label>
+                  <select value={hireCount} onChange={(e) => handleHireCountChange(e.target.value)} className="input text-sm mt-0.5">
+                    {[0,1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}名</option>)}
+                  </select>
+                </div>
               </div>
               {hires.map((hire, idx) => (
                 <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
@@ -691,6 +718,44 @@ export default function AdminProjects() {
                 <button onClick={() => setHireModal(null)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">キャンセル</button>
                 <button onClick={handleSaveHires} disabled={hireSaving || hireCount === 0} className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{hireSaving ? '保存中...' : '保存する'}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 不合格時の面接人数入力モーダル */}
+      {fugokakuModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFugokakuModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-red-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-gray-900">面接結果: 不合格</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{fugokakuModal.companyName}</p>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="text-xs text-gray-600 font-medium">面接人数 *</label>
+                <input type="number" min="1" value={fugokakuAttendees}
+                  onChange={e => setFugokakuAttendees(e.target.value)}
+                  className="input text-sm mt-1" placeholder="面接した人数" />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setFugokakuModal(null)}
+                className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">キャンセル</button>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.put(`/api/projects/${fugokakuModal.projectId}`, {
+                      interview_attendees: fugokakuAttendees ? Number(fugokakuAttendees) : null,
+                    });
+                    toast.success('面接結果を保存しました');
+                    setFugokakuModal(null);
+                    fetchProjects();
+                  } catch { toast.error('保存に失敗しました'); }
+                }}
+                disabled={!fugokakuAttendees}
+                className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                保存
+              </button>
             </div>
           </div>
         </div>
