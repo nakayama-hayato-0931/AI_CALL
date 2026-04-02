@@ -778,4 +778,44 @@ const promoteProject = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject };
+/**
+ * POST /api/projects/manual
+ * 手動案件作成（折り返し電話等、架電画面を経由しない案件獲得用）
+ */
+const createProjectManual = async (req, res, next) => {
+  try {
+    const { company_name, phone_number, status, job_number, interview_date, interview_type,
+      document_screening, mail_sent, mail_replied, phone_confirmed, memo,
+      contact_person, contact_info, call_type, created_date } = req.body;
+
+    if (!company_name) {
+      return ApiResponse.badRequest(res, '企業名は必須です');
+    }
+
+    const resolvedCallType = call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
+
+    const createdAt = created_date ? `${created_date} 00:00:00` : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    const [result] = await pool.execute(
+      `INSERT INTO projects (
+        legacy_company_name, legacy_phone, owner_user_id, status,
+        job_number, interview_date, interview_type, document_screening,
+        mail_sent, mail_replied, phone_confirmed, memo,
+        contact_person, contact_info, call_type, is_legacy, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      [
+        company_name, phone_number || null, req.user.id, status || 'NEW',
+        job_number || null, interview_date || null, interview_type || null, document_screening || null,
+        mail_sent || null, mail_replied || null, phone_confirmed || null, memo || null,
+        contact_person || null, contact_info || null, resolvedCallType, createdAt,
+      ]
+    );
+
+    logger.info(`手動案件作成: id=${result.insertId}, user=${req.user.id}, company=${company_name}`);
+    return ApiResponse.created(res, { projectId: result.insertId }, '案件を作成しました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject, createProjectManual };
