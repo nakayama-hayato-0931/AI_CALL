@@ -141,7 +141,7 @@ const getNavSections = (role, adminView) => {
         items: [
           { href: '/logs', label: 'AI評価', icon: 'ai' },
           { href: '/call-results', label: '架電結果', icon: 'log' },
-          { href: '/projects', label: '案件管理', icon: 'project' },
+          { href: '/sales/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
         ],
       },
