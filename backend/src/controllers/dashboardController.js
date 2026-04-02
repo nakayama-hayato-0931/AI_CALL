@@ -273,7 +273,7 @@ const getDailyStats = async (req, res, next) => {
       }
     }
 
-    // 案件数: projectsテーブルから直接カウント（手動追加案件も含む）
+    // 案件数: projectsテーブルから直接カウント（架電経由+手動追加の両方を1回でカウント）
     let projUserCondition = '';
     let projUserParams = [];
     if (scope === 'team') {
@@ -293,7 +293,7 @@ const getDailyStats = async (req, res, next) => {
          ${projCallTypeFilter} ${projUserCondition}`,
       [dateFrom, dateTo, ...projUserParams]
     );
-    const projectCount = Math.max(Number(s.project_count) || 0, Number(projRows[0].cnt) || 0);
+    const projectCount = Number(projRows[0].cnt) || 0;
 
     return ApiResponse.success(res, {
       date,
