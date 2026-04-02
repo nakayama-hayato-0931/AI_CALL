@@ -38,7 +38,7 @@ export default function ProjectDetailPage() {
   const [form, setForm] = useState({
     status: '', interview_date: '', interview_type: '', interview_attendees: '', naitei_date: '',
     document_screening: '', mail_sent: '', mail_replied: '', phone_confirmed: '', job_number: '', memo: '',
-    contact_person: '', contact_info: '', dashboard_checked: false,
+    contact_person: '', contact_phone: '', contact_email: '', dashboard_checked: false,
   });
   const [companyForm, setCompanyForm] = useState({
     company_name: '', industry: '', address: '',
@@ -147,7 +147,8 @@ export default function ProjectDetailPage() {
         job_number: p.job_number || '',
         memo: p.memo || '',
         contact_person: p.contact_person || '',
-        contact_info: p.contact_info || '',
+        contact_phone: p.contact_phone || '',
+        contact_email: p.contact_email || '',
         dashboard_checked: !!p.dashboard_checked,
       });
       setCompanyForm({
@@ -371,26 +372,25 @@ export default function ProjectDetailPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="input-label">企業担当者</label>
-                  <input
-                    type="text"
-                    value={form.contact_person}
-                    onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
-                    className="input"
-                    placeholder="担当者名"
-                  />
-                </div>
-
-                <div>
-                  <label className="input-label">担当連絡先</label>
-                  <input
-                    type="text"
-                    value={form.contact_info}
-                    onChange={(e) => setForm({ ...form, contact_info: e.target.value })}
-                    className="input"
-                    placeholder="電話番号・メールアドレス等"
-                  />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="input-label">企業担当者</label>
+                    <input type="text" value={form.contact_person}
+                      onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
+                      className="input" placeholder="担当者名" />
+                  </div>
+                  <div>
+                    <label className="input-label">担当者電話番号</label>
+                    <input type="text" value={form.contact_phone}
+                      onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+                      className="input" placeholder="090-xxxx-xxxx" />
+                  </div>
+                  <div>
+                    <label className="input-label">担当者メール</label>
+                    <input type="email" value={form.contact_email}
+                      onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+                      className="input" placeholder="email@example.com" />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 py-2">

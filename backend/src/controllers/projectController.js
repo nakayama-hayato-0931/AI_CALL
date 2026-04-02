@@ -207,6 +207,8 @@ const updateProject = async (req, res, next) => {
       pre_confirmed,
       contact_person,
       contact_info,
+      contact_phone,
+      contact_email,
       dashboard_checked,
       interview_attendees,
       naitei_date,
@@ -248,6 +250,8 @@ const updateProject = async (req, res, next) => {
     if (pre_confirmed !== undefined) { updates.push('pre_confirmed = ?'); updateParams.push(pre_confirmed ? 1 : 0); }
     if (contact_person !== undefined) { updates.push('contact_person = ?'); updateParams.push(contact_person || null); }
     if (contact_info !== undefined) { updates.push('contact_info = ?'); updateParams.push(contact_info || null); }
+    if (contact_phone !== undefined) { updates.push('contact_phone = ?'); updateParams.push(contact_phone || null); }
+    if (contact_email !== undefined) { updates.push('contact_email = ?'); updateParams.push(contact_email || null); }
     if (dashboard_checked !== undefined) { updates.push('dashboard_checked = ?'); updateParams.push(dashboard_checked ? 1 : 0); }
 
     if (updates.length === 0 && !company_name && industry === undefined && region === undefined && address === undefined) {
@@ -786,7 +790,7 @@ const createProjectManual = async (req, res, next) => {
   try {
     const { company_name, phone_number, status, job_number, interview_date, interview_type,
       document_screening, mail_sent, mail_replied, phone_confirmed, memo,
-      contact_person, contact_info, call_type, created_date } = req.body;
+      contact_person, contact_info, contact_phone, contact_email, call_type, created_date } = req.body;
 
     if (!company_name) {
       return ApiResponse.badRequest(res, '企業名は必須です');
@@ -801,13 +805,13 @@ const createProjectManual = async (req, res, next) => {
         legacy_company_name, legacy_phone, owner_user_id, status,
         job_number, interview_date, interview_type, document_screening,
         mail_sent, mail_replied, phone_confirmed, memo,
-        contact_person, contact_info, call_type, is_legacy, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        contact_person, contact_info, contact_phone, contact_email, call_type, is_legacy, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
         company_name, phone_number || null, req.user.id, status || 'NEW',
         job_number || null, interview_date || null, interview_type || null, document_screening || null,
         mail_sent || null, mail_replied || null, phone_confirmed || null, memo || null,
-        contact_person || null, contact_info || null, resolvedCallType, createdAt,
+        contact_person || null, contact_info || null, contact_phone || null, contact_email || null, resolvedCallType, createdAt,
       ]
     );
 

@@ -30,7 +30,8 @@ export default function ProjectModal({ projectId, onClose }) {
     phone_confirmed: '',
     memo: '',
     contact_person: '',
-    contact_info: '',
+    contact_phone: '',
+    contact_email: '',
     dashboard_checked: false,
   });
   const [saving, setSaving] = useState(false);
@@ -132,7 +133,7 @@ export default function ProjectModal({ projectId, onClose }) {
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="input-label">企業担当者</label>
                 <input type="text" value={form.contact_person}
@@ -140,10 +141,16 @@ export default function ProjectModal({ projectId, onClose }) {
                   className="input" placeholder="担当者名" />
               </div>
               <div>
-                <label className="input-label">担当連絡先</label>
-                <input type="text" value={form.contact_info}
-                  onChange={e => setForm({...form, contact_info: e.target.value})}
-                  className="input" placeholder="電話番号・メール等" />
+                <label className="input-label">担当者電話番号</label>
+                <input type="text" value={form.contact_phone}
+                  onChange={e => setForm({...form, contact_phone: e.target.value})}
+                  className="input" placeholder="090-xxxx-xxxx" />
+              </div>
+              <div>
+                <label className="input-label">担当者メール</label>
+                <input type="email" value={form.contact_email}
+                  onChange={e => setForm({...form, contact_email: e.target.value})}
+                  className="input" placeholder="email@example.com" />
               </div>
             </div>
 
