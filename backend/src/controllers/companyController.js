@@ -508,7 +508,7 @@ const getCallList = async (req, res, next) => {
       return ApiResponse.success(res, { targets: specialRows });
     }
 
-    // 自作リストモード: シンプルに全件返す（フィルタなし）
+    // 自作リストモード: 全件返す（上限1000件）
     if (isMyList) {
       const [mylistRows] = await pool.query(
         `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -520,8 +520,8 @@ const getCallList = async (req, res, next) => {
            ${lockFilterSQL}
            ${modeFilterSQL}
          ORDER BY c.created_at DESC
-         LIMIT ?`,
-        [userId, ...modeFilterParams, LIST_SIZE]
+         LIMIT 1000`,
+        [userId, ...modeFilterParams]
       );
       return ApiResponse.success(res, { targets: mylistRows });
     }
