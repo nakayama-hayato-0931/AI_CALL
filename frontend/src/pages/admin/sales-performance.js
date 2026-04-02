@@ -24,11 +24,12 @@ export default function SalesPerformancePage() {
   const [selectedWeekDate, setSelectedWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [dateBase, setDateBase] = useState('naitei'); // 'naitei' or 'created'
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant', 'sales'].includes(user.role)) return;
     fetchData();
-  }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo]);
+  }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo, dateBase]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -56,7 +57,7 @@ export default function SalesPerformancePage() {
         dateTo = customTo;
         if (!dateFrom || !dateTo) { setLoading(false); return; }
       }
-      const { data: res } = await api.get(`/api/analytics/sales-performance?date_from=${dateFrom}&date_to=${dateTo}`);
+      const { data: res } = await api.get(`/api/analytics/sales-performance?date_from=${dateFrom}&date_to=${dateTo}&date_base=${dateBase}`);
       if (res.success) setData(res.data);
     } catch (err) {
       toast.error('データの取得に失敗しました');
@@ -137,10 +138,20 @@ export default function SalesPerformancePage() {
               <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="input text-xs" />
             </>
           )}
-          {data && (
-            <span className="text-[10px] text-gray-400 ml-auto">{data.dateFrom} 〜 {data.dateTo}</span>
-          )}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg ml-auto">
+            <button onClick={() => setDateBase('naitei')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                dateBase === 'naitei' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>内定日ベース</button>
+            <button onClick={() => setDateBase('created')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                dateBase === 'created' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>案件獲得日ベース</button>
+          </div>
         </div>
+        {data && (
+          <p className="text-[10px] text-gray-400 mt-2 text-right">{data.dateFrom} 〜 {data.dateTo}（{dateBase === 'naitei' ? '内定日' : '案件獲得日'}ベース）</p>
+        )}
       </div>
 
       {/* テーブル */}

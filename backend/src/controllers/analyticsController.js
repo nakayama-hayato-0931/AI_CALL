@@ -897,10 +897,11 @@ const importStampCsv = async (req, res, next) => {
  */
 const getSalesPerformance = async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, date_base } = req.query;
     let dateFrom = '2000-01-01', dateTo = '2099-12-31';
     if (date_from) dateFrom = date_from;
     if (date_to) dateTo = date_to;
+    const useNaiteiDate = date_base !== 'created'; // デフォルトは内定日ベース
 
     // 営業ユーザー一覧
     const [salesUsers] = await pool.query(
@@ -908,13 +909,17 @@ const getSalesPerformance = async (req, res, next) => {
     );
 
     // 営業別集計クエリ（内定日ベース: naitei_date、面接/バラシは created_at ベース）
+    // 集計基準: 内定日ベース or 案件獲得日ベース
+    const naiteiDateFilter = useNaiteiDate ? 'p.naitei_date BETWEEN ? AND ?' : 'DATE(p.created_at) BETWEEN ? AND ?';
+    const createdDateFilter = 'DATE(p.created_at) BETWEEN ? AND ?';
+
     const [rows] = await pool.query(
       `SELECT
         p.sales_user_id,
-        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND p.naitei_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
-        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND DATE(p.created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
-        COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND DATE(p.created_at) BETWEEN ? AND ? THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
-        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND DATE(p.created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
+        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${naiteiDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
+        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${createdDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+        COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${createdDateFilter} THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
+        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND ${createdDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
       FROM projects p
       WHERE p.is_legacy = 0 AND p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
@@ -922,7 +927,7 @@ const getSalesPerformance = async (req, res, next) => {
       [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
     );
 
-    // 内定者集計（国内/海外別、内定日ベース）
+    // 内定者集計（国内/海外別）
     const [hireRows] = await pool.query(
       `SELECT
         p.sales_user_id,
@@ -937,7 +942,7 @@ const getSalesPerformance = async (req, res, next) => {
       WHERE p.is_legacy = 0 AND p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
         AND ph.is_cancelled = 0
-        AND p.naitei_date BETWEEN ? AND ?
+        AND ${naiteiDateFilter}
       GROUP BY p.sales_user_id`,
       [dateFrom, dateTo]
     );
