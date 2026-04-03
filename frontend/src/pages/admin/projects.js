@@ -462,8 +462,17 @@ export default function AdminProjects() {
             <tbody>
               {projects.map(p => {
                 const urgent = isUrgentUnconfirmed(p);
+                // 行の色分け
+                const hasMailOrPhone = p.mail_replied || p.phone_confirmed;
+                const hasAllChecks = p.log_confirmed && p.job_posted && p.pre_confirmed;
+                let rowBg = '';
+                if (!hasMailOrPhone) {
+                  rowBg = 'bg-amber-50/70'; // オレンジ: メール返信・電話確認どちらもなし
+                } else if (!hasAllChecks) {
+                  rowBg = 'bg-red-50/70'; // 赤: メール返信or電話確認あり、だがログ確認・求人済・事前確認が全て未チェック
+                }
                 return (
-                  <tr key={p.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
+                  <tr key={p.id} className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer ${rowBg}`}
                     onClick={() => router.push(`/projects/${p.id}`)}>
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {new Date(p.created_at).toLocaleDateString('ja-JP')}
