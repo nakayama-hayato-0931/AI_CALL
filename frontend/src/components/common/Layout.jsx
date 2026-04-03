@@ -119,6 +119,7 @@ const getNavSections = (role, adminView) => {
           { href: '/admin/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
+          { href: '/admin/special-list-progress', label: '特別リスト進捗', icon: 'status' },
           ...(!isSalesView ? [{ href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' }] : []),
           ...(role === 'admin' ? [{ href: '/admin/users', label: 'ユーザー管理', icon: 'users' }] : []),
           ...(!isSalesView ? [{ href: '/admin/requests', label: 'メッセージ管理', icon: 'request' }] : []),

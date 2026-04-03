@@ -11,6 +11,7 @@ const {
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
+  getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -61,5 +62,10 @@ router.delete('/scripts/:id', requireEditor, deleteScript);
 // 申請管理 (閲覧: manager+consultant、返信: editor)
 router.get('/requests', requireManager, getAllRequests);
 router.put('/requests/:id', requireEditor, replyToRequest);
+
+// 特別リスト進捗管理
+router.get('/special-list-batches', requireManager, getSpecialListBatches);
+router.get('/special-list-batches/:id/details', requireManager, getSpecialListBatchDetails);
+router.get('/special-list-batches/:id/export', requireManager, exportSpecialListBatch);
 
 module.exports = router;

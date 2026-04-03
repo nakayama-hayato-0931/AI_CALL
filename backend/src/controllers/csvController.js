@@ -742,6 +742,18 @@ const importSpecialList = async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
+      // 管理者インポート時のみバッチ作成（進捗管理用）
+      let batchId = null;
+      const isManagerImport = req.user.role === 'admin' || req.user.role === 'manager';
+      if (isManagerImport) {
+        const batchName = req.file.originalname || `特別リスト_${new Date().toISOString().slice(0, 10)}`;
+        const [batchResult] = await conn.execute(
+          'INSERT INTO import_batches (name, list_type, total_count, created_by) VALUES (?, ?, ?, ?)',
+          [batchName, 'special', records.length, req.user.id]
+        );
+        batchId = batchResult.insertId;
+      }
+
       for (let i = 0; i < records.length; i++) {
         const row = records[i];
         const lineNum = i + 2;
@@ -774,9 +786,9 @@ const importSpecialList = async (req, res, next) => {
 
         // NG/既存案件リストは無視してインサート（is_special=1）
         const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, is_special)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address]
+          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, is_special, import_batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, batchId]
         );
 
         // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
@@ -798,6 +810,11 @@ const importSpecialList = async (req, res, next) => {
         }
 
         insertedCount++;
+      }
+
+      // バッチの実際のインサート数を更新
+      if (batchId && insertedCount > 0) {
+        await conn.execute('UPDATE import_batches SET total_count = ? WHERE id = ?', [insertedCount, batchId]);
       }
 
       await conn.commit();

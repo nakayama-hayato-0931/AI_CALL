@@ -704,4 +704,94 @@ module.exports = {
   addTimeRule,
   updateTimeRule,
   deleteTimeRule,
+  getSpecialListBatches,
+  getSpecialListBatchDetails,
+  exportSpecialListBatch,
+};
+
+/**
+ * GET /api/admin/special-list-batches
+ * 特別リストバッチ一覧 + 架電進捗
+ */
+const getSpecialListBatches = async (req, res, next) => {
+  try {
+    const [batches] = await pool.query(
+      `SELECT b.id, b.name, b.total_count, b.created_at, u.name as created_by_name,
+        (SELECT COUNT(*) FROM companies c WHERE c.import_batch_id = b.id) as current_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP') as called_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code = 'NO_ANSWER') as no_answer_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code = 'NG') as ng_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code = 'RECALL') as recall_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code = 'INTERESTED') as interested_count,
+        (SELECT COUNT(DISTINCT cl.company_id) FROM calls cl JOIN companies c2 ON cl.company_id = c2.id
+         WHERE c2.import_batch_id = b.id AND cl.result_code = 'PROJECT') as project_count
+       FROM import_batches b
+       LEFT JOIN users u ON b.created_by = u.id
+       WHERE b.list_type = 'special'
+       ORDER BY b.created_at DESC`
+    );
+    return ApiResponse.success(res, batches);
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/admin/special-list-batches/:id/details
+ * バッチ内の全企業 + 架電結果詳細
+ */
+const getSpecialListBatchDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [companies] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region,
+        (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP') as call_count,
+        (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_result,
+        (SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_called_at,
+        (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+        (SELECT u.name FROM calls cl JOIN users u ON cl.user_id = u.id WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_caller
+       FROM companies c
+       WHERE c.import_batch_id = ?
+       ORDER BY c.id ASC`,
+      [id]
+    );
+    return ApiResponse.success(res, companies);
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/admin/special-list-batches/:id/export
+ * CSVエクスポート
+ */
+const exportSpecialListBatch = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [batch] = await pool.query('SELECT name FROM import_batches WHERE id = ?', [id]);
+    const [companies] = await pool.query(
+      `SELECT c.company_name, c.phone_number, c.industry, c.region,
+        (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP') as call_count,
+        (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_result,
+        (SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_called_at,
+        (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
+        (SELECT u.name FROM calls cl JOIN users u ON cl.user_id = u.id WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) as last_caller
+       FROM companies c WHERE c.import_batch_id = ? ORDER BY c.id ASC`,
+      [id]
+    );
+
+    const RESULT_LABELS = { NO_ANSWER: '不通', NG: 'NG', RECALL: 'リコール', INTERESTED: '興味あり', PROJECT: '案件化', SKIP: 'SKIP' };
+    const header = '企業名,電話番号,業種,地域,架電回数,最終結果,最終架電日,架電者,メモ\n';
+    const rows = companies.map(c =>
+      [c.company_name, c.phone_number, c.industry || '', c.region || '', c.call_count,
+       RESULT_LABELS[c.last_result] || c.last_result || '未架電', c.last_called_at || '', c.last_caller || '', (c.last_memo || '').replace(/[\n\r,]/g, ' ')
+      ].map(v => `"${v}"`).join(',')
+    ).join('\n');
+
+    const bom = '\uFEFF';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent((batch[0]?.name || 'export') + '.csv')}"`);
+    res.send(bom + header + rows);
+  } catch (err) { next(err); }
 };
