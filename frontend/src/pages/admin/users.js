@@ -11,6 +11,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: '管理者' },
   { value: 'sales', label: '営業' },
   { value: 'consultant', label: 'コンサルタント' },
+  { value: 'intern', label: 'インターン' },
 ];
 
 const ROLE_STYLES = {
@@ -19,6 +20,7 @@ const ROLE_STYLES = {
   operator: 'bg-blue-100 text-blue-700',
   sales: 'bg-green-100 text-green-700',
   consultant: 'bg-amber-100 text-amber-700',
+  intern: 'bg-cyan-100 text-cyan-700',
 };
 
 export default function AdminUsers() {

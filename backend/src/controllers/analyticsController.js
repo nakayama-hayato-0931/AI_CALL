@@ -7,6 +7,24 @@ const { getDateRange } = require('../utils/periodHelper');
 const logger = require('../utils/logger');
 
 const HOURLY_RATE = 1500; // 時給（円）
+const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
+
+// ユーザーのロールに応じたコスト計算
+const calcUserCost = (totalMinutes, workDays, user) => {
+  const isIntern = user?.role === 'intern';
+  const rate = isIntern ? INTERN_HOURLY_RATE : HOURLY_RATE;
+  let laborCost = Math.round(totalMinutes / 60 * rate);
+  let commuteCost = 0;
+  if (user) {
+    if (user.commute_type === 'teiki') {
+      // 定期: 月額計算（期間指定時はgetCpaAllで別途処理）
+    } else if (user.commute_type === 'daily') {
+      commuteCost = (user.commute_daily_amount || 0) * workDays;
+    }
+  }
+  const totalCost = laborCost + commuteCost;
+  return isIntern ? Math.round(totalCost / 2) : totalCost;
+};
 
 /**
  * GET /api/analytics/cpa
@@ -54,11 +72,13 @@ const getCpaMetrics = async (req, res, next) => {
     );
     const totalMinutes = Number(costRows[0].total_minutes) || 0;
     let cost = Math.round(totalMinutes / 60 * HOURLY_RATE);
-    // 交通費加算（個人指定時のみ）
+    // インターン対応: ユーザーのロールに応じて時給・半額計算
     if (targetUserId) {
-      const [uRows] = await pool.query('SELECT commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE id = ?', [targetUserId]);
+      const [uRows] = await pool.query('SELECT role, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE id = ?', [targetUserId]);
       if (uRows.length > 0) {
         const u = uRows[0];
+        const rate = u.role === 'intern' ? INTERN_HOURLY_RATE : HOURLY_RATE;
+        cost = Math.round(totalMinutes / 60 * rate);
         if (u.commute_type === 'teiki') {
           const d1 = new Date(dateFrom), d2 = new Date(dateTo);
           const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
@@ -66,6 +86,7 @@ const getCpaMetrics = async (req, res, next) => {
         } else if (u.commute_type === 'daily') {
           cost += (u.commute_daily_amount || 0) * Number(costRows[0].work_days || 0);
         }
+        if (u.role === 'intern') cost = Math.round(cost / 2);
       }
     }
 
@@ -470,8 +491,10 @@ const getCpaAll = async (req, res, next) => {
     const workHoursMap = new Map(); // 稼働時間（時間）
     for (const r of costAll) {
       const totalMinutes = Number(r.total_minutes);
-      const laborCost = Math.round(totalMinutes / 60 * HOURLY_RATE);
       const u = users.find(u => u.id === r.user_id);
+      const isIntern = u?.role === 'intern';
+      const rate = isIntern ? INTERN_HOURLY_RATE : HOURLY_RATE;
+      const laborCost = Math.round(totalMinutes / 60 * rate);
       let commuteCost = 0;
       if (u) {
         if (u.commute_type === 'teiki') {
@@ -482,7 +505,8 @@ const getCpaAll = async (req, res, next) => {
           commuteCost = (u.commute_daily_amount || 0) * Number(r.work_days || 0);
         }
       }
-      costMap.set(r.user_id, laborCost + commuteCost);
+      const totalCost = laborCost + commuteCost;
+      costMap.set(r.user_id, isIntern ? Math.round(totalCost / 2) : totalCost);
       workHoursMap.set(r.user_id, Math.round(totalMinutes / 6) / 10); // 小数第1位まで
     }
 

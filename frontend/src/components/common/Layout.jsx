@@ -149,7 +149,7 @@ const getNavSections = (role, adminView) => {
       },
     ];
   }
-  // operator
+  // operator / intern（同じメニュー）
   return [
     {
       label: '業務',

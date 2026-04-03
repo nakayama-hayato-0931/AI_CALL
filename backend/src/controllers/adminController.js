@@ -43,7 +43,7 @@ const createUser = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'オペレーター以外はメールアドレスが必須です');
     }
 
-    const validRoles = ['admin', 'manager', 'operator', 'sales', 'consultant'];
+    const validRoles = ['admin', 'manager', 'operator', 'sales', 'consultant', 'intern'];
     if (role && !validRoles.includes(role)) {
       return ApiResponse.badRequest(res, `ロールは ${validRoles.join(', ')} のいずれかを指定してください`);
     }
@@ -254,7 +254,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
     }
     const { dateFrom, dateTo } = range;
-    const targetRole = call_type === 'sales' ? 'sales' : 'operator';
+    const targetRoles = call_type === 'sales' ? "'sales'" : "'operator','intern'";
     const callTypeFilter = call_type === 'sales' ? "AND c.call_type = 'sales'" : "AND c.call_type = 'operator'";
 
     const [rows] = await pool.query(
@@ -274,10 +274,10 @@ const getAllOperatorPerformance = async (req, res, next) => {
       FROM users u
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
-      WHERE u.role = ? AND u.is_active = 1 AND u.is_test_account = 0
+      WHERE u.role IN (${targetRoles}) AND u.is_active = 1 AND u.is_test_account = 0
       GROUP BY u.id, u.name
       ORDER BY u.id ASC`,
-      [dateFrom, dateTo, targetRole]
+      [dateFrom, dateTo]
     );
 
     // リコール消化数と稼働時間を各オペレーターに追加
