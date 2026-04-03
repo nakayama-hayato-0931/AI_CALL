@@ -55,7 +55,9 @@ const getProjects = async (req, res, next) => {
       params.push(owner_user_id);
     }
 
-    if (sales_user_id) {
+    if (sales_user_id === 'none') {
+      whereClauses.push('p.sales_user_id IS NULL');
+    } else if (sales_user_id) {
       whereClauses.push('p.sales_user_id = ?');
       params.push(sales_user_id);
     }

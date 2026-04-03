@@ -323,6 +323,7 @@ export default function SalesProjects() {
           <label className="input-label">担当営業</label>
           <select className="input text-sm" value={selectedSalesUser} onChange={e => { setSelectedSalesUser(e.target.value); setPage(1); }}>
             <option value="">全員</option>
+            <option value="none">未割当</option>
             {salesUsers.map(su => <option key={su.id} value={su.id}>{su.name}</option>)}
           </select>
         </div>
