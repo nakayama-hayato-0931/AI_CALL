@@ -143,6 +143,7 @@ const getNavSections = (role, adminView) => {
           { href: '/call-results', label: '架電結果', icon: 'log' },
           { href: '/sales/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
+          { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
         ],
       },
     ];

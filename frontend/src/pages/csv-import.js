@@ -218,6 +218,12 @@ export default function CallListPage() {
         formData.append('grace_days', String(graceDays));
       }
 
+      // 営業ユーザーは自動的に営業リストとしてインポート
+      const savedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      if (savedUser.role === 'sales') {
+        formData.append('is_sales_list', '1');
+      }
+
       let url = '/api/csv/import';
       if (importTab === 'special') url = '/api/csv/import-special';
       else if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
@@ -266,6 +272,11 @@ export default function CallListPage() {
         if (selectedOperators.length > 0) {
           payload.priority_operator_ids = selectedOperators;
           payload.grace_days = graceDays;
+        }
+        // 営業ユーザーは自動的に営業リストとして登録
+        const savedUser2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+        if (savedUser2.role === 'sales') {
+          payload.is_sales_list = true;
         }
         const { data } = await api.post(url, payload);
         toast.success(data.message || '登録しました');
