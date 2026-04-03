@@ -457,6 +457,7 @@ export default function AdminProjects() {
                 <th className="table-header text-center" style={{width:'35px'}}>ログ確認</th>
                 <th className="table-header text-center" style={{width:'35px'}}>求人済</th>
                 <th className="table-header text-center" style={{width:'35px'}}>事前確認</th>
+                {user?.role === 'admin' && <th className="table-header text-center" style={{width:'35px'}}></th>}
               </tr>
             </thead>
             <tbody>
@@ -469,7 +470,7 @@ export default function AdminProjects() {
                 if (!hasMailOrPhone) {
                   rowBg = 'bg-amber-50/70'; // オレンジ: メール返信・電話確認どちらもなし
                 } else if (!hasAllChecks) {
-                  rowBg = 'bg-red-50/70'; // 赤: メール返信or電話確認あり、だがログ確認・求人済・事前確認が全て未チェック
+                  rowBg = 'bg-red-50/70'; // 赤: メール返信or電話確認あり、だがログ確認・求人済・事前確認のいずれかが未チェック
                 }
                 return (
                   <tr key={p.id} className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer ${rowBg}`}
@@ -560,6 +561,20 @@ export default function AdminProjects() {
                         onChange={e => handleCheckboxToggle(p.id, 'pre_confirmed', e.target.checked)}
                         className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
                     </td>
+                    {user?.role === 'admin' && (
+                      <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
+                        <button onClick={async () => {
+                          if (!confirm(`「${p.company_name || p.legacy_company_name}」を削除しますか？この操作は元に戻せません。`)) return;
+                          try {
+                            await api.delete(`/api/projects/${p.id}`);
+                            toast.success('案件を削除しました');
+                            fetchProjects();
+                          } catch (err) { toast.error('削除に失敗しました'); }
+                        }} className="text-xs text-red-400 hover:text-red-600 transition-colors" title="削除">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
