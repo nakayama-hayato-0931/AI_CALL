@@ -685,29 +685,7 @@ const deleteTimeRule = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  getUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  getAllOperatorPerformance,
-  getCompanies,
-  assignCompany,
-  unassignCompany,
-  getIndustryRegionRules,
-  addIndustryRegionRule,
-  deleteIndustryRegionRule,
-  getExcludeWords,
-  addExcludeWord,
-  deleteExcludeWord,
-  getTimeRules,
-  addTimeRule,
-  updateTimeRule,
-  deleteTimeRule,
-  getSpecialListBatches,
-  getSpecialListBatchDetails,
-  exportSpecialListBatch,
-};
+// module.exports is at the end of the file after all function definitions
 
 /**
  * GET /api/admin/special-list-batches
@@ -794,4 +772,28 @@ const exportSpecialListBatch = async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent((batch[0]?.name || 'export') + '.csv')}"`);
     res.send(bom + header + rows);
   } catch (err) { next(err); }
+};
+
+module.exports = {
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  getAllOperatorPerformance,
+  getCompanies,
+  assignCompany,
+  unassignCompany,
+  getIndustryRegionRules,
+  addIndustryRegionRule,
+  deleteIndustryRegionRule,
+  getExcludeWords,
+  addExcludeWord,
+  deleteExcludeWord,
+  getTimeRules,
+  addTimeRule,
+  updateTimeRule,
+  deleteTimeRule,
+  getSpecialListBatches,
+  getSpecialListBatchDetails,
+  exportSpecialListBatch,
 };
