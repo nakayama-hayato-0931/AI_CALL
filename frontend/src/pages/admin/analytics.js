@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
-import api from '../../utils/api';
+import api, { directApi } from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const MONTHS = [];
@@ -159,7 +159,7 @@ export default function AnalyticsPage() {
     try {
       const formData = new FormData();
       formData.append('file', csvFile);
-      const { data } = await api.post('/api/analytics/import-cost-csv', formData, {
+      const { data } = await directApi.post('/api/analytics/import-cost-csv', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(`${data.data.imported}件インポートしました`);
@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
     try {
       const formData = new FormData();
       formData.append('file', pdfFile);
-      const { data } = await api.post('/api/analytics/import-cost-pdf', formData, {
+      const { data } = await directApi.post('/api/analytics/import-cost-pdf', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(`${data.data.imported}件インポートしました`);
@@ -203,7 +203,7 @@ export default function AnalyticsPage() {
     try {
       const formData = new FormData();
       formData.append('file', stampFile);
-      const { data } = await api.post('/api/analytics/import-stamp-csv', formData, {
+      const { data } = await directApi.post('/api/analytics/import-stamp-csv', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(`打刻ログ: ${data.data.imported}件インポートしました`);
@@ -213,7 +213,7 @@ export default function AnalyticsPage() {
       setStampFile(null);
       fetchData();
     } catch (err) {
-      toast.error('打刻ログインポートに失敗しました');
+      toast.error(err.response?.data?.message || '打刻ログインポートに失敗しました');
     } finally {
       setStampUploading(false);
     }
