@@ -259,6 +259,7 @@ export default function AnalyticsPage() {
     { key: 'projectCpa', label: '案件CPA', format: 'yen' },
     { key: 'interviewCount', label: '面接数' },
     { key: 'interviewCpa', label: '面接CPA', format: 'yen' },
+    { key: 'interviewRate', label: '面接実施率', format: 'pct' },
     { key: 'naiteiCount', label: '内定' },
     { key: 'fugokakuCount', label: '不合格' },
     { key: 'barashiLostCount', label: 'バラシ/失注' },

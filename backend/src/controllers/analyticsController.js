@@ -146,6 +146,7 @@ const getCpaMetrics = async (req, res, next) => {
     const projectRate = callCount > 0 ? (projectCount / callCount * 100) : 0;
     const projectCpa = projectCount > 0 ? Math.round(cost / projectCount) : 0;
     const interviewCpa = interviewCount > 0 ? Math.round(cost / interviewCount) : 0;
+    const interviewRate = projectCount > 0 ? Math.round(interviewCount / projectCount * 10000) / 100 : 0;
     const roas = cost > 0 ? (initialPayment / cost * 100) : 0;
 
     return ApiResponse.success(res, {
@@ -157,6 +158,7 @@ const getCpaMetrics = async (req, res, next) => {
       projectCpa,
       interviewCount,
       interviewCpa,
+      interviewRate,
       naiteiCount,
       fugokakuCount,
       barashiLostCount,
@@ -586,6 +588,7 @@ const getCpaAll = async (req, res, next) => {
         projectCpa: pc > 0 ? Math.round(cost / pc) : 0,
         interviewCount: ic,
         interviewCpa: ic > 0 ? Math.round(cost / ic) : 0,
+        interviewRate: pc > 0 ? Math.round(ic / pc * 10000) / 100 : 0,
         naiteiCount: proj ? Number(proj.naitei_count) : 0,
         fugokakuCount: proj ? Number(proj.fugokaku_count) : 0,
         barashiLostCount: proj ? Number(proj.barashi_lost_count) : 0,
