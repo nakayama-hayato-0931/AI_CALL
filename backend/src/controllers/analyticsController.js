@@ -651,9 +651,11 @@ const getCpaAll = async (req, res, next) => {
     } catch (e) { /* table may not exist yet */ }
 
     // 個人にも過去データを加算
+    // 注意: コストはpast_cpa_dataとcost_recordsで二重にならないよう制御
+    // systemDateFromがnull（全期間が3月以前）→ cost_recordsは使わずpast_cpa_dataのみ
     const operators = users.map(u => {
       const past = pastByUser.get(u.id);
-      const curCost = costMap.get(u.id) || 0;
+      const curCost = systemDateFrom ? (costMap.get(u.id) || 0) : 0; // 4月以降のみcost_records
       const curCalls = callMap.get(u.id) || 0;
       const curProj = projMap.get(u.id);
       const curFin = finMap.get(u.id);
@@ -681,9 +683,10 @@ const getCpaAll = async (req, res, next) => {
       };
     });
 
+    const effectiveTeamCost = systemDateFrom ? teamCost : 0; // 4月以降のみcost_records
     const team = {
       name: '全体', workHours: Math.round(teamWorkHours * 10) / 10,
-      ...buildRow(teamCost + pastCost, teamCalls + pastCalls, {
+      ...buildRow(effectiveTeamCost + pastCost, teamCalls + pastCalls, {
         project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
         naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,
       }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
