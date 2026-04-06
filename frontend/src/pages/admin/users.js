@@ -200,7 +200,7 @@ export default function AdminUsers() {
             </div>
             <div>
               <label className="input-label">メール {!['operator', 'intern'].includes(form.role) ? '*' : ''}</label>
-              <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required={form.role !== 'operator'} placeholder={form.role === 'operator' ? '省略可' : ''} />
+              <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required={!['operator', 'intern'].includes(form.role)} placeholder={['operator', 'intern'].includes(form.role) ? '省略可' : ''} />
             </div>
             <div>
               <label className="input-label">パスワード {editingUser ? '(変更する場合のみ)' : '*'}</label>
