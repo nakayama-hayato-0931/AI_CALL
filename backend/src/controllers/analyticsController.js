@@ -80,9 +80,10 @@ const getCpaMetrics = async (req, res, next) => {
         const rate = u.role === 'intern' ? INTERN_HOURLY_RATE : HOURLY_RATE;
         cost = Math.round(totalMinutes / 60 * rate);
         if (u.commute_type === 'teiki') {
+          // 定期券: 月額を日数按分（月額 / 30 × 対象日数）
           const d1 = new Date(dateFrom), d2 = new Date(dateTo);
-          const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
-          cost += (u.commute_teiki_monthly || 0) * Math.min(months, 12);
+          const days = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1);
+          cost += Math.round((u.commute_teiki_monthly || 0) / 30 * days);
         } else if (u.commute_type === 'daily') {
           cost += (u.commute_daily_amount || 0) * Number(costRows[0].work_days || 0);
         }
@@ -498,9 +499,10 @@ const getCpaAll = async (req, res, next) => {
       let commuteCost = 0;
       if (u) {
         if (u.commute_type === 'teiki') {
+          // 定期券: 月額を日数按分（月額 / 30 × 対象日数）
           const d1 = new Date(dateFrom), d2 = new Date(dateTo);
-          const months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
-          commuteCost = (u.commute_teiki_monthly || 0) * Math.min(months, 12);
+          const days = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1);
+          commuteCost = Math.round((u.commute_teiki_monthly || 0) / 30 * days);
         } else if (u.commute_type === 'daily') {
           commuteCost = (u.commute_daily_amount || 0) * Number(r.work_days || 0);
         }
