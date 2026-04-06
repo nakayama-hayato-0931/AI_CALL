@@ -796,31 +796,6 @@ const exportSpecialListBatch = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = {
-  getUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  getAllOperatorPerformance,
-  getCompanies,
-  assignCompany,
-  unassignCompany,
-  getIndustryRegionRules,
-  addIndustryRegionRule,
-  deleteIndustryRegionRule,
-  getExcludeWords,
-  addExcludeWord,
-  deleteExcludeWord,
-  getTimeRules,
-  addTimeRule,
-  updateTimeRule,
-  deleteTimeRule,
-  getSpecialListBatches,
-  getSpecialListBatchDetails,
-  exportSpecialListBatch,
-  saveKpiAdjustment,
-};
-
 /**
  * PUT /api/admin/kpi-adjustment
  * KPI補正値を保存（管理者のみ）
@@ -843,4 +818,15 @@ const saveKpiAdjustment = async (req, res, next) => {
     logger.info(`KPI補正: user=${user_id}, date=${date}, ${field}=${value}, by=${req.user.id}`);
     return ApiResponse.success(res, null, 'KPIを更新しました');
   } catch (err) { next(err); }
+};
+
+module.exports = {
+  getUsers, createUser, updateUser, deleteUser,
+  getAllOperatorPerformance,
+  getCompanies, assignCompany, unassignCompany,
+  getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
+  getExcludeWords, addExcludeWord, deleteExcludeWord,
+  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
+  getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
+  saveKpiAdjustment,
 };
