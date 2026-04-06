@@ -318,6 +318,28 @@ const getAllOperatorPerformance = async (req, res, next) => {
         );
         op.projects = Number(projRows[0]?.cnt) || 0;
       } catch (e) { /* keep calls-based count */ }
+
+      // KPI補正値を加算
+      try {
+        const [adjRows] = await pool.query(
+          'SELECT field, SUM(value) as total FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ? GROUP BY field',
+          [op.user_id, dateFrom, dateTo]
+        );
+        for (const adj of adjRows) {
+          const fieldMap = {
+            'call_count': 'total_calls',
+            'recall_gained': 'recall_gained',
+            'recall_done': 'recall_done',
+            'effective_count': 'effective_connections',
+            'person_count': 'person_connections',
+            'project_count': 'projects',
+          };
+          const key = fieldMap[adj.field];
+          if (key && op[key] !== undefined) {
+            op[key] = Number(op[key]) + Number(adj.total);
+          }
+        }
+      } catch (e) { /* ignore */ }
     }
 
     return ApiResponse.success(res, {
@@ -796,4 +818,29 @@ module.exports = {
   getSpecialListBatches,
   getSpecialListBatchDetails,
   exportSpecialListBatch,
+  saveKpiAdjustment,
+};
+
+/**
+ * PUT /api/admin/kpi-adjustment
+ * KPI補正値を保存（管理者のみ）
+ * { user_id, date, field, value }
+ * value = 最終的な目標値（差分ではなく絶対値）
+ */
+const saveKpiAdjustment = async (req, res, next) => {
+  try {
+    const { user_id, date, field, value } = req.body;
+    const validFields = ['call_count', 'recall_gained', 'recall_done', 'effective_count', 'person_count', 'project_count'];
+    if (!user_id || !date || !field || !validFields.includes(field)) {
+      return ApiResponse.badRequest(res, 'user_id, date, field（有効なフィールド名）は必須です');
+    }
+    await pool.execute(
+      `INSERT INTO kpi_adjustments (user_id, date, field, value, updated_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)`,
+      [user_id, date, field, parseInt(value) || 0, req.user.id]
+    );
+    logger.info(`KPI補正: user=${user_id}, date=${date}, ${field}=${value}, by=${req.user.id}`);
+    return ApiResponse.success(res, null, 'KPIを更新しました');
+  } catch (err) { next(err); }
 };

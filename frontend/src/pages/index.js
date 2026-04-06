@@ -93,6 +93,22 @@ const ScoreCircle = ({ score, size = 64 }) => {
 export default function DashboardPage() {
   const { user } = useAuth();
   const [freshUser, setFreshUser] = useState(null);
+  // KPI編集（管理者のみ）
+  const [editingKpi, setEditingKpi] = useState(null); // { userId, field, value }
+  const handleKpiEdit = async () => {
+    if (!editingKpi) return;
+    try {
+      await api.put('/api/admin/kpi-adjustment', {
+        user_id: editingKpi.userId,
+        date: kpiDate,
+        field: editingKpi.field,
+        value: parseInt(editingKpi.value) || 0,
+      });
+      toast.success('KPIを更新しました');
+      setEditingKpi(null);
+      fetchPerfData();
+    } catch (err) { toast.error('更新に失敗しました'); }
+  };
   const [stats, setStats] = useState(null);
   const [hourlyCalls, setHourlyCalls] = useState([]);
   const [industryData, setIndustryData] = useState([]);
@@ -579,12 +595,30 @@ export default function DashboardPage() {
                           </svg>
                         </button>
                       </td>
-                      <td className={`table-cell text-right ${targetColor(phNum(op.total_calls), 18)}`}>{op.total_calls} <span className="text-[10px] text-gray-400">{ph(op.total_calls)}/h</span></td>
-                      <td className="table-cell text-right">{op.recall_gained || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_gained || 0)}/h</span></td>
-                      <td className="table-cell text-right">{op.recall_done || 0} <span className="text-[10px] text-gray-400">{ph(op.recall_done || 0)}/h</span></td>
-                      <td className={`table-cell text-right ${targetColor(phNum(op.effective_connections), 3)}`}>{op.effective_connections} <span className="text-[10px] text-gray-400">{ph(op.effective_connections)}/h</span></td>
-                      <td className={`table-cell text-right ${targetColor(phNum(op.person_connections), 1.5)}`}>{op.person_connections} <span className="text-[10px] text-gray-400">{ph(op.person_connections)}/h</span></td>
-                      <td className={`table-cell text-right font-semibold ${projEffColor() || 'text-blue-600'}`}>{op.projects} <span className="text-[10px] text-gray-400 font-normal">{projEff !== '-' ? `${projEff}h/件` : ''}</span></td>
+                      {[
+                        { key: 'call_count', val: op.total_calls, color: targetColor(phNum(op.total_calls), 18), suffix: ph(op.total_calls) + '/h' },
+                        { key: 'recall_gained', val: op.recall_gained || 0, color: '', suffix: ph(op.recall_gained || 0) + '/h' },
+                        { key: 'recall_done', val: op.recall_done || 0, color: '', suffix: ph(op.recall_done || 0) + '/h' },
+                        { key: 'effective_count', val: op.effective_connections, color: targetColor(phNum(op.effective_connections), 3), suffix: ph(op.effective_connections) + '/h' },
+                        { key: 'person_count', val: op.person_connections, color: targetColor(phNum(op.person_connections), 1.5), suffix: ph(op.person_connections) + '/h' },
+                        { key: 'project_count', val: op.projects, color: projEffColor() || 'text-blue-600 font-semibold', suffix: projEff !== '-' ? `${projEff}h/件` : '' },
+                      ].map(col => (
+                        <td key={col.key} className={`table-cell text-right ${col.color}`}>
+                          {editingKpi?.userId === op.user_id && editingKpi?.field === col.key ? (
+                            <input type="number" autoFocus className="w-16 text-xs border border-blue-400 rounded px-1 py-0.5 text-right"
+                              value={editingKpi.value}
+                              onChange={e => setEditingKpi(prev => ({ ...prev, value: e.target.value }))}
+                              onBlur={handleKpiEdit}
+                              onKeyDown={e => { if (e.key === 'Enter') handleKpiEdit(); if (e.key === 'Escape') setEditingKpi(null); }}
+                            />
+                          ) : (
+                            <span className={user?.role === 'admin' && kpiPeriod === 'daily' ? 'cursor-pointer hover:bg-blue-50 px-1 rounded' : ''}
+                              onClick={() => { if (user?.role === 'admin' && kpiPeriod === 'daily') setEditingKpi({ userId: op.user_id, field: col.key, value: col.val }); }}>
+                              {col.val} <span className="text-[10px] text-gray-400 font-normal">{col.suffix}</span>
+                            </span>
+                          )}
+                        </td>
+                      ))}
                       <td className="table-cell text-right">
                         {op.avg_ai_score > 0 ? (
                           <span className={`font-medium ${op.avg_ai_score >= 70 ? 'text-emerald-600' : op.avg_ai_score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
