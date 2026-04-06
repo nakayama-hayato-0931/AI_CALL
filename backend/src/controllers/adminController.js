@@ -319,25 +319,23 @@ const getAllOperatorPerformance = async (req, res, next) => {
         op.projects = Number(projRows[0]?.cnt) || 0;
       } catch (e) { /* keep calls-based count */ }
 
-      // KPI補正値を加算
+      // KPI補正値で上書き（入力値がそのまま最終値になる）
       try {
         const [adjRows] = await pool.query(
-          'SELECT field, SUM(value) as total FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ? GROUP BY field',
+          'SELECT field, value FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ?',
           [op.user_id, dateFrom, dateTo]
         );
+        const fieldMap = {
+          'call_count': 'total_calls',
+          'recall_gained': 'recall_gained',
+          'recall_done': 'recall_done',
+          'effective_count': 'effective_connections',
+          'person_count': 'person_connections',
+          'project_count': 'projects',
+        };
         for (const adj of adjRows) {
-          const fieldMap = {
-            'call_count': 'total_calls',
-            'recall_gained': 'recall_gained',
-            'recall_done': 'recall_done',
-            'effective_count': 'effective_connections',
-            'person_count': 'person_connections',
-            'project_count': 'projects',
-          };
           const key = fieldMap[adj.field];
-          if (key && op[key] !== undefined) {
-            op[key] = Number(op[key]) + Number(adj.total);
-          }
+          if (key) op[key] = Number(adj.value);
         }
       } catch (e) { /* ignore */ }
     }
