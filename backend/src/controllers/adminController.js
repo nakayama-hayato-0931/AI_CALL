@@ -34,7 +34,7 @@ const createUser = async (req, res, next) => {
     const { name, email, password, role } = req.body;
 
     const userRole = role || 'operator';
-    const isOperator = userRole === 'operator';
+    const isOperator = userRole === 'operator' || userRole === 'intern';
 
     if (!name || !password) {
       return ApiResponse.badRequest(res, '名前・パスワードは必須です');
@@ -129,7 +129,7 @@ const updateUser = async (req, res, next) => {
     // email空文字の場合はNULLに変換
     if (email !== undefined && !email) {
       const [userRow] = await pool.execute('SELECT role FROM users WHERE id = ?', [id]);
-      if (userRow.length > 0 && userRow[0].role !== 'operator') {
+      if (userRow.length > 0 && !['operator', 'intern'].includes(userRow[0].role)) {
         return ApiResponse.badRequest(res, 'オペレーター以外はメールアドレスが必須です');
       }
     }

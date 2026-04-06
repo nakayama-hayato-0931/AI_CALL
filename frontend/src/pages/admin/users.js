@@ -199,7 +199,7 @@ export default function AdminUsers() {
               <input className="input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
             </div>
             <div>
-              <label className="input-label">メール {form.role !== 'operator' ? '*' : ''}</label>
+              <label className="input-label">メール {!['operator', 'intern'].includes(form.role) ? '*' : ''}</label>
               <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required={form.role !== 'operator'} placeholder={form.role === 'operator' ? '省略可' : ''} />
             </div>
             <div>
