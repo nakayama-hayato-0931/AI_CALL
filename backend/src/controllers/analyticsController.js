@@ -874,16 +874,27 @@ const importStampCsv = async (req, res, next) => {
     if (duplicateMode === 'dry_run') {
       let dupCount = 0;
       let validCount = 0;
+      const duplicates = [];
       for (const [key, entry] of dayMap) {
         const userId = nameMap.get(entry.name);
         if (!userId) continue;
         const stamps = entry.stamps;
-        if (!stamps.find(s => s.type === '出勤') || !stamps.find(s => s.type === '退勤')) continue;
+        const arrival = stamps.find(s => s.type === '出勤');
+        const departure = stamps.find(s => s.type === '退勤');
+        if (!arrival || !departure) continue;
         validCount++;
-        const [existing] = await pool.execute('SELECT id FROM cost_records WHERE user_id = ? AND date = ?', [userId, entry.date]);
-        if (existing.length > 0) dupCount++;
+        const [existing] = await pool.execute('SELECT start_time, end_time FROM cost_records WHERE user_id = ? AND date = ?', [userId, entry.date]);
+        if (existing.length > 0) {
+          dupCount++;
+          duplicates.push({
+            name: entry.name,
+            date: entry.date,
+            existing: `${existing[0].start_time}〜${existing[0].end_time}`,
+            new: `${arrival.time}〜${departure.time}`,
+          });
+        }
       }
-      return ApiResponse.success(res, { duplicateCount: dupCount, total: validCount });
+      return ApiResponse.success(res, { duplicateCount: dupCount, total: validCount, duplicates });
     }
 
     for (const [key, entry] of dayMap) {

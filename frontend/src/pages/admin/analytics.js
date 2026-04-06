@@ -214,7 +214,7 @@ export default function AnalyticsPage() {
         // 重複あり → ポップアップで選択
         const fd = new FormData();
         fd.append('file', stampFile);
-        setStampDuplicateModal({ duplicateCount: dupCount, formData: fd, total: data.data.total || 0 });
+        setStampDuplicateModal({ duplicateCount: dupCount, formData: fd, total: data.data.total || 0, duplicates: data.data.duplicates || [] });
         setStampUploading(false);
         return;
       }
@@ -548,7 +548,20 @@ export default function AnalyticsPage() {
               <p className="text-sm text-gray-700">
                 {stampDuplicateModal.total}件中 <span className="font-bold text-amber-600">{stampDuplicateModal.duplicateCount}件</span> が既に登録済みです。
               </p>
-              <p className="text-xs text-gray-500 mt-2">既存データをどうしますか？</p>
+              {stampDuplicateModal.duplicates?.length > 0 && (
+                <div className="mt-3 max-h-40 overflow-y-auto bg-gray-50 rounded-lg p-2 space-y-1">
+                  {stampDuplicateModal.duplicates.map((d, i) => (
+                    <div key={i} className="text-xs text-gray-600 flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 w-4">{i + 1}</span>
+                      <span className="font-medium">{d.name}</span>
+                      <span>{d.date}</span>
+                      <span className="text-gray-400">既存: {d.existing}</span>
+                      <span className="text-blue-500">→ 新: {d.new}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-3">既存データをどうしますか？</p>
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex flex-col gap-2">
               <button onClick={() => executeStampImport('overwrite')}
