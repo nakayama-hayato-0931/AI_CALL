@@ -90,7 +90,7 @@ export default function AnalyticsPage() {
   // 打刻ログCSV
   const [stampFile, setStampFile] = useState(null);
   const [stampUploading, setStampUploading] = useState(false);
-  const [stampDuplicateMode, setStampDuplicateMode] = useState('overwrite');
+  const [stampDuplicateModal, setStampDuplicateModal] = useState(null); // { duplicateCount, formData }
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) {
@@ -202,9 +202,37 @@ export default function AnalyticsPage() {
     if (!stampFile) return;
     setStampUploading(true);
     try {
+      // まずdry_runで重複チェック
       const formData = new FormData();
       formData.append('file', stampFile);
-      formData.append('duplicate_mode', stampDuplicateMode);
+      formData.append('duplicate_mode', 'dry_run');
+      const { data } = await directApi.post('/api/analytics/import-stamp-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const dupCount = data.data.duplicateCount || 0;
+      if (dupCount > 0) {
+        // 重複あり → ポップアップで選択
+        const fd = new FormData();
+        fd.append('file', stampFile);
+        setStampDuplicateModal({ duplicateCount: dupCount, formData: fd, total: data.data.total || 0 });
+        setStampUploading(false);
+        return;
+      }
+      // 重複なし → そのまま上書きで実行
+      await executeStampImport('overwrite');
+    } catch (err) {
+      toast.error(err.response?.data?.message || '打刻ログインポートに失敗しました');
+      setStampUploading(false);
+    }
+  };
+
+  const executeStampImport = async (mode) => {
+    setStampUploading(true);
+    setStampDuplicateModal(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', stampFile);
+      formData.append('duplicate_mode', mode);
       const { data } = await directApi.post('/api/analytics/import-stamp-csv', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -475,12 +503,6 @@ export default function AnalyticsPage() {
               {stampUploading ? '処理中...' : '打刻ログ取込'}
             </button>
           </div>
-          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
-            <button onClick={() => setStampDuplicateMode('overwrite')}
-              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${stampDuplicateMode === 'overwrite' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>上書き</button>
-            <button onClick={() => setStampDuplicateMode('skip')}
-              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${stampDuplicateMode === 'skip' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>スキップ</button>
-          </div>
           <span className="text-[10px] text-gray-400">勤怠打刻ログCSV（Shift-JIS対応・出勤/退勤/休憩から稼働時間を自動計算）</span>
         </div>
       </div>
@@ -513,6 +535,37 @@ export default function AnalyticsPage() {
       ) : (
         /* ========== 月別・累計: 案件質 ========== */
         qualData && renderQualTable(qualData, '案件質向上 - 全員比較', `${qualData.dateFrom} 〜 ${qualData.dateTo}`)
+      )}
+
+      {/* 打刻ログ重複確認モーダル */}
+      {stampDuplicateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setStampDuplicateModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-amber-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-gray-900">重複データがあります</h2>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-gray-700">
+                {stampDuplicateModal.total}件中 <span className="font-bold text-amber-600">{stampDuplicateModal.duplicateCount}件</span> が既に登録済みです。
+              </p>
+              <p className="text-xs text-gray-500 mt-2">既存データをどうしますか？</p>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex flex-col gap-2">
+              <button onClick={() => executeStampImport('overwrite')}
+                className="w-full px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                上書き保存（既存データを最新に更新）
+              </button>
+              <button onClick={() => executeStampImport('skip')}
+                className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                スキップ（既存データを保持）
+              </button>
+              <button onClick={() => { setStampDuplicateModal(null); setStampUploading(false); }}
+                className="w-full px-4 py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );

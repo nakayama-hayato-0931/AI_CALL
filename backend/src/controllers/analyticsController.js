@@ -870,6 +870,22 @@ const importStampCsv = async (req, res, next) => {
     let skipped = 0;
     const errors = [];
 
+    // dry_runモード: 重複チェックのみ（DB書き込みなし）
+    if (duplicateMode === 'dry_run') {
+      let dupCount = 0;
+      let validCount = 0;
+      for (const [key, entry] of dayMap) {
+        const userId = nameMap.get(entry.name);
+        if (!userId) continue;
+        const stamps = entry.stamps;
+        if (!stamps.find(s => s.type === '出勤') || !stamps.find(s => s.type === '退勤')) continue;
+        validCount++;
+        const [existing] = await pool.execute('SELECT id FROM cost_records WHERE user_id = ? AND date = ?', [userId, entry.date]);
+        if (existing.length > 0) dupCount++;
+      }
+      return ApiResponse.success(res, { duplicateCount: dupCount, total: validCount });
+    }
+
     for (const [key, entry] of dayMap) {
       const userId = nameMap.get(entry.name);
       if (!userId) {
