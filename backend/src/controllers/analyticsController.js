@@ -795,6 +795,7 @@ const getQualityAll = async (req, res, next) => {
 const importStampCsv = async (req, res, next) => {
   try {
     if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
+    const duplicateMode = req.body.duplicate_mode || 'overwrite'; // 'overwrite' or 'skip'
 
     const iconv = require('iconv-lite');
     // Shift-JIS → UTF-8 変換（UTF-8の場合はそのまま）
@@ -866,6 +867,7 @@ const importStampCsv = async (req, res, next) => {
     }
 
     let imported = 0;
+    let skipped = 0;
     const errors = [];
 
     for (const [key, entry] of dayMap) {
@@ -896,20 +898,36 @@ const importStampCsv = async (req, res, next) => {
       }
 
       try {
-        await pool.execute(
-          `INSERT INTO cost_records (user_id, date, start_time, end_time, break_minutes)
-           VALUES (?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
-          [userId, entry.date, arrival.time, departure.time, breakMinutes]
-        );
+        if (duplicateMode === 'skip') {
+          // スキップモード: 既存データがあればスキップ
+          const [existing] = await pool.execute(
+            'SELECT id FROM cost_records WHERE user_id = ? AND date = ?', [userId, entry.date]
+          );
+          if (existing.length > 0) {
+            skipped++;
+            continue;
+          }
+          await pool.execute(
+            `INSERT INTO cost_records (user_id, date, start_time, end_time, break_minutes) VALUES (?, ?, ?, ?, ?)`,
+            [userId, entry.date, arrival.time, departure.time, breakMinutes]
+          );
+        } else {
+          // 上書きモード（デフォルト）
+          await pool.execute(
+            `INSERT INTO cost_records (user_id, date, start_time, end_time, break_minutes)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
+            [userId, entry.date, arrival.time, departure.time, breakMinutes]
+          );
+        }
         imported++;
       } catch (e) {
         errors.push(`${entry.date} ${entry.name}: ${e.message}`);
       }
     }
 
-    logger.info(`打刻ログCSVインポート: ${imported}件成功, ${errors.length}件エラー`);
-    return ApiResponse.success(res, { imported, errors: errors.slice(0, 20) });
+    logger.info(`打刻ログCSVインポート: ${imported}件成功, ${skipped}件スキップ, ${errors.length}件エラー`);
+    return ApiResponse.success(res, { imported, skipped, errors: errors.slice(0, 20) });
   } catch (err) {
     next(err);
   }

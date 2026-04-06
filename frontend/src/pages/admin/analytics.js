@@ -90,6 +90,7 @@ export default function AnalyticsPage() {
   // 打刻ログCSV
   const [stampFile, setStampFile] = useState(null);
   const [stampUploading, setStampUploading] = useState(false);
+  const [stampDuplicateMode, setStampDuplicateMode] = useState('overwrite');
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) {
@@ -203,10 +204,12 @@ export default function AnalyticsPage() {
     try {
       const formData = new FormData();
       formData.append('file', stampFile);
+      formData.append('duplicate_mode', stampDuplicateMode);
       const { data } = await directApi.post('/api/analytics/import-stamp-csv', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success(`打刻ログ: ${data.data.imported}件インポートしました`);
+      const skipMsg = data.data.skipped ? `（${data.data.skipped}件スキップ）` : '';
+      toast.success(`打刻ログ: ${data.data.imported}件インポートしました${skipMsg}`);
       if (data.data.errors?.length > 0) {
         data.data.errors.forEach(e => toast.error(e, { duration: 5000 }));
       }
@@ -471,6 +474,12 @@ export default function AnalyticsPage() {
               className="px-3 py-1 text-xs font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-40 transition-colors whitespace-nowrap">
               {stampUploading ? '処理中...' : '打刻ログ取込'}
             </button>
+          </div>
+          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+            <button onClick={() => setStampDuplicateMode('overwrite')}
+              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${stampDuplicateMode === 'overwrite' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>上書き</button>
+            <button onClick={() => setStampDuplicateMode('skip')}
+              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${stampDuplicateMode === 'skip' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>スキップ</button>
           </div>
           <span className="text-[10px] text-gray-400">勤怠打刻ログCSV（Shift-JIS対応・出勤/退勤/休憩から稼働時間を自動計算）</span>
         </div>
