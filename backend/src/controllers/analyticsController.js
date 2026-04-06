@@ -766,14 +766,27 @@ const getQualityAll = async (req, res, next) => {
     const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1);
     const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
     let pastQ = null;
+    const pastUserMap = new Map();
     try {
+      // 全体（user_id IS NULL）
+      const pastWhere = useWeeklyPast
+        ? 'date_from IS NOT NULL AND date_from <= ? AND date_to >= ? AND user_id IS NULL'
+        : 'date_from IS NULL AND user_id IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?';
       const [pastRows] = await pool.query(
-        useWeeklyPast
-          ? `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NOT NULL AND date_from <= ? AND date_to >= ?`
-          : `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?`,
+        `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE ${pastWhere}`,
         useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
       );
       if (pastRows.length > 0 && pastRows[0].total) pastQ = pastRows[0];
+
+      // 個人別
+      const pastUserWhere = useWeeklyPast
+        ? 'date_from IS NOT NULL AND date_from <= ? AND date_to >= ? AND user_id IS NOT NULL'
+        : 'date_from IS NULL AND user_id IS NOT NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?';
+      const [pastUserRows] = await pool.query(
+        `SELECT user_id, SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE ${pastUserWhere} GROUP BY user_id`,
+        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+      );
+      pastUserRows.forEach(r => pastUserMap.set(r.user_id, r));
     } catch (e) { /* skip */ }
 
     // チーム全体（システム + 過去データ）
@@ -783,7 +796,17 @@ const getQualityAll = async (req, res, next) => {
       if (pastQ && pastQ[f] != null) allR[f] += Number(pastQ[f]);
     }
     const team = { name: '全体', ...buildQ(allR) };
-    const operators = users.map(u => ({ userId: u.id, name: u.name, ...buildQ(qMap.get(u.id)) }));
+    const operators = users.map(u => {
+      const sysData = qMap.get(u.id);
+      const pastData = pastUserMap.get(u.id);
+      // システム + 過去データを合算
+      if (sysData && pastData) {
+        const merged = { ...sysData };
+        for (const f of fields) merged[f] = Number(sysData[f] || 0) + Number(pastData[f] || 0);
+        return { userId: u.id, name: u.name, ...buildQ(merged) };
+      }
+      return { userId: u.id, name: u.name, ...buildQ(sysData || pastData || null) };
+    });
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
   } catch (err) {
