@@ -320,10 +320,12 @@ export default function AnalyticsPage() {
               ))}
             </tr>
             {/* 各オペレーター行 */}
-            {data.operators.map((op, i) => (
-              <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                  {op.name}
+            {data.operators.map((op, i) => {
+              const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
+              return (
+              <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
+                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${rowBg}`}>
+                  {op.name}{op.role === 'intern' && <span className="ml-1 text-[9px] text-purple-600 font-bold">[インターン]</span>}
                 </td>
                 {cpaColumns.map(col => (
                   <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
@@ -334,7 +336,8 @@ export default function AnalyticsPage() {
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -374,10 +377,12 @@ export default function AnalyticsPage() {
               ))}
             </tr>
             {/* 各オペレーター行 */}
-            {data.operators.map((op, i) => (
-              <tr key={op.userId} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                  {op.name}
+            {data.operators.map((op, i) => {
+              const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
+              return (
+              <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
+                <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${rowBg}`}>
+                  {op.name}{op.role === 'intern' && <span className="ml-1 text-[9px] text-purple-600 font-bold">[インターン]</span>}
                 </td>
                 {qualColumns.map(col => (
                   <td key={col.key} className="py-2 px-3 text-right text-gray-800">
@@ -388,7 +393,8 @@ export default function AnalyticsPage() {
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

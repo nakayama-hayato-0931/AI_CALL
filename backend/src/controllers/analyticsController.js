@@ -246,7 +246,7 @@ const getQualityMetrics = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -706,7 +706,7 @@ const getCpaAll = async (req, res, next) => {
       const curWorkHours = workHoursMap.get(u.id) || 0;
       if (past) {
         return {
-          userId: u.id, name: u.name, workHours: curWorkHours,
+          userId: u.id, name: u.name, role: u.role, workHours: curWorkHours,
           ...buildRow(
             curCost + past.cost,
             curCalls + past.calls,
@@ -722,7 +722,7 @@ const getCpaAll = async (req, res, next) => {
         };
       }
       return {
-        userId: u.id, name: u.name, workHours: curWorkHours,
+        userId: u.id, name: u.name, role: u.role, workHours: curWorkHours,
         ...buildRow(curCost, curCalls, curProj, curFin),
       };
     });
@@ -762,7 +762,7 @@ const getQualityAll = async (req, res, next) => {
     }
 
     const [users] = await pool.execute(
-      "SELECT id, name, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得
@@ -850,9 +850,9 @@ const getQualityAll = async (req, res, next) => {
       if (sysData && pastData) {
         const merged = { ...sysData };
         for (const f of fields) merged[f] = Number(sysData[f] || 0) + Number(pastData[f] || 0);
-        return { userId: u.id, name: u.name, ...buildQ(merged) };
+        return { userId: u.id, name: u.name, role: u.role, ...buildQ(merged) };
       }
-      return { userId: u.id, name: u.name, ...buildQ(sysData || pastData || null) };
+      return { userId: u.id, name: u.name, role: u.role, ...buildQ(sysData || pastData || null) };
     });
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });

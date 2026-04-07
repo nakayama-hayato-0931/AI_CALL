@@ -586,7 +586,7 @@ export default function DashboardPage() {
                     return 'text-red-500';
                   };
                   return (
-                    <tr key={op.user_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
+                    <tr key={op.user_id} className={`border-b border-gray-100 transition-colors ${op.role === 'intern' ? 'bg-purple-50/60 hover:bg-purple-100/60' : 'hover:bg-blue-50/30'}`}>
                       <td className="table-cell">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600 flex-shrink-0">{op.name?.charAt(0)}</div>

@@ -259,7 +259,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT
-        u.id as user_id, u.name, u.operator_level,
+        u.id as user_id, u.name, u.role, u.operator_level,
         COUNT(DISTINCT c.id) as total_calls,
         CAST(SUM(CASE WHEN c.is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_connections,
         CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
@@ -275,7 +275,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role IN (${targetRoles}) AND u.is_active = 1 AND u.is_test_account = 0
-      GROUP BY u.id, u.name
+      GROUP BY u.id, u.name, u.role
       ORDER BY u.id ASC`,
       [dateFrom, dateTo]
     );
