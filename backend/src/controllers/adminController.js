@@ -319,10 +319,10 @@ const getAllOperatorPerformance = async (req, res, next) => {
         op.projects = Number(projRows[0]?.cnt) || 0;
       } catch (e) { /* keep calls-based count */ }
 
-      // KPI補正値で上書き（入力値がそのまま最終値になる）
+      // KPI補正値: 日別は上書き、月別/週別/累計は集計（合計）として加算
       try {
         const [adjRows] = await pool.query(
-          'SELECT field, value FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ?',
+          'SELECT field, date, value FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ?',
           [op.user_id, dateFrom, dateTo]
         );
         const fieldMap = {
@@ -333,9 +333,57 @@ const getAllOperatorPerformance = async (req, res, next) => {
           'person_count': 'person_connections',
           'project_count': 'projects',
         };
-        for (const adj of adjRows) {
-          const key = fieldMap[adj.field];
-          if (key) op[key] = Number(adj.value);
+        if (period === 'daily') {
+          // 日別: 単一日の値をそのまま置き換え
+          for (const adj of adjRows) {
+            const key = fieldMap[adj.field];
+            if (key) op[key] = Number(adj.value);
+          }
+        } else {
+          // 月別/週別/累計: 補正がある日については補正値を使い、その他は実績の合計を使う
+          // 実装: 各補正レコードについて、その日の実績値を引いて補正値を加算する
+          for (const adj of adjRows) {
+            const key = fieldMap[adj.field];
+            if (!key) continue;
+            // その日の実績値を取得
+            let actualForDay = 0;
+            try {
+              if (adj.field === 'recall_done') {
+                const [r] = await pool.query(
+                  `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(updated_at) = ?`,
+                  [op.user_id, adj.date]
+                );
+                actualForDay = Number(r[0]?.cnt) || 0;
+              } else if (adj.field === 'project_count') {
+                const projCTFilter = call_type === 'sales' ? "AND p.call_type = 'sales'" : "AND p.call_type = 'operator'";
+                const [r] = await pool.query(
+                  `SELECT COUNT(*) as cnt FROM projects p
+                   WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0
+                     AND DATE(p.created_at) = ? ${projCTFilter}`,
+                  [op.user_id, adj.date]
+                );
+                actualForDay = Number(r[0]?.cnt) || 0;
+              } else {
+                // calls系
+                const colMap = {
+                  'call_count': 'COUNT(*)',
+                  'effective_count': "SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END)",
+                  'person_count': "SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END)",
+                  'recall_gained': "SUM(CASE WHEN result_code = 'RECALL' THEN 1 ELSE 0 END)",
+                };
+                const expr = colMap[adj.field];
+                if (expr) {
+                  const ctf = call_type === 'sales' ? "AND call_type = 'sales'" : "AND call_type = 'operator'";
+                  const [r] = await pool.query(
+                    `SELECT ${expr} as v FROM calls WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP' ${ctf}`,
+                    [op.user_id, adj.date]
+                  );
+                  actualForDay = Number(r[0]?.v) || 0;
+                }
+              }
+            } catch (e) { /* ignore */ }
+            op[key] = (Number(op[key]) || 0) - actualForDay + Number(adj.value);
+          }
         }
       } catch (e) { /* ignore */ }
     }
