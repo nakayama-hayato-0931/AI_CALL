@@ -517,9 +517,13 @@ const getCpaAll = async (req, res, next) => {
     // テスト運用期間: 2026年3月末まではシステムデータをCPA計算から除外
     // （past_cpa_dataの手動入力データのみ使用）
     // 4月以降はシステムデータを使用
+    // 3月から打刻データ(cost_records)が存在するためコストは3月から有効
+    // ただしcalls/projectsは4月以降のシステム稼働分のみ
     const SYSTEM_DATA_START = '2026-04-01';
     const systemDateFrom = dateFrom >= SYSTEM_DATA_START ? dateFrom : (dateTo >= SYSTEM_DATA_START ? SYSTEM_DATA_START : null);
     const systemDateTo = dateTo;
+    // コストはcost_recordsを常に使用（3月分の打刻データを含めるため）
+    const useCostRecords = true;
 
     // コール数（全員分一括）- 4月以降のみ
     let callMap = new Map();
@@ -655,7 +659,7 @@ const getCpaAll = async (req, res, next) => {
     // systemDateFromがnull（全期間が3月以前）→ cost_recordsは使わずpast_cpa_dataのみ
     const operators = users.map(u => {
       const past = pastByUser.get(u.id);
-      const curCost = systemDateFrom ? (costMap.get(u.id) || 0) : 0; // 4月以降のみcost_records
+      const curCost = costMap.get(u.id) || 0; // cost_records（3月以降の打刻データ）
       const curCalls = callMap.get(u.id) || 0;
       const curProj = projMap.get(u.id);
       const curFin = finMap.get(u.id);
@@ -683,7 +687,7 @@ const getCpaAll = async (req, res, next) => {
       };
     });
 
-    const effectiveTeamCost = systemDateFrom ? teamCost : 0; // 4月以降のみcost_records
+    const effectiveTeamCost = teamCost; // cost_records（3月以降の打刻データ）
     const team = {
       name: '全体', workHours: Math.round(teamWorkHours * 10) / 10,
       ...buildRow(effectiveTeamCost + pastCost, teamCalls + pastCalls, {
