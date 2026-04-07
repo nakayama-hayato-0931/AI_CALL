@@ -554,6 +554,46 @@ const getCpaAll = async (req, res, next) => {
     }
     const projMap = new Map(projAll.map(r => [r.user_id, r]));
 
+    // ダッシュボードのKPI補正値（kpi_adjustments）を案件数・コール数に反映
+    if (systemDateFrom) {
+      try {
+        const [adjRows] = await pool.query(
+          `SELECT user_id, field, date, value FROM kpi_adjustments
+           WHERE field IN ('project_count','call_count') AND date BETWEEN ? AND ?`,
+          [systemDateFrom, systemDateTo]
+        );
+        for (const adj of adjRows) {
+          const uid = adj.user_id;
+          if (adj.field === 'project_count') {
+            // その日の実績案件数を取得して差し引き、補正値を加算
+            const [r] = await pool.query(
+              `SELECT COUNT(*) as cnt FROM projects p
+               WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?`,
+              [uid, adj.date]
+            );
+            const actual = Number(r[0]?.cnt) || 0;
+            const delta = Number(adj.value) - actual;
+            let row = projMap.get(uid);
+            if (!row) {
+              row = { user_id: uid, project_count: 0, interview_count: 0, naitei_count: 0, fugokaku_count: 0, barashi_lost_count: 0 };
+              projMap.set(uid, row);
+              projAll.push(row);
+            }
+            row.project_count = Number(row.project_count) + delta;
+          } else if (adj.field === 'call_count') {
+            const [r] = await pool.query(
+              `SELECT COUNT(*) as cnt FROM calls
+               WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code IS NOT NULL AND result_code != 'SKIP'`,
+              [uid, adj.date]
+            );
+            const actual = Number(r[0]?.cnt) || 0;
+            const delta = Number(adj.value) - actual;
+            callMap.set(uid, (callMap.get(uid) || 0) + delta);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     // 金額（全員分一括）- 4月以降のみ
     let finAll = [];
     if (systemDateFrom) {
