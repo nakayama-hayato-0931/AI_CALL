@@ -292,7 +292,7 @@ export default function AnalyticsPage() {
     <div className="card overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
         <h2 className="text-sm font-bold text-gray-800">{title}</h2>
-        {subtitle && <span className="text-[10px] text-gray-400 ml-auto">{subtitle}</span>}
+        {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -346,7 +346,7 @@ export default function AnalyticsPage() {
     <div className="card overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
         <h2 className="text-sm font-bold text-gray-800">{title}</h2>
-        {subtitle && <span className="text-[10px] text-gray-400 ml-auto">{subtitle}</span>}
+        {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
