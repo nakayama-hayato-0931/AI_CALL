@@ -508,6 +508,16 @@ export default function DashboardPage() {
             <input type="date" value={kpiDate} onChange={e => setKpiDate(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
           )}
+          {kpiPeriod === 'monthly' && (
+            <input type="month" value={kpiDate.slice(0, 7)}
+              onChange={e => setKpiDate(`${e.target.value}-01`)}
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+          )}
+          {kpiPeriod === 'weekly' && (
+            <input type="date" value={kpiDate} onChange={e => setKpiDate(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition"
+              title="その日付を含む週を表示" />
+          )}
           {!isManager && (
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               {[{ value: 'team', label: '全体' }, { value: 'operator', label: 'オペレーター別' }].map(s => (
