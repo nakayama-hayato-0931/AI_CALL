@@ -673,12 +673,11 @@ export default function DashboardPage() {
           let totalWorkHours = 0;
           if (wh?.totalMinutes) { totalWorkHours = wh.totalMinutes / 60; }
           else if (wh?.start_time && wh?.end_time) { totalWorkHours = calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes); }
-          else { totalWorkHours = (stats?.workMinutes || 0) / 60; }
           const perHour = (val) => totalWorkHours > 0 ? (val / totalWorkHours).toFixed(1) : '-';
           const displayWorkValue = wh?.totalMinutes ? (wh.totalMinutes / 60).toFixed(1)
             : wh?.start_time ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes).toFixed(1)
-            : (stats?.workMinutes ?? 0);
-          const displayWorkSuffix = (wh?.totalMinutes || wh?.start_time) ? '時間' : '分';
+            : null;
+          const displayWorkSuffix = '時間';
 
           return (
             <div className="card overflow-hidden mb-6">
@@ -698,11 +697,11 @@ export default function DashboardPage() {
                   <tbody>
                     <tr className="border-b border-gray-100">
                       <td className={`table-cell text-right cursor-pointer transition-colors ${
-                        !wh?.start_time && !wh?.totalMinutes && !stats?.workMinutes
+                        !wh?.start_time && !wh?.totalMinutes
                           ? 'bg-amber-50 hover:bg-amber-100'
                           : 'hover:bg-blue-50'
                       }`} onClick={() => setShowWorkHoursModal(true)} title="クリックで稼働時間を入力">
-                        {!wh?.start_time && !wh?.totalMinutes && !stats?.workMinutes ? (
+                        {!wh?.start_time && !wh?.totalMinutes ? (
                           <div>
                             <span className="font-bold text-sm text-amber-600">未入力</span>
                             <p className="text-[9px] text-amber-500 font-medium animate-pulse">稼働時間を入力してください</p>
