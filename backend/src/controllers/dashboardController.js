@@ -157,10 +157,16 @@ const getDailyStats = async (req, res, next) => {
       return ApiResponse.forbidden(res, '権限がありません');
     }
 
-    // 日付範囲計算
-    const range = getDateRange(period, date);
-    const dateFrom = range.dateFrom;
-    const dateTo = range.dateTo;
+    // 日付範囲計算（cumulativeで任意期間指定可能）
+    let dateFrom, dateTo;
+    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const range = getDateRange(period, date);
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     // ユーザー条件
     let userCondition = '';
@@ -328,8 +334,15 @@ const getHourlyCalls = async (req, res, next) => {
     const scope = req.query.scope || 'self';
     const targetUserId = req.query.target_user_id;
 
-    const range = getDateRange(period, date);
-    const { dateFrom, dateTo } = range;
+    let dateFrom, dateTo;
+    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const range = getDateRange(period, date);
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     // ユーザー条件
     let userCond = '';
@@ -380,8 +393,15 @@ const getIndustryConversion = async (req, res, next) => {
     const scope = req.query.scope || 'self';
     const targetUserId = req.query.target_user_id;
 
-    const range = getDateRange(period, date);
-    const { dateFrom, dateTo } = range;
+    let dateFrom, dateTo;
+    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const range = getDateRange(period, date);
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     let userCond = '';
     const params = [dateFrom, dateTo];
@@ -446,8 +466,15 @@ const getHourlyIndustryConnections = async (req, res, next) => {
     const scope = req.query.scope || 'self';
     const targetUserId = req.query.target_user_id;
 
-    const range = getDateRange(period, date);
-    const { dateFrom, dateTo } = range;
+    let dateFrom, dateTo;
+    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const range = getDateRange(period, date);
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
 
     let userCond = '';
     const params = [dateFrom, dateTo];

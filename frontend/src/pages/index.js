@@ -118,6 +118,9 @@ export default function DashboardPage() {
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
   const [kpiDate, setKpiDate] = useState(new Date().toISOString().slice(0, 10));
+  // 累計の任意期間
+  const [cumFrom, setCumFrom] = useState('2026-03-01');
+  const [cumTo, setCumTo] = useState(new Date().toISOString().slice(0, 10));
   const isManagerRole = ['admin', 'manager', 'consultant'].includes(user?.role);
   // 架電種別: 管理者はlocalStorage(adminView)、営業は固定sales
   const [adminView, setAdminView] = useState(() => {
@@ -359,11 +362,12 @@ export default function DashboardPage() {
     fetchStats();
     fetchChartData();
     if (isManager) fetchPerfData();
-  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType]);
+  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo]);
 
   const fetchStats = async () => {
     try {
       const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate, call_type: callType };
+      if (kpiPeriod === 'cumulative') { params.date_from = cumFrom; params.date_to = cumTo; }
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -385,6 +389,7 @@ export default function DashboardPage() {
   const fetchChartData = async () => {
     try {
       const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate };
+      if (kpiPeriod === 'cumulative') { params.date_from = cumFrom; params.date_to = cumTo; }
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -403,7 +408,8 @@ export default function DashboardPage() {
 
   const fetchPerfData = async () => {
     try {
-      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}`);
+      const cumQs = kpiPeriod === 'cumulative' ? `&date_from=${cumFrom}&date_to=${cumTo}` : '';
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}${cumQs}`);
       if (res.success) setPerfData(res.data);
     } catch (err) {
       console.error('オペレーター実績取得失敗:', err);
@@ -517,6 +523,15 @@ export default function DashboardPage() {
             <input type="date" value={kpiDate} onChange={e => setKpiDate(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition"
               title="その日付を含む週を表示" />
+          )}
+          {kpiPeriod === 'cumulative' && (
+            <div className="flex items-center gap-1">
+              <input type="date" value={cumFrom} onChange={e => setCumFrom(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+              <span className="text-xs text-gray-400">〜</span>
+              <input type="date" value={cumTo} onChange={e => setCumTo(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+            </div>
           )}
           {!isManager && (
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">

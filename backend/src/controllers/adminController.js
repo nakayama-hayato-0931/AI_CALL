@@ -249,11 +249,18 @@ const deleteUser = async (req, res, next) => {
 const getAllOperatorPerformance = async (req, res, next) => {
   try {
     const { period = 'daily', date, call_type } = req.query;
-    const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
-    if (!range) {
-      return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+    let dateFrom, dateTo;
+    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+      dateFrom = req.query.date_from;
+      dateTo = req.query.date_to;
+    } else {
+      const range = getDateRange(period, date || new Date().toISOString().slice(0, 10));
+      if (!range) {
+        return ApiResponse.badRequest(res, 'periodはdaily, weekly, monthly, cumulativeのいずれかです');
+      }
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
     }
-    const { dateFrom, dateTo } = range;
     const targetRoles = call_type === 'sales' ? "'sales'" : "'operator','intern'";
     const callTypeFilter = call_type === 'sales' ? "AND c.call_type = 'sales'" : "AND c.call_type = 'operator'";
 
