@@ -268,6 +268,10 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_person VARCHAR(100) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_info VARCHAR(255) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN dashboard_checked TINYINT(1) NOT NULL DEFAULT 0`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_phone VARCHAR(50) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_email VARCHAR(255) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN naitei_date DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN interview_attendees INT UNSIGNED DEFAULT NULL`); } catch (e) {}
   // 交通費カラム追加
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_type ENUM('teiki','daily') DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_teiki_monthly INT UNSIGNED DEFAULT NULL`); } catch (e) {}
