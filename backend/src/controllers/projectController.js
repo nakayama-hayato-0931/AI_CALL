@@ -193,6 +193,7 @@ const getProjectById = async (req, res, next) => {
 const updateProject = async (req, res, next) => {
   try {
     const { id } = req.params;
+    logger.info(`[updateProject] id=${id} body=${JSON.stringify(req.body)}`);
     const {
       interview_date,
       interview_type,
@@ -228,7 +229,7 @@ const updateProject = async (req, res, next) => {
       'SHORUI_OCHI', 'KISON_NASHI', 'MODOSHI', 'MODORI',
     ];
     if (status && !validStatuses.includes(status)) {
-      return ApiResponse.badRequest(res, '無効なステータスです');
+      return ApiResponse.badRequest(res, `無効なステータスです: ${status}`);
     }
 
     // 更新フィールドを動的に構築（undefinedでない項目のみ更新）
@@ -263,11 +264,16 @@ const updateProject = async (req, res, next) => {
     let result = { affectedRows: 1 };
     if (updates.length > 0) {
       updateParams.push(id);
-      const [dbResult] = await pool.execute(
-        `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`,
-        updateParams
-      );
-      result = dbResult;
+      try {
+        const [dbResult] = await pool.execute(
+          `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`,
+          updateParams
+        );
+        result = dbResult;
+      } catch (sqlErr) {
+        logger.error(`[updateProject] SQL error: ${sqlErr.code} ${sqlErr.message} sql=UPDATE projects SET ${updates.join(', ')} WHERE id=? params=${JSON.stringify(updateParams)}`);
+        return ApiResponse.badRequest(res, `更新失敗: ${sqlErr.code || ''} ${sqlErr.sqlMessage || sqlErr.message}`);
+      }
     }
 
     if (result.affectedRows === 0) {
