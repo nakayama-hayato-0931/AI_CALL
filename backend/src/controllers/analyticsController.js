@@ -1065,7 +1065,7 @@ const getSalesPerformance = async (req, res, next) => {
         COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${createdDateFilter} THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
         CAST(SUM(CASE WHEN p.status = 'BARASHI' AND ${createdDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
       FROM projects p
-      WHERE p.is_legacy = 0 AND p.is_prospect = 0
+      WHERE p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
       GROUP BY p.sales_user_id`,
       [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
@@ -1083,7 +1083,7 @@ const getSalesPerformance = async (req, res, next) => {
         COALESCE(SUM(ph.expected_revenue), 0) as expected_revenue
       FROM project_hires ph
       JOIN projects p ON ph.project_id = p.id
-      WHERE p.is_legacy = 0 AND p.is_prospect = 0
+      WHERE p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
         AND ph.is_cancelled = 0
         AND ${naiteiDateFilter}
@@ -1181,7 +1181,7 @@ const getSalesDetail = async (req, res, next) => {
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users su ON p.sales_user_id = su.id
-       WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND p.sales_user_id IS NOT NULL
+       WHERE p.is_prospect = 0 AND p.sales_user_id IS NOT NULL
          AND ${dateCol} BETWEEN ? AND ?
          ${statusFilter} ${userFilter}
        ORDER BY p.naitei_date DESC, p.created_at DESC`,
