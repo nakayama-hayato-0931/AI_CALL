@@ -222,8 +222,9 @@ const updateProject = async (req, res, next) => {
       address,
     } = req.body;
 
-    // ステータスバリデーション
+    // ステータスバリデーション（元のENUM値 + 現行の値）
     const validStatuses = [
+      'NEW', 'MAIL_SENT', 'INTERVIEW_SET', 'INTERVIEW_DONE', 'WAITING_RESULT', 'HIRED',
       'NAITEI', 'NAITEI_TORIKESHI', 'FUGOKAKU', 'KEKKA_MACHI', 'MENSETSU_KAKUTEI',
       'BOSHUCHU', 'SHORUI_CHU', 'LOST', 'BARASHI', 'HORYU',
       'SHORUI_OCHI', 'KISON_NASHI', 'MODOSHI', 'MODORI',
