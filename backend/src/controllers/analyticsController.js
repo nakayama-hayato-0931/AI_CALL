@@ -908,7 +908,14 @@ const importStampCsv = async (req, res, next) => {
 
     for (let i = 1; i < lines.length; i++) {
       // CSV パース（ダブルクォート考慮）
-      const cols = lines[i].match(/(".*?"|[^,]*)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || [];
+      const cols = [];
+      let cur = '', inQ = false;
+      for (const ch of lines[i]) {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
+      cols.push(cur.trim());
       if (cols.length < 6) continue;
 
       const stampDatetime = cols[1]; // 2026/03/27 18:28:48
