@@ -87,7 +87,7 @@ export default function AdminPerformance() {
                 </tr>
               </thead>
               <tbody>
-                {data.operators.map(op => (
+                {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map(op => (
                   <tr key={op.user_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                     <td className="table-cell font-medium">
                       <Link href={`/admin/performance/${op.user_id}`} className="text-blue-600 hover:text-blue-800 hover:underline">

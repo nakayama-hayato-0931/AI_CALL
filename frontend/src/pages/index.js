@@ -579,7 +579,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {perfData.operators.map(op => {
+                {[...perfData.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map(op => {
                   const wh = Number(op.work_minutes) > 0 ? Number(op.work_minutes) / 60 : 0;
                   const workH = wh > 0 ? wh.toFixed(1) : '-';
                   const ph = (val) => wh > 0 ? (val / wh).toFixed(1) : '-';
