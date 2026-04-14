@@ -936,11 +936,6 @@ const importStampCsv = async (req, res, next) => {
     const csvDates = new Set();
     dayMap.forEach(v => csvDates.add(v.date));
 
-    if (csvDates.size > 0) {
-      const sortedDates = [...csvDates].sort();
-      await pool.execute('DELETE FROM cost_records WHERE date BETWEEN ? AND ?', [sortedDates[0], sortedDates[sortedDates.length - 1]]);
-    }
-
     let imported = 0;
     let skipped = 0;
     const errors = [];
@@ -951,7 +946,7 @@ const importStampCsv = async (req, res, next) => {
       let validCount = 0;
       const duplicates = [];
       for (const [key, entry] of dayMap) {
-        const userId = nameMap.get(entry.name);
+        const userId = nameMap.get(entry.name) || nameMap.get(entry.name.replace(/\s+/g, ''));
         if (!userId) continue;
         const stamps = entry.stamps;
         const arrival = stamps.find(s => s.type === '出勤');
@@ -972,8 +967,14 @@ const importStampCsv = async (req, res, next) => {
       return ApiResponse.success(res, { duplicateCount: dupCount, total: validCount, duplicates });
     }
 
+    // 上書きモードの場合は既存データを事前削除
+    if (duplicateMode === 'overwrite' && csvDates.size > 0) {
+      const sortedDates = [...csvDates].sort();
+      await pool.execute('DELETE FROM cost_records WHERE date BETWEEN ? AND ?', [sortedDates[0], sortedDates[sortedDates.length - 1]]);
+    }
+
     for (const [key, entry] of dayMap) {
-      const userId = nameMap.get(entry.name);
+      const userId = nameMap.get(entry.name) || nameMap.get(entry.name.replace(/\s+/g, ''));
       if (!userId) {
         errors.push(`${entry.date} ${entry.name}: ユーザーが見つかりません`);
         continue;
