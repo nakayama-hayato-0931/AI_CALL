@@ -320,7 +320,7 @@ export default function AnalyticsPage() {
               ))}
             </tr>
             {/* 各オペレーター行 */}
-            {data.operators.map((op, i) => {
+            {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
               const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
               return (
               <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
@@ -377,7 +377,7 @@ export default function AnalyticsPage() {
               ))}
             </tr>
             {/* 各オペレーター行 */}
-            {data.operators.map((op, i) => {
+            {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
               const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
               return (
               <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
