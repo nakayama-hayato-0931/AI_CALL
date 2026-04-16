@@ -206,7 +206,7 @@ export default function Layout({ children }) {
   const sections = getNavSections(user.role, adminView);
 
   return (
-    <div className="flex h-screen bg-gray-50/80">
+    <div className="flex h-screen bg-gray-50/80 overflow-hidden">
       {/* サイドバー（ダークテーマ） */}
       <aside
         className={`${
