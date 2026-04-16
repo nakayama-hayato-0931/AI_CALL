@@ -278,6 +278,7 @@ export default function SalesProjects() {
 
   return (
     <Layout>
+      <div className="flex flex-col h-[calc(100vh-48px)]">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-gray-900">案件一覧</h1>
@@ -362,8 +363,8 @@ export default function SalesProjects() {
       </div>
 
       {/* テーブル */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="card overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="overflow-x-auto overflow-y-auto flex-1">
           <table className="w-full text-sm table-fixed">
             <thead className="sticky top-0 z-20">
               <tr className="bg-gray-50 border-b border-gray-200">
@@ -770,6 +771,7 @@ export default function SalesProjects() {
           </div>
         </div>
       )}
+    </div>
     </Layout>
   );
 }

@@ -328,6 +328,7 @@ export default function AdminProjects() {
 
   return (
     <Layout>
+      <div className="flex flex-col h-[calc(100vh-48px)]">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">案件管理
           <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${callType === 'sales' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -431,8 +432,8 @@ export default function AdminProjects() {
       </div>
 
       {/* テーブル */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="card overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="overflow-x-auto overflow-y-auto flex-1">
           <table className="w-full text-sm table-fixed">
             <thead className="sticky top-0 z-20">
               <tr className="bg-gray-50 border-b border-gray-200">
@@ -897,6 +898,7 @@ export default function AdminProjects() {
           </div>
         </div>
       )}
+    </div>
     </Layout>
   );
 }
