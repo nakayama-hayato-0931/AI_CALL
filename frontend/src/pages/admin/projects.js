@@ -174,7 +174,7 @@ export default function AdminProjects() {
 
   const fetchProjects = async () => {
     try {
-      const params = new URLSearchParams({ page, limit: 20, sort_by: sortBy, sort_order: sortOrder });
+      const params = new URLSearchParams({ page, limit: 60, sort_by: sortBy, sort_order: sortOrder });
       if (activeTab === 'legacy') params.append('is_legacy', '1');
       if (status) params.append('status', status);
       if (myOnly) params.append('my_only', '1');
@@ -432,9 +432,9 @@ export default function AdminProjects() {
 
       {/* テーブル */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[80vh] overflow-y-auto">
           <table className="w-full text-sm table-fixed">
-            <thead>
+            <thead className="sticky top-0 z-20">
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="table-header cursor-pointer select-none" style={{width:'90px'}} onClick={() => handleSort('created_at')}>
                   獲得日<SortIcon col="created_at" />
