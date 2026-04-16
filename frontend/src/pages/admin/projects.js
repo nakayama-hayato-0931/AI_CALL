@@ -432,7 +432,7 @@ export default function AdminProjects() {
 
       {/* テーブル */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto max-h-[calc(100vh-220px)] overflow-y-auto">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm table-fixed">
             <thead className="sticky top-0 z-20">
               <tr className="bg-gray-50 border-b border-gray-200">
