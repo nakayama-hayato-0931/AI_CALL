@@ -10,7 +10,7 @@ const {
   getCompanies, assignCompany, unassignCompany,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
-  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
+  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 } = require('../controllers/adminController');
@@ -49,6 +49,7 @@ router.delete('/exclude-words/:id', requireEditor, deleteExcludeWord);
 // 架電時間ルール (閲覧: manager+consultant、編集: editor)
 router.get('/time-rules', requireManager, getTimeRules);
 router.post('/time-rules', requireEditor, addTimeRule);
+router.post('/time-rules/ai-suggest', requireEditor, aiSuggestTimeRules);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);
 

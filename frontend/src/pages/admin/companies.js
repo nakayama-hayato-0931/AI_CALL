@@ -64,6 +64,8 @@ export default function AdminCompanies() {
     industry_name: '飲食', start_time: '09:00', end_time: '11:00', priority_weight: 20
   });
   const [editingTimeRule, setEditingTimeRule] = useState(null); // { id, industry_name, start_time, end_time, priority_weight }
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -306,6 +308,36 @@ export default function AdminCompanies() {
     } catch (err) { toast.error('更新に失敗しました'); }
   };
 
+  // === AI自動設定 ===
+  const handleAiSuggest = async () => {
+    setAiSuggesting(true);
+    setAiSuggestion(null);
+    try {
+      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: false });
+      if (data.success) {
+        setAiSuggestion(data.data);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'AI分析に失敗しました');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+
+  const handleApplyAiSuggestion = async () => {
+    if (!aiSuggestion) return;
+    try {
+      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: true });
+      if (data.success) {
+        toast.success(`${data.data.rules.length}件のルールを適用しました`);
+        setAiSuggestion(null);
+        fetchTimeRules();
+      }
+    } catch (err) {
+      toast.error('適用に失敗しました');
+    }
+  };
+
   // 時間帯×業種マトリクス用: ルールからセルデータを生成
   const buildTimeMatrix = () => {
     const hours = [];
@@ -504,12 +536,69 @@ export default function AdminCompanies() {
 
         return (
           <>
-            <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
+            <div className="card p-4 mb-4 bg-blue-50 border-blue-100 flex items-start justify-between gap-4">
               <p className="text-sm text-blue-800">
                 自動ピックアップのゴールデンタイムを設定します。設定された時間帯では、該当業種の企業が優先的にピックアップされます。
                 優先度の数値が高いほど優先されます。
               </p>
+              <button
+                onClick={handleAiSuggest}
+                disabled={aiSuggesting}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-sm font-bold rounded-lg hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 shadow-md transition-all"
+              >
+                {aiSuggesting ? (
+                  <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>AI分析中...</>
+                ) : (
+                  <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>AI自動設定</>
+                )}
+              </button>
             </div>
+
+            {/* AI提案結果 */}
+            {aiSuggestion && (
+              <div className="card mb-4 border-2 border-purple-200 overflow-hidden">
+                <div className="px-5 py-3 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-800">🤖 AI分析結果</h3>
+                    <p className="text-[11px] text-purple-600 mt-0.5">{aiSuggestion.summary}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setAiSuggestion(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">
+                      閉じる
+                    </button>
+                    <button onClick={handleApplyAiSuggestion} className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow">
+                      この設定を適用する
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="px-3 py-2 text-left text-gray-600">業種</th>
+                        <th className="px-3 py-2 text-center text-gray-600">開始</th>
+                        <th className="px-3 py-2 text-center text-gray-600">終了</th>
+                        <th className="px-3 py-2 text-center text-gray-600">優先度</th>
+                        <th className="px-3 py-2 text-left text-gray-600">理由</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aiSuggestion.rules.map((rule, i) => (
+                        <tr key={i} className="border-b border-gray-50 hover:bg-purple-50/30">
+                          <td className="px-3 py-2 font-medium">{rule.industry_name}</td>
+                          <td className="px-3 py-2 text-center">{rule.start_time}</td>
+                          <td className="px-3 py-2 text-center">{rule.end_time}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-bold">{rule.priority_weight}</span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{rule.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* 時間帯×業種マトリクス */}
             <div className="card mb-6 overflow-hidden">

@@ -873,13 +873,138 @@ const saveKpiAdjustment = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+/**
+ * POST /api/admin/time-rules/ai-suggest
+ * AIによるゴールデンタイム自動設定
+ * 過去の架電接続データを業種×時間帯で分析し、最適なルールを生成
+ */
+const aiSuggestTimeRules = async (req, res, next) => {
+  try {
+    const { apply } = req.body; // true: 即適用, false/undefined: プレビューのみ
+
+    // 過去の架電データを業種×時間帯で集計（直近3ヶ月）
+    const [stats] = await pool.query(`
+      SELECT
+        co.industry,
+        HOUR(c.call_started_at) as call_hour,
+        COUNT(*) as total_calls,
+        SUM(CASE WHEN c.result_code NOT IN ('NO_ANSWER','SKIP') THEN 1 ELSE 0 END) as connected_calls,
+        SUM(c.is_effective_connection) as effective_calls,
+        SUM(c.is_person_in_charge) as person_in_charge_calls,
+        SUM(CASE WHEN c.result_code IN ('INTERESTED','PROJECT') THEN 1 ELSE 0 END) as positive_results
+      FROM calls c
+      JOIN companies co ON c.company_id = co.id
+      WHERE c.call_started_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+        AND c.result_code IS NOT NULL
+        AND c.result_code != 'SKIP'
+        AND co.industry IS NOT NULL
+        AND co.industry != ''
+      GROUP BY co.industry, HOUR(c.call_started_at)
+      HAVING total_calls >= 3
+      ORDER BY co.industry, call_hour
+    `);
+
+    if (stats.length === 0) {
+      return ApiResponse.badRequest(res, '分析に必要な架電データが不足しています（直近3ヶ月で業種別3件以上必要）');
+    }
+
+    // 業種ごとにデータを整理
+    const industryData = {};
+    for (const row of stats) {
+      if (!industryData[row.industry]) industryData[row.industry] = [];
+      industryData[row.industry].push({
+        hour: row.call_hour,
+        totalCalls: Number(row.total_calls),
+        connectedCalls: Number(row.connected_calls),
+        effectiveCalls: Number(row.effective_calls),
+        personInCharge: Number(row.person_in_charge_calls),
+        positiveResults: Number(row.positive_results),
+        connectionRate: row.total_calls > 0 ? Math.round(Number(row.connected_calls) / Number(row.total_calls) * 100) : 0,
+        effectiveRate: row.total_calls > 0 ? Math.round(Number(row.effective_calls) / Number(row.total_calls) * 100) : 0,
+      });
+    }
+
+    // AI分析用プロンプト作成
+    const Anthropic = require('@anthropic-ai/sdk');
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const dataText = Object.entries(industryData).map(([industry, hours]) => {
+      const hourLines = hours.map(h =>
+        `  ${h.hour}時台: 架電${h.totalCalls}件, 接続${h.connectedCalls}件(${h.connectionRate}%), 有効接続${h.effectiveCalls}件(${h.effectiveRate}%), 担当者接続${h.personInCharge}件, 案件化${h.positiveResults}件`
+      ).join('\n');
+      return `【${industry}】\n${hourLines}`;
+    }).join('\n\n');
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      temperature: 0.2,
+      system: `あなたは法人営業のコールセンター最適化AIです。
+業種別・時間帯別の架電データを分析し、ゴールデンタイム（優先的に架電すべき時間帯）を提案してください。
+
+以下の基準で判断してください：
+- 接続率（電話がつながる率）が高い時間帯
+- 有効接続率（担当者・決裁者につながる率）が高い時間帯
+- 案件化率（INTERESTED/PROJECT）が高い時間帯
+- データ量が少ない時間帯は信頼度を下げる
+
+各業種について、最大2つの時間帯（ゴールデンタイム）を提案してください。
+1時間〜2時間の範囲で設定し、優先度(priority_weight)は5〜30で設定してください。
+
+必ず以下のJSON形式で返答してください：
+{
+  "rules": [
+    {
+      "industry_name": "業種名",
+      "start_time": "HH:MM",
+      "end_time": "HH:MM",
+      "priority_weight": 数値,
+      "reason": "この時間帯を推奨する理由（1行）"
+    }
+  ],
+  "analysis_summary": "全体分析の要約（2-3行）"
+}`,
+      messages: [{ role: 'user', content: `以下の架電データを分析し、業種別のゴールデンタイムを提案してください。\n\n${dataText}` }],
+    });
+
+    const text = response.content[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return ApiResponse.error(res, 'AI分析結果の解析に失敗しました', 500);
+    }
+    const aiResult = JSON.parse(jsonMatch[0]);
+
+    // 適用モード: 既存ルールを削除して新ルールを挿入
+    if (apply) {
+      await pool.execute('DELETE FROM industry_time_rules');
+      for (const rule of aiResult.rules) {
+        await pool.execute(
+          'INSERT INTO industry_time_rules (industry_name, start_time, end_time, priority_weight) VALUES (?, ?, ?, ?)',
+          [rule.industry_name, rule.start_time, rule.end_time, rule.priority_weight || 10]
+        );
+      }
+      logger.info(`AI ゴールデンタイム自動設定: ${aiResult.rules.length}件のルールを適用 by user=${req.user.id}`);
+    }
+
+    return ApiResponse.success(res, {
+      rules: aiResult.rules,
+      summary: aiResult.analysis_summary,
+      rawData: industryData,
+      applied: !!apply,
+    });
+  } catch (err) {
+    logger.error(`AI ゴールデンタイム分析エラー: ${err.message}`);
+    next(err);
+  }
+};
+
 module.exports = {
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
-  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule,
+  getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 };
