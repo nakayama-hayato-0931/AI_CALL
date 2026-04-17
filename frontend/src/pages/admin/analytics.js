@@ -81,7 +81,7 @@ export default function AnalyticsPage() {
   const [compareData, setCompareData] = useState([]); // [{ label, isMonth, cpa, qual }]
   const [compareScope, setCompareScope] = useState('team'); // 'team' | 'individual'
   const [compareUserId, setCompareUserId] = useState(null); // 個人選択時のuserId
-  const [compareMonths, setCompareMonths] = useState(3); // 過去Nヶ月分
+  const [compareMonths, setCompareMonths] = useState(6); // 過去Nヶ月分
   const [operatorsList, setOperatorsList] = useState([]);
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
