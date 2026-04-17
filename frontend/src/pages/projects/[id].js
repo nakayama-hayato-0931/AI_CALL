@@ -32,6 +32,8 @@ export default function ProjectDetailPage() {
   const { id } = router.query;
   const isSales = user?.role === 'sales';
   const isOperator = user?.role === 'operator';
+  const isAdmin = ['admin', 'manager', 'consultant'].includes(user?.role);
+  const listUrl = isSales ? '/sales/projects' : (isAdmin ? '/admin/projects' : '/projects');
   const [project, setProject] = useState(null);
   const [callHistory, setCallHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -178,11 +180,7 @@ export default function ProjectDetailPage() {
         phone_confirmed: form.phone_confirmed || null,
       });
       toast.success('案件を更新しました');
-      fetchProject();
-      // 内定取消の場合、内定者情報の金額がバックエンドでリセットされるので再取得
-      if (form.status === 'NAITEI_TORIKESHI') {
-        fetchHires();
-      }
+      router.push(listUrl);
     } catch (err) {
       toast.error('更新に失敗しました');
     }
@@ -237,7 +235,7 @@ export default function ProjectDetailPage() {
           <p className="text-sm text-gray-400 mt-0.5">{project.company_name}</p>
         </div>
         <button
-          onClick={() => router.push(isSales ? '/sales/projects' : '/projects')}
+          onClick={() => router.push(listUrl)}
           className="btn-secondary !py-2 flex items-center gap-1.5"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
