@@ -67,6 +67,7 @@ export default function AdminCompanies() {
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
   const [aiSelectedIndustries, setAiSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
+  const [applyingRules, setApplyingRules] = useState(false);
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -768,24 +769,44 @@ export default function AdminCompanies() {
               ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
             </p>
             <button
+              disabled={applyingRules}
               onClick={async () => {
-                if (!confirm('現在のルール（業種地域・NGワード・NG/既存案件リスト）を既存の架電リストに適用します。\n該当企業は除外フラグが立ちます。（特別リストは対象外）\n\n実行しますか？')) return;
+                if (!confirm('現在のルール（業種地域・NGワード・NG/既存案件リスト）を既存の架電リストに適用します。\n該当企業は除外フラグが立ちます。（特別リストは対象外）\n\n処理に数分かかる場合があります。実行しますか？')) return;
+                setApplyingRules(true);
+                const progressToast = toast.loading('ルール適用中... 数分かかる場合があります', { duration: 600000 });
                 try {
-                  const { data } = await api.post('/api/admin/apply-rules-to-existing');
+                  const { data } = await api.post('/api/admin/apply-rules-to-existing', {}, { timeout: 600000 });
+                  toast.dismiss(progressToast);
                   if (data.success) {
                     const d = data.data;
-                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）`, { duration: 6000 });
+                    const secs = Math.round((d.elapsedMs || 0) / 1000);
+                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒`, { duration: 10000 });
                   }
                 } catch (err) {
-                  toast.error(err.response?.data?.message || 'ルール適用に失敗しました');
+                  toast.dismiss(progressToast);
+                  toast.error(err.response?.data?.message || 'ルール適用に失敗しました', { duration: 8000 });
+                } finally {
+                  setApplyingRules(false);
                 }
               }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-bold rounded-lg hover:from-amber-600 hover:to-orange-700 shadow-md transition-all whitespace-nowrap"
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-bold rounded-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-md transition-all whitespace-nowrap"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-              </svg>
-              既存リストに手動適用
+              {applyingRules ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  処理中...
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                  </svg>
+                  既存リストに手動適用
+                </>
+              )}
             </button>
           </div>
 
