@@ -55,7 +55,7 @@ export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
 
-  const [periodMode, setPeriodMode] = useState('monthly');
+  const [periodMode, setPeriodMode] = useState('compare');
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -344,13 +344,13 @@ export default function AnalyticsPage() {
         <h2 className="text-sm font-bold text-gray-800">{title}</h2>
         {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[calc(100vh-260px)]">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-30">
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-40 min-w-[100px]">名前</th>
               {cpaColumns.map(col => (
-                <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
+                <th key={col.key} className={`text-right py-2.5 px-3 font-semibold whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : 'bg-gray-50 text-gray-600'}`}>
                   {col.label}
                 </th>
               ))}
@@ -401,13 +401,13 @@ export default function AnalyticsPage() {
         <h2 className="text-sm font-bold text-gray-800">{title}</h2>
         {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[calc(100vh-260px)]">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-30">
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">名前</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-40 min-w-[100px]">名前</th>
               {qualColumns.map(col => (
-                <th key={col.key} className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">
+                <th key={col.key} className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap bg-gray-50">
                   {col.label}
                 </th>
               ))}
@@ -475,13 +475,13 @@ export default function AnalyticsPage() {
           <h2 className="text-sm font-bold text-gray-800">{title}</h2>
           <span className="text-xs text-gray-500">対象: {scopeLabel} / 直近{compareMonths}ヶ月</span>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[calc(100vh-260px)]">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-30">
               <tr className="bg-indigo-50 border-b-2 border-indigo-200">
-                <th className="text-left py-3 px-4 font-bold text-indigo-900 sticky left-0 bg-indigo-50 z-10 min-w-[120px]">期間</th>
+                <th className="text-left py-3 px-4 font-bold text-indigo-900 sticky left-0 bg-indigo-50 z-40 min-w-[120px]">期間</th>
                 {cols.map(col => (
-                  <th key={col.key} className={`text-right py-3 px-4 font-bold whitespace-nowrap ${col.highlight ? 'bg-blue-100 text-blue-800' : 'text-indigo-900'}`}>
+                  <th key={col.key} className={`text-right py-3 px-4 font-bold whitespace-nowrap ${col.highlight ? 'bg-blue-100 text-blue-800' : 'bg-indigo-50 text-indigo-900'}`}>
                     {col.label}
                   </th>
                 ))}
