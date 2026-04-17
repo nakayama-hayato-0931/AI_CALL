@@ -1014,86 +1014,98 @@ const aiSuggestTimeRules = async (req, res, next) => {
  * 適用し、該当する企業を exclusion_flag=1 に更新
  */
 const applyRulesToExistingCompanies = async (req, res, next) => {
+  const startTime = Date.now();
   const errors = [];
   let byExclusionList = 0, ngMatched = 0, byRegionRule = 0;
   let ngKeywordsUsed = [];
-  const startTime = Date.now();
 
-  // バッチUPDATEヘルパー: is_special = 0 の未除外レコードをLIMIT件ずつ処理
-  const batchUpdate = async (whereClause, params = []) => {
-    const BATCH_SIZE = 2000;
+  // 一致するIDを取得して、IDリストでUPDATE（大量UPDATEのロック/タイムアウト回避）
+  const updateByIds = async (ids) => {
+    const CHUNK = 500;
     let total = 0;
-    let iter = 0;
-    const MAX_ITER = 500;
-    while (iter < MAX_ITER) {
-      iter++;
-      const sql = `UPDATE companies SET exclusion_flag = 1
-                   WHERE is_special = 0 AND exclusion_flag = 0
-                     AND ${whereClause}
-                   LIMIT ${BATCH_SIZE}`;
-      const [r] = await pool.query(sql, params);
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => '?').join(',');
+      const [r] = await pool.query(
+        `UPDATE companies SET exclusion_flag = 1 WHERE id IN (${placeholders}) AND exclusion_flag = 0`,
+        chunk
+      );
       total += r.affectedRows;
-      if (r.affectedRows < BATCH_SIZE) break;
     }
     return total;
   };
 
   // 1. NGリスト/既存案件リストに一致
   try {
-    byExclusionList = await batchUpdate(`(
-      phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL)
-      OR company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL)
-    )`);
-    logger.info(`[ApplyRules] exclusion_list: ${byExclusionList}件 (${Date.now()-startTime}ms)`);
+    logger.info('[ApplyRules] Step1: exclusion_list開始');
+    const [rows] = await pool.query(
+      `SELECT id FROM companies
+       WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+         AND (
+           phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL AND phone_number != '')
+           OR company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL AND company_name != '')
+         )`
+    );
+    logger.info(`[ApplyRules] Step1: 対象${rows.length}件`);
+    byExclusionList = await updateByIds(rows.map(r => r.id));
+    logger.info(`[ApplyRules] Step1完了: ${byExclusionList}件更新 (${Date.now()-startTime}ms)`);
   } catch (e) {
-    const msg = `exclusion_list: ${e.message}`;
-    logger.error(`[ApplyRules] ${msg}`);
-    errors.push(msg);
+    logger.error(`[ApplyRules] Step1エラー: ${e.message}\n${e.stack}`);
+    errors.push(`NGリスト判定: ${e.message}`);
   }
 
   // 2. NGワード
   try {
+    logger.info('[ApplyRules] Step2: NGワード開始');
     const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
     ngKeywordsUsed = ngWords.map(w => w.keyword).filter(k => k);
-    logger.info(`[ApplyRules] NGワード数: ${ngKeywordsUsed.length}`);
+    logger.info(`[ApplyRules] Step2: NGワード${ngKeywordsUsed.length}件`);
     for (const kw of ngKeywordsUsed) {
       try {
-        const n = await batchUpdate(
-          `(company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
+        const [rows] = await pool.query(
+          `SELECT id FROM companies
+           WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+             AND (company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
           [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
         );
-        logger.info(`[ApplyRules] NGワード「${kw}」除外: ${n}件`);
+        const n = await updateByIds(rows.map(r => r.id));
+        logger.info(`[ApplyRules] NGワード「${kw}」: ${rows.length}件対象 / ${n}件更新`);
         ngMatched += n;
       } catch (e) {
         logger.error(`[ApplyRules] NGワード「${kw}」エラー: ${e.message}`);
-        errors.push(`ngword:${kw}: ${e.message}`);
+        errors.push(`NGワード「${kw}」: ${e.message}`);
       }
     }
+    logger.info(`[ApplyRules] Step2完了: ${ngMatched}件 (${Date.now()-startTime}ms)`);
   } catch (e) {
-    const msg = `ng_word: ${e.message}`;
-    logger.error(`[ApplyRules] ${msg}`);
-    errors.push(msg);
+    logger.error(`[ApplyRules] Step2エラー: ${e.message}\n${e.stack}`);
+    errors.push(`NGワード: ${e.message}`);
   }
 
-  // 3. 業種地域ルールに一致しない企業
+  // 3. 業種地域ルール
   try {
+    logger.info('[ApplyRules] Step3: 業種地域ルール開始');
     const [ruleCount] = await pool.query('SELECT COUNT(*) as cnt FROM industry_region_rules');
     if (Number(ruleCount[0].cnt) > 0) {
-      byRegionRule = await batchUpdate(`NOT EXISTS (
-        SELECT 1 FROM industry_region_rules irr
-        WHERE companies.industry LIKE CONCAT('%', irr.industry_name, '%')
-          AND companies.address LIKE CONCAT(irr.region, '%')
-      )`);
+      const [rows] = await pool.query(
+        `SELECT id FROM companies
+         WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+           AND NOT EXISTS (
+             SELECT 1 FROM industry_region_rules irr
+             WHERE companies.industry LIKE CONCAT('%', irr.industry_name, '%')
+               AND companies.address LIKE CONCAT(irr.region, '%')
+           )`
+      );
+      byRegionRule = await updateByIds(rows.map(r => r.id));
     }
-    logger.info(`[ApplyRules] region_rule: ${byRegionRule}件`);
+    logger.info(`[ApplyRules] Step3完了: ${byRegionRule}件 (${Date.now()-startTime}ms)`);
   } catch (e) {
-    const msg = `region_rule: ${e.message}`;
-    logger.error(`[ApplyRules] ${msg}`);
-    errors.push(msg);
+    logger.error(`[ApplyRules] Step3エラー: ${e.message}\n${e.stack}`);
+    errors.push(`業種地域ルール: ${e.message}`);
   }
 
   const excludedCount = byExclusionList + ngMatched + byRegionRule;
-  logger.info(`[ApplyRules] 完了: total=${excludedCount} errors=${errors.length} (${Date.now()-startTime}ms)`);
+  logger.info(`[ApplyRules] 全完了: total=${excludedCount}, errors=${errors.length}, ${Date.now()-startTime}ms`);
   return ApiResponse.success(res, {
     total: excludedCount,
     byExclusionList,
@@ -1102,7 +1114,7 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
     ngKeywordsUsed,
     errors,
     elapsedMs: Date.now() - startTime,
-  }, errors.length > 0 ? `${excludedCount}件除外（${errors.length}件エラー）` : `${excludedCount}件の企業を除外しました`);
+  }, errors.length > 0 ? `${excludedCount}件除外（${errors.length}件エラー発生）` : `${excludedCount}件の企業を除外しました`);
 };
 
 module.exports = {
