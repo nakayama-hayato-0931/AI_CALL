@@ -245,6 +245,11 @@ const importCompanies = async (req, res, next) => {
       const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
       logger.info(`Exclusions loaded: ${excludePhoneSet.size}. Starting import loop...`);
 
+      // NGワード（業種除外ワード）をロード
+      const [ngWords] = await conn.query('SELECT keyword FROM industry_exclude_words');
+      const ngKeywords = ngWords.map(r => r.keyword).filter(k => k && k.length > 0);
+      logger.info(`NG keywords loaded: ${ngKeywords.length}`);
+
       // インポート内重複防止用Set
       const importedPhones = new Set();
       const importedNames = new Set();
@@ -289,6 +294,15 @@ const importCompanies = async (req, res, next) => {
 
         // 除外リストチェック（メモリ内Set使用）
         if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; continue; }
+
+        // NGワードチェック: 会社名・業種・職種・コメントにNGワードが含まれる場合は除外
+        const haystack = `${companyName} ${industry || ''} ${jobType || ''} ${comment || ''}`;
+        const matchedNg = ngKeywords.find(kw => haystack.includes(kw));
+        if (matchedNg) {
+          excludedCount++;
+          skippedCount++;
+          continue;
+        }
 
         const [insertResult] = await conn.execute(
           `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
@@ -550,6 +564,14 @@ const manualAddCompany = async (req, res, next) => {
     if (excluded.length > 0) {
       const listLabel = excluded[0].list_type === 'ng' ? 'NGリスト' : '既存案件リスト';
       return ApiResponse.badRequest(res, `${listLabel}に登録済みのため追加できません`);
+    }
+
+    // NGワードチェック（会社名・業種・職種・コメント）
+    const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
+    const haystack = `${companyName} ${industry || ''} ${job_type || ''} ${comment || ''}`;
+    const matchedNg = ngWords.map(r => r.keyword).filter(k => k).find(kw => haystack.includes(kw));
+    if (matchedNg) {
+      return ApiResponse.badRequest(res, `NGワード「${matchedNg}」が含まれているため追加できません`);
     }
 
     // 同一リスト内の重複チェック
