@@ -440,7 +440,7 @@ export default function AdminCompanies() {
                   <th className="table-header">企業名</th>
                   <th className="table-header">電話番号</th>
                   <th className="table-header">業種</th>
-                  <th className="table-header">地域</th>
+                  <th className="table-header">住所</th>
                   <th className="table-header">割り当てOP</th>
                   <th className="table-header w-24">操作</th>
                 </tr>
@@ -451,7 +451,7 @@ export default function AdminCompanies() {
                     <td className="table-cell font-medium">{c.company_name}</td>
                     <td className="table-cell text-gray-500">{c.phone_number}</td>
                     <td className="table-cell text-gray-500">{c.industry || '-'}</td>
-                    <td className="table-cell text-gray-500">{c.region || '-'}</td>
+                    <td className="table-cell text-gray-500">{(c.address && (c.address.match(/^(.+?[都道府県])/) || [])[1]) || c.region || '-'}</td>
                     <td className="table-cell">
                       {c.assigned_operators && c.assigned_operators.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
