@@ -1008,6 +1008,79 @@ const aiSuggestTimeRules = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/admin/apply-rules-to-existing
+ * 現在の業種地域ルール・NGワード・NG/既存案件リストを既存の企業（特別リスト除く）に
+ * 適用し、該当する企業を exclusion_flag=1 に更新
+ */
+const applyRulesToExistingCompanies = async (req, res, next) => {
+  try {
+    let excludedCount = 0;
+
+    // 1. NGリスト/既存案件リストの電話番号・企業名に一致する企業
+    const [byExclusionList] = await pool.execute(`
+      UPDATE companies c
+      SET exclusion_flag = 1
+      WHERE c.is_special = 0 AND c.exclusion_flag = 0
+        AND (
+          c.phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL)
+          OR c.company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL)
+        )
+    `);
+    excludedCount += byExclusionList.affectedRows;
+
+    // 2. NGワード（業種除外ワード）に会社名・業種・職種・コメントが一致する企業
+    const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
+    let ngMatched = 0;
+    for (const w of ngWords) {
+      const kw = w.keyword;
+      if (!kw) continue;
+      const [r] = await pool.execute(`
+        UPDATE companies c
+        SET exclusion_flag = 1
+        WHERE c.is_special = 0 AND c.exclusion_flag = 0
+          AND (
+            c.company_name LIKE CONCAT('%', ?, '%')
+            OR c.industry LIKE CONCAT('%', ?, '%')
+            OR c.job_type LIKE CONCAT('%', ?, '%')
+            OR c.comment LIKE CONCAT('%', ?, '%')
+          )
+      `, [kw, kw, kw, kw]);
+      ngMatched += r.affectedRows;
+    }
+    excludedCount += ngMatched;
+
+    // 3. 業種地域ルール（industry_region_rules）に一致しない企業を除外
+    // ルールが1件以上ある場合のみ適用
+    const [ruleCount] = await pool.query('SELECT COUNT(*) as cnt FROM industry_region_rules');
+    let byRegionRule = 0;
+    if (Number(ruleCount[0].cnt) > 0) {
+      const [r] = await pool.execute(`
+        UPDATE companies c
+        SET exclusion_flag = 1
+        WHERE c.is_special = 0 AND c.exclusion_flag = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM industry_region_rules irr
+            WHERE c.industry LIKE CONCAT('%', irr.industry_name, '%')
+              AND c.address LIKE CONCAT(irr.region, '%')
+          )
+      `);
+      byRegionRule = r.affectedRows;
+      excludedCount += byRegionRule;
+    }
+
+    logger.info(`ルール手動適用: exclusion_list=${byExclusionList.affectedRows}, ng_word=${ngMatched}, region_rule=${byRegionRule}, total=${excludedCount} by user=${req.user.id}`);
+    return ApiResponse.success(res, {
+      total: excludedCount,
+      byExclusionList: byExclusionList.affectedRows,
+      byNgWord: ngMatched,
+      byRegionRule,
+    }, `${excludedCount}件の企業を除外しました`);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
@@ -1017,4 +1090,5 @@ module.exports = {
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
+  applyRulesToExistingCompanies,
 };

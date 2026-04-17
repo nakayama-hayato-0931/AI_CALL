@@ -66,7 +66,7 @@ export default function AdminCompanies() {
   const [editingTimeRule, setEditingTimeRule] = useState(null); // { id, industry_name, start_time, end_time, priority_weight }
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
-  const [selectedIndustries, setSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
+  const [aiSelectedIndustries, setAiSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -311,7 +311,7 @@ export default function AdminCompanies() {
 
   // === AI自動設定 ===
   const handleAiSuggest = async () => {
-    const industries = Object.keys(selectedIndustries).filter(k => selectedIndustries[k]);
+    const industries = Object.keys(aiSelectedIndustries).filter(k => aiSelectedIndustries[k]);
     if (industries.length === 0) {
       toast.error('業種を1つ以上選択してください');
       return;
@@ -332,7 +332,7 @@ export default function AdminCompanies() {
 
   const handleApplyAiSuggestion = async () => {
     if (!aiSuggestion) return;
-    const industries = Object.keys(selectedIndustries).filter(k => selectedIndustries[k]);
+    const industries = Object.keys(aiSelectedIndustries).filter(k => aiSelectedIndustries[k]);
     try {
       const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: true, industries });
       if (data.success) {
@@ -626,8 +626,8 @@ export default function AdminCompanies() {
                           <div className="mb-1">
                             <input
                               type="checkbox"
-                              checked={!!selectedIndustries[ind]}
-                              onChange={e => setSelectedIndustries(p => ({ ...p, [ind]: e.target.checked }))}
+                              checked={!!aiSelectedIndustries[ind]}
+                              onChange={e => setAiSelectedIndustries(p => ({ ...p, [ind]: e.target.checked }))}
                               className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
                               title={`${ind}をAI自動設定対象にする`}
                             />
@@ -761,12 +761,32 @@ export default function AdminCompanies() {
       {/* ============ ルール設定タブ ============ */}
       {activeTab === 'area' && (
         <>
-          <div className="card p-4 mb-4 bg-blue-50 border-blue-100">
-            <p className="text-sm text-blue-800">
+          <div className="card p-4 mb-4 bg-blue-50 border-blue-100 flex items-start justify-between gap-4">
+            <p className="text-sm text-blue-800 flex-1">
               業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の「業種」に部分一致で判定されます。
               職種にNGワードが含まれる場合は除外されます（例: 飲食店でも職種が事務なら除外）。
               ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
             </p>
+            <button
+              onClick={async () => {
+                if (!confirm('現在のルール（業種地域・NGワード・NG/既存案件リスト）を既存の架電リストに適用します。\n該当企業は除外フラグが立ちます。（特別リストは対象外）\n\n実行しますか？')) return;
+                try {
+                  const { data } = await api.post('/api/admin/apply-rules-to-existing');
+                  if (data.success) {
+                    const d = data.data;
+                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）`, { duration: 6000 });
+                  }
+                } catch (err) {
+                  toast.error(err.response?.data?.message || 'ルール適用に失敗しました');
+                }
+              }}
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-bold rounded-lg hover:from-amber-600 hover:to-orange-700 shadow-md transition-all whitespace-nowrap"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+              </svg>
+              既存リストに手動適用
+            </button>
           </div>
 
           {/* ルール追加フォーム */}
