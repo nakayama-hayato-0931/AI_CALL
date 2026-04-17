@@ -43,6 +43,7 @@ export default function AdminCompanies() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [showExcluded, setShowExcluded] = useState(false);
   const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
 
@@ -76,7 +77,7 @@ export default function AdminCompanies() {
 
   useEffect(() => {
     if (user) fetchCompanies();
-  }, [user, page, search]);
+  }, [user, page, search, showExcluded]);
 
   useEffect(() => {
     if (user && activeTab === 'area') fetchRules();
@@ -95,6 +96,7 @@ export default function AdminCompanies() {
     try {
       const params = new URLSearchParams({ page, limit: 20 });
       if (search) params.append('search', search);
+      if (showExcluded) params.append('include_excluded', '1');
       const { data } = await api.get(`/api/admin/companies?${params}`);
       if (data.success) {
         setCompanies(data.data.companies);
@@ -423,6 +425,15 @@ export default function AdminCompanies() {
               <input type="text" className="input text-sm" placeholder="検索キーワード..."
                 value={searchInput} onChange={e => setSearchInput(e.target.value)} />
             </div>
+            <label className="flex items-center gap-2 pb-1 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showExcluded}
+                onChange={e => { setShowExcluded(e.target.checked); setPage(1); }}
+                className="w-4 h-4 accent-orange-500 cursor-pointer"
+              />
+              <span className="text-xs text-gray-600">除外済みも表示</span>
+            </label>
             <button type="submit" className="btn-primary !py-2.5 px-6">検索</button>
             {search && (
               <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
@@ -448,8 +459,11 @@ export default function AdminCompanies() {
               </thead>
               <tbody>
                 {companies.map(c => (
-                  <tr key={c.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
-                    <td className="table-cell font-medium">{c.company_name}</td>
+                  <tr key={c.id} className={`border-b border-gray-100 transition-colors ${c.exclusion_flag ? 'bg-red-50/60 hover:bg-red-100/60' : 'hover:bg-blue-50/30'}`}>
+                    <td className="table-cell font-medium">
+                      {c.exclusion_flag ? <span className="mr-1.5 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">除外</span> : null}
+                      {c.company_name}
+                    </td>
                     <td className="table-cell text-gray-500">{c.phone_number}</td>
                     <td className="table-cell text-gray-500">{c.industry || '-'}</td>
                     <td className="table-cell text-gray-500">{(c.address && (c.address.match(/^(.+?[都道府県])/) || [])[1]) || c.region || '-'}</td>

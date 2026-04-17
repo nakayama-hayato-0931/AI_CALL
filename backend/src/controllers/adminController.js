@@ -418,8 +418,10 @@ const getCompanies = async (req, res, next) => {
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const offset = (page - 1) * limit;
     const { search, industry } = req.query;
+    const includeExcluded = req.query.include_excluded === '1' || req.query.include_excluded === 'true';
 
-    let whereClauses = ['co.exclusion_flag = 0'];
+    let whereClauses = [];
+    if (!includeExcluded) whereClauses.push('co.exclusion_flag = 0');
     let params = [];
 
     if (search) {
