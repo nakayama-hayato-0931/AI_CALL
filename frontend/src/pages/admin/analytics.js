@@ -79,9 +79,11 @@ export default function AnalyticsPage() {
 
   // 比較モード
   const [compareData, setCompareData] = useState([]); // [{ label, isMonth, cpa, qual }]
-  const [compareScope, setCompareScope] = useState('team'); // 'team' | userId
+  const [compareScope, setCompareScope] = useState('team'); // 'team' | 'individual'
+  const [compareUserId, setCompareUserId] = useState(null); // 個人選択時のuserId
   const [compareMonths, setCompareMonths] = useState(3); // 過去Nヶ月分
   const [operatorsList, setOperatorsList] = useState([]);
+  const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
   const [loading, setLoading] = useState(true);
 
@@ -450,17 +452,23 @@ export default function AnalyticsPage() {
   );
 
   // 比較テーブル: 月別 + 週別を縦に並べ、指標列を横に並べる
-  const pickRow = (periodData, metricType) => {
+  const pickRow = (periodData) => {
     if (!periodData) return {};
     if (compareScope === 'team') return periodData.team || {};
-    return periodData.operators?.find(o => o.userId === Number(compareScope)) || {};
+    return periodData.operators?.find(o => o.userId === Number(compareUserId)) || {};
+  };
+
+  const toggleMonth = (ym) => {
+    setExpandedMonths(prev => ({ ...prev, [ym]: !prev[ym] }));
   };
 
   const renderCompareTable = () => {
     const cols = tab === 'cpa' ? cpaColumns : qualColumns;
     const title = tab === 'cpa' ? 'CPA指標 - 期間比較' : '案件質向上 - 期間比較';
     const scopeLabel = compareScope === 'team' ? '全体' :
-      (operatorsList.find(o => o.id === Number(compareScope))?.name || '個人');
+      (operatorsList.find(o => o.id === Number(compareUserId))?.name || '個人');
+    // 月が折りたたまれている場合、その月に属する週は表示しない
+    const visibleRows = compareData.filter(row => row.isMonth || expandedMonths[row.ym]);
     return (
       <div className="card overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
@@ -480,15 +488,22 @@ export default function AnalyticsPage() {
               </tr>
             </thead>
             <tbody>
-              {compareData.map((row, ri) => {
+              {visibleRows.map((row, ri) => {
                 const d = tab === 'cpa' ? row.cpa : row.qual;
                 const r = pickRow(d);
                 const rowBg = row.isMonth ? 'bg-purple-50/60 font-bold' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
+                const isExpanded = expandedMonths[row.ym];
                 return (
                   <React.Fragment key={ri}>
                     {/* 値の行 */}
-                    <tr className={`border-b border-gray-50 ${rowBg}`}>
+                    <tr
+                      className={`border-b border-gray-50 ${rowBg} ${row.isMonth ? 'cursor-pointer hover:bg-purple-100/60' : ''}`}
+                      onClick={row.isMonth ? () => toggleMonth(row.ym) : undefined}
+                    >
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg} ${row.isMonth ? 'text-purple-800' : 'text-gray-700'}`}>
+                        {row.isMonth && (
+                          <span className="inline-block mr-1 text-purple-600 text-[10px]">{isExpanded ? '▼' : '▶'}</span>
+                        )}
                         {row.label}
                       </td>
                       {cols.map(col => (
@@ -513,7 +528,7 @@ export default function AnalyticsPage() {
                   </React.Fragment>
                 );
               })}
-              {compareData.length === 0 && (
+              {visibleRows.length === 0 && (
                 <tr><td colSpan={cols.length + 1} className="py-8 text-center text-gray-400">データがありません</td></tr>
               )}
             </tbody>
@@ -569,14 +584,33 @@ export default function AnalyticsPage() {
             <>
               <div>
                 <label className="input-label">対象</label>
-                <select className="input text-sm" value={compareScope}
-                  onChange={e => setCompareScope(e.target.value)}>
-                  <option value="team">全体</option>
-                  {operatorsList.map(op => (
-                    <option key={op.id} value={op.id}>{op.name}{op.role === 'intern' ? '[インターン]' : ''}</option>
-                  ))}
-                </select>
+                <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setCompareScope('team')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      compareScope === 'team' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>全体</button>
+                  <button
+                    onClick={() => {
+                      setCompareScope('individual');
+                      if (!compareUserId && operatorsList.length > 0) setCompareUserId(operatorsList[0].id);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      compareScope === 'individual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>個人</button>
+                </div>
               </div>
+              {compareScope === 'individual' && (
+                <div>
+                  <label className="input-label">オペレーター</label>
+                  <select className="input text-sm" value={compareUserId || ''}
+                    onChange={e => setCompareUserId(Number(e.target.value))}>
+                    {operatorsList.map(op => (
+                      <option key={op.id} value={op.id}>{op.name}{op.role === 'intern' ? '[インターン]' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="input-label">期間</label>
                 <select className="input text-sm" value={compareMonths}
