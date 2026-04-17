@@ -476,12 +476,12 @@ export default function AnalyticsPage() {
           <span className="text-xs text-gray-500">対象: {scopeLabel} / 直近{compareMonths}ヶ月</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">期間</th>
+              <tr className="bg-indigo-50 border-b-2 border-indigo-200">
+                <th className="text-left py-3 px-4 font-bold text-indigo-900 sticky left-0 bg-indigo-50 z-10 min-w-[120px]">期間</th>
                 {cols.map(col => (
-                  <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
+                  <th key={col.key} className={`text-right py-3 px-4 font-bold whitespace-nowrap ${col.highlight ? 'bg-blue-100 text-blue-800' : 'text-indigo-900'}`}>
                     {col.label}
                   </th>
                 ))}
@@ -491,35 +491,45 @@ export default function AnalyticsPage() {
               {visibleRows.map((row, ri) => {
                 const d = tab === 'cpa' ? row.cpa : row.qual;
                 const r = pickRow(d);
-                const rowBg = row.isMonth ? 'bg-purple-50/60 font-bold' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
                 const isExpanded = expandedMonths[row.ym];
+                // 月行: 濃い紫 / 週行: 交互の薄い色
+                const rowBg = row.isMonth
+                  ? 'bg-purple-100 font-bold'
+                  : (ri % 2 === 0 ? 'bg-white' : 'bg-blue-50/40');
+                const pctRowBg = row.isMonth
+                  ? 'bg-purple-50'
+                  : (ri % 2 === 0 ? 'bg-white' : 'bg-blue-50/20');
                 return (
                   <React.Fragment key={ri}>
                     {/* 値の行 */}
                     <tr
-                      className={`border-b border-gray-50 ${rowBg} ${row.isMonth ? 'cursor-pointer hover:bg-purple-100/60' : ''}`}
+                      className={`border-b ${row.isMonth ? 'border-purple-200' : 'border-gray-100'} ${rowBg} ${row.isMonth ? 'cursor-pointer hover:bg-purple-200 transition-colors' : ''}`}
                       onClick={row.isMonth ? () => toggleMonth(row.ym) : undefined}
                     >
-                      <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg} ${row.isMonth ? 'text-purple-800' : 'text-gray-700'}`}>
-                        {row.isMonth && (
-                          <span className="inline-block mr-1 text-purple-600 text-[10px]">{isExpanded ? '▼' : '▶'}</span>
+                      <td className={`py-3 px-4 sticky left-0 z-10 ${rowBg} ${row.isMonth ? 'text-purple-900 text-base' : 'text-gray-700'}`}>
+                        {row.isMonth ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-purple-600 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                            <span className="font-bold">{row.label}</span>
+                          </span>
+                        ) : (
+                          <span className="pl-5 text-gray-600">{row.label}</span>
                         )}
-                        {row.label}
                       </td>
                       {cols.map(col => (
-                        <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
+                        <td key={col.key} className={`py-3 px-4 text-right ${row.isMonth ? 'text-purple-900 font-bold' : 'text-gray-800'} ${col.highlight ? 'font-bold text-blue-700' : ''}`}>
                           {formatCell(r[col.key], col.format)}
                         </td>
                       ))}
                     </tr>
                     {/* 案件質の場合: 割合の行 */}
                     {tab === 'quality' && (
-                      <tr className={`border-b border-gray-100 ${row.isMonth ? 'bg-purple-50/40' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/20')}`}>
-                        <td className={`py-1.5 px-3 sticky left-0 z-10 ${row.isMonth ? 'bg-purple-50/40' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/20')} text-gray-400 text-[10px]`}>
-                          -
+                      <tr className={`border-b border-gray-100 ${pctRowBg}`}>
+                        <td className={`py-2 px-4 sticky left-0 z-10 ${pctRowBg} text-gray-400 text-xs`}>
+                          <span className={row.isMonth ? 'pl-4' : 'pl-5'}>割合</span>
                         </td>
                         {cols.map(col => (
-                          <td key={col.key} className="py-1.5 px-3 text-right text-gray-400 text-[10px]">
+                          <td key={col.key} className={`py-2 px-4 text-right text-xs ${row.isMonth ? 'text-purple-600 font-semibold' : 'text-gray-500'}`}>
                             {col.pctKey ? fmtPct(r[col.pctKey]) : '-'}
                           </td>
                         ))}
