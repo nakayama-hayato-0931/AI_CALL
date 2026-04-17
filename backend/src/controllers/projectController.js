@@ -818,7 +818,7 @@ const createProjectManual = async (req, res, next) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
         company_name, phone_number || null, req.user.id, status || 'NEW',
-        job_number || null, interview_date || null, interview_type || null, document_screening || null,
+        job_number || null, interview_date || null, interview_type || null, document_screening || 'not_required',
         mail_sent || null, mail_replied || null, phone_confirmed || null, memo || null,
         contact_person || null, contact_info || null, contact_phone || null, contact_email || null, resolvedCallType, createdAt,
       ]
