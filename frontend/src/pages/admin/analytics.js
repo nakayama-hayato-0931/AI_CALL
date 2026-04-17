@@ -87,10 +87,6 @@ export default function AnalyticsPage() {
 
   const [loading, setLoading] = useState(true);
 
-  // CSV
-  const [csvFile, setCsvFile] = useState(null);
-  const [csvUploading, setCsvUploading] = useState(false);
-
   // PDF
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUploading, setPdfUploading] = useState(false);
@@ -203,28 +199,6 @@ export default function AnalyticsPage() {
       fetchData();
     }
   }, [fetchData, user]);
-
-  const handleCsvUpload = async () => {
-    if (!csvFile) return;
-    setCsvUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', csvFile);
-      const { data } = await directApi.post('/api/analytics/import-cost-csv', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      toast.success(`${data.data.imported}件インポートしました`);
-      if (data.data.errors?.length > 0) {
-        toast.error(`${data.data.errors.length}件エラー`);
-      }
-      setCsvFile(null);
-      fetchData();
-    } catch (err) {
-      toast.error('インポートに失敗しました');
-    } finally {
-      setCsvUploading(false);
-    }
-  };
 
   const handlePdfUpload = async () => {
     if (!pdfFile) return;
@@ -669,21 +643,10 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* コストデータインポート */}
+        {/* データ取り込み */}
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500 font-medium">コストデータ取込:</span>
-          {/* CSV */}
+          <span className="text-xs text-gray-500 font-medium">コストPDF取込:</span>
           <div className="flex items-center gap-2">
-            <input type="file" accept=".csv" onChange={e => setCsvFile(e.target.files?.[0] || null)}
-              className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 w-48" />
-            <button onClick={handleCsvUpload} disabled={!csvFile || csvUploading}
-              className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap">
-              {csvUploading ? '処理中...' : 'CSV取込'}
-            </button>
-          </div>
-          <span className="text-[10px] text-gray-400">CSV形式: 日付,名前,開始,終了,休憩(分)</span>
-          {/* PDF */}
-          <div className="flex items-center gap-2 ml-4">
             <input type="file" accept=".pdf" onChange={e => setPdfFile(e.target.files?.[0] || null)}
               className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 w-48" />
             <button onClick={handlePdfUpload} disabled={!pdfFile || pdfUploading}
@@ -691,10 +654,7 @@ export default function AnalyticsPage() {
               {pdfUploading ? '処理中...' : 'PDF取込'}
             </button>
           </div>
-          <span className="text-[10px] text-gray-400">PDF: 出勤表PDF（日付・名前・開始・終了・休憩を自動抽出）</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500 font-medium">打刻ログ取込:</span>
+          <span className="text-xs text-gray-500 font-medium ml-2">打刻ログ取込:</span>
           <div className="flex items-center gap-2">
             <input type="file" accept=".csv" onChange={e => setStampFile(e.target.files?.[0] || null)}
               className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 w-48" />
@@ -703,29 +663,6 @@ export default function AnalyticsPage() {
               {stampUploading ? '処理中...' : '打刻ログ取込'}
             </button>
           </div>
-          <span className="text-[10px] text-gray-400">勤怠打刻ログCSV（Shift-JIS対応・出勤/退勤/休憩から稼働時間を自動計算）</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500 font-medium">過去データ同期:</span>
-          <button
-            onClick={async () => {
-              if (!confirm('xlsxシードデータで過去CPAを同期します（コストは保持）。よろしいですか？')) return;
-              try {
-                const { data } = await api.post('/api/analytics/seed-past-cpa-from-xlsx');
-                const d = data.data;
-                toast.success(`更新${d.updated}件 / 新規${d.inserted}件 / スキップ${d.skipped}件`);
-                if (d.skippedNames?.length) {
-                  toast.error(`未マッチ: ${d.skippedNames.join(', ')}`, { duration: 8000 });
-                }
-                fetchData();
-              } catch (err) {
-                toast.error(err.response?.data?.message || '同期に失敗しました');
-              }
-            }}
-            className="px-3 py-1 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap">
-            xlsxデータで同期（コスト保持）
-          </button>
-          <span className="text-[10px] text-gray-400">Book1.xlsx由来の過去CPAデータを適用（月別+週別、コストは変更せず）</span>
         </div>
       </div>
 
