@@ -357,6 +357,84 @@ const runMigrations = async () => {
     await pool.execute(`INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('team_targets', '{"calls_per_h":20,"recall_per_h":3,"effective_per_h":3,"person_per_h":2,"project_hours":8,"conversion_rate":0.61}')`);
     logger.info('[Migration] system_settings テーブル確認完了');
   } catch (e) { logger.warn('[Migration] system_settings:', e.message); }
+
+  // === 一度だけ実行: Book1.xlsx 由来の過去CPAデータ投入（コストは保持） ===
+  try {
+    const [flagRows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'past_cpa_seed_applied_v1'"
+    );
+    if (flagRows.length === 0) {
+      const fs = require('fs');
+      const path = require('path');
+      const seedPath = path.join(__dirname, 'data/past-cpa-seed.json');
+      if (fs.existsSync(seedPath)) {
+        const records = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+        const [users] = await pool.execute(
+          "SELECT id, name FROM users WHERE role IN ('operator','intern','sales','manager','admin')"
+        );
+        const nameMap = new Map();
+        users.forEach(u => {
+          const clean = u.name.replace(/\s+/g, '');
+          nameMap.set(clean, u.id);
+          // 姓の2文字で登録（先着優先）
+          const surname = clean.slice(0, 2);
+          if (!nameMap.has(surname)) nameMap.set(surname, u.id);
+          const surname3 = clean.slice(0, 3);
+          if (!nameMap.has(surname3)) nameMap.set(surname3, u.id);
+        });
+
+        let updated = 0, inserted = 0, skipped = 0;
+        const skippedNames = new Set();
+        for (const r of records) {
+          let userId = 0;
+          if (r.name) {
+            const cleanName = r.name.replace(/\s+/g, '').replace(/\(.*?\)|（.*?）/g, '');
+            const matched = nameMap.get(cleanName) || nameMap.get(cleanName.slice(0, 3)) || nameMap.get(cleanName.slice(0, 2));
+            if (!matched) {
+              skipped++; skippedNames.add(r.name); continue;
+            }
+            userId = matched;
+          }
+          const dateFromCond = r.date_from ? 'date_from = ?' : 'date_from IS NULL';
+          const selectParams = r.date_from
+            ? [r.year, r.month, userId, r.date_from]
+            : [r.year, r.month, userId];
+          const [existing] = await pool.execute(
+            `SELECT id FROM past_cpa_data WHERE period_year = ? AND period_month = ? AND user_id = ? AND ${dateFromCond}`,
+            selectParams
+          );
+          if (existing.length > 0) {
+            await pool.execute(
+              `UPDATE past_cpa_data SET period_label=?, call_count=?, project_count=?, interview_count=?,
+                naitei_count=?, fugokaku_count=?, barashi_lost_count=?, initial_payment=?, expected_revenue=?
+                WHERE id=?`,
+              [r.period_label, r.call_count, r.project_count, r.interview_count,
+               r.naitei_count, r.fugokaku_count, r.barashi_lost_count,
+               r.initial_payment, r.expected_revenue, existing[0].id]
+            );
+            updated++;
+          } else {
+            await pool.execute(
+              `INSERT INTO past_cpa_data (period_label, period_year, period_month, user_id, cost,
+                call_count, project_count, interview_count, naitei_count, fugokaku_count,
+                barashi_lost_count, initial_payment, expected_revenue, date_from, date_to)
+               VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [r.period_label, r.year, r.month, userId,
+               r.call_count, r.project_count, r.interview_count, r.naitei_count,
+               r.fugokaku_count, r.barashi_lost_count, r.initial_payment, r.expected_revenue,
+               r.date_from, r.date_to]
+            );
+            inserted++;
+          }
+        }
+        await pool.execute(
+          "INSERT INTO system_settings (setting_key, setting_value) VALUES ('past_cpa_seed_applied_v1', ?)",
+          [JSON.stringify({ updated, inserted, skipped, skippedNames: [...skippedNames], at: new Date().toISOString() })]
+        );
+        logger.info(`[Migration] past_cpa_seed: updated=${updated}, inserted=${inserted}, skipped=${skipped}, skippedNames=${[...skippedNames].join(',')}`);
+      }
+    }
+  } catch (e) { logger.warn('[Migration] past_cpa_seed:', e.message); }
 };
 runMigrations();
 
