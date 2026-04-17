@@ -705,6 +705,28 @@ export default function AnalyticsPage() {
           </div>
           <span className="text-[10px] text-gray-400">勤怠打刻ログCSV（Shift-JIS対応・出勤/退勤/休憩から稼働時間を自動計算）</span>
         </div>
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
+          <span className="text-xs text-gray-500 font-medium">過去データ同期:</span>
+          <button
+            onClick={async () => {
+              if (!confirm('xlsxシードデータで過去CPAを同期します（コストは保持）。よろしいですか？')) return;
+              try {
+                const { data } = await api.post('/api/analytics/seed-past-cpa-from-xlsx');
+                const d = data.data;
+                toast.success(`更新${d.updated}件 / 新規${d.inserted}件 / スキップ${d.skipped}件`);
+                if (d.skippedNames?.length) {
+                  toast.error(`未マッチ: ${d.skippedNames.join(', ')}`, { duration: 8000 });
+                }
+                fetchData();
+              } catch (err) {
+                toast.error(err.response?.data?.message || '同期に失敗しました');
+              }
+            }}
+            className="px-3 py-1 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap">
+            xlsxデータで同期（コスト保持）
+          </button>
+          <span className="text-[10px] text-gray-400">Book1.xlsx由来の過去CPAデータを適用（月別+週別、コストは変更せず）</span>
+        </div>
       </div>
 
       {loading ? (
