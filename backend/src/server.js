@@ -272,6 +272,11 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_email VARCHAR(255) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN naitei_date DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN interview_attendees INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  // 既存の書類選考未入力(NULL)案件を「なし」に一括更新
+  try {
+    const [r] = await pool.execute(`UPDATE projects SET document_screening = 'not_required' WHERE document_screening IS NULL OR document_screening = ''`);
+    if (r.affectedRows > 0) logger.info(`[Migration] 書類選考未入力${r.affectedRows}件を「なし」に更新`);
+  } catch (e) { logger.warn('[Migration] document_screening default:', e.message); }
   // 交通費カラム追加
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_type ENUM('teiki','daily') DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE users ADD COLUMN commute_teiki_monthly INT UNSIGNED DEFAULT NULL`); } catch (e) {}
