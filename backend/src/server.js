@@ -361,7 +361,7 @@ const runMigrations = async () => {
   // === 一度だけ実行: Book1.xlsx 由来の過去CPAデータ投入（コストは保持） ===
   try {
     const [flagRows] = await pool.execute(
-      "SELECT setting_value FROM system_settings WHERE setting_key = 'past_cpa_seed_applied_v1'"
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'past_cpa_seed_applied_v2'"
     );
     if (flagRows.length === 0) {
       const fs = require('fs');
@@ -427,14 +427,62 @@ const runMigrations = async () => {
             inserted++;
           }
         }
+        // === 過去案件質データ投入 ===
+        const qSeedPath = path.join(__dirname, 'data/past-quality-seed.json');
+        let qUpdated = 0, qInserted = 0;
+        if (fs.existsSync(qSeedPath)) {
+          // past_quality_data に user_id カラム追加（存在しなければ）
+          try { await pool.execute(`ALTER TABLE past_quality_data ADD COLUMN user_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+          const qRecords = JSON.parse(fs.readFileSync(qSeedPath, 'utf-8'));
+          for (const r of qRecords) {
+            let userId = null;
+            if (r.name) {
+              const cleanName = r.name.replace(/\s+/g, '').replace(/\(.*?\)|（.*?）/g, '');
+              userId = nameMap.get(cleanName) || nameMap.get(cleanName.slice(0, 3)) || nameMap.get(cleanName.slice(0, 2)) || null;
+              if (!userId) continue;
+            }
+            const userIdCond = userId === null ? 'user_id IS NULL' : 'user_id = ?';
+            const dateFromCond = r.date_from ? 'date_from = ?' : 'date_from IS NULL';
+            const selParams = [r.year, r.month];
+            if (userId !== null) selParams.push(userId);
+            if (r.date_from) selParams.push(r.date_from);
+            const [existing] = await pool.execute(
+              `SELECT id FROM past_quality_data WHERE period_year = ? AND period_month = ? AND ${userIdCond} AND ${dateFromCond}`,
+              selParams
+            );
+            if (existing.length > 0) {
+              await pool.execute(
+                `UPDATE past_quality_data SET period_label=?, total_projects=?, lost=?, waiting_contact=?,
+                  interview_confirmed=?, interview_done=?, barashi=?, online_interview=?, no_screening=?, screening_failed=?
+                  WHERE id=?`,
+                [r.period_label, r.total_projects, r.lost, r.waiting_contact,
+                 r.interview_confirmed, r.interview_done, r.barashi, r.online_interview,
+                 r.no_screening, r.screening_failed, existing[0].id]
+              );
+              qUpdated++;
+            } else {
+              await pool.execute(
+                `INSERT INTO past_quality_data (period_label, period_year, period_month, user_id, date_from, date_to,
+                  total_projects, lost, waiting_contact, interview_confirmed, interview_done,
+                  barashi, online_interview, no_screening, screening_failed)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [r.period_label, r.year, r.month, userId, r.date_from, r.date_to,
+                 r.total_projects, r.lost, r.waiting_contact, r.interview_confirmed, r.interview_done,
+                 r.barashi, r.online_interview, r.no_screening, r.screening_failed]
+              );
+              qInserted++;
+            }
+          }
+        }
+
         await pool.execute(
-          "INSERT INTO system_settings (setting_key, setting_value) VALUES ('past_cpa_seed_applied_v1', ?)",
-          [JSON.stringify({ updated, inserted, skipped, skippedNames: [...skippedNames], at: new Date().toISOString() })]
+          "INSERT INTO system_settings (setting_key, setting_value) VALUES ('past_cpa_seed_applied_v2', ?)",
+          [JSON.stringify({ cpa: {updated, inserted, skipped, skippedNames: [...skippedNames]}, quality: {updated: qUpdated, inserted: qInserted}, at: new Date().toISOString() })]
         );
-        logger.info(`[Migration] past_cpa_seed: updated=${updated}, inserted=${inserted}, skipped=${skipped}, skippedNames=${[...skippedNames].join(',')}`);
+        logger.info(`[Migration] past_cpa_seed v2: CPA updated=${updated}/inserted=${inserted}/skipped=${skipped}, Quality updated=${qUpdated}/inserted=${qInserted}`);
       }
     }
-  } catch (e) { logger.warn('[Migration] past_cpa_seed:', e.message); }
+  } catch (e) { logger.warn('[Migration] past_cpa_seed v2:', e.message); }
 };
 runMigrations();
 
