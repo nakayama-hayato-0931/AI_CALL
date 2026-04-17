@@ -3,7 +3,7 @@
  * 全オペレーター比較テーブル表示
  * 週別は全週一覧表示
  */
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
@@ -77,6 +77,12 @@ export default function AnalyticsPage() {
   // 週別用（全週のデータ配列）
   const [weeklyData, setWeeklyData] = useState([]); // [{ weekLabel, cpa, qual }]
 
+  // 比較モード
+  const [compareData, setCompareData] = useState([]); // [{ label, isMonth, cpa, qual }]
+  const [compareScope, setCompareScope] = useState('team'); // 'team' | userId
+  const [compareMonths, setCompareMonths] = useState(3); // 過去Nヶ月分
+  const [operatorsList, setOperatorsList] = useState([]);
+
   const [loading, setLoading] = useState(true);
 
   // CSV
@@ -98,10 +104,52 @@ export default function AnalyticsPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user && ['admin','manager','consultant'].includes(user.role)) {
+      api.get('/api/analytics/operators').then(res => {
+        setOperatorsList(res.data.data || []);
+      }).catch(() => {});
+    }
+  }, [user]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      if (periodMode === 'weekly') {
+      if (periodMode === 'compare') {
+        // 比較モード: 直近Nヶ月 + 各月の週
+        const now = new Date();
+        const rows = [];
+        const monthList = [];
+        for (let i = compareMonths - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          monthList.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
+        }
+        for (const ym of monthList) {
+          const [y, m] = ym.split('-').map(Number);
+          // 月合計
+          const monthParams = { period: 'monthly', date: `${ym}-15` };
+          const [cM, qM] = await Promise.all([
+            api.get('/api/analytics/cpa-all', { params: monthParams }),
+            api.get('/api/analytics/quality-all', { params: monthParams }),
+          ]);
+          rows.push({ label: `${m}月`, isMonth: true, ym, cpa: cM.data.data, qual: qM.data.data });
+          // 各週
+          const weeks = getWeeksInMonth(ym);
+          const weekResults = await Promise.all(weeks.map(async w => {
+            const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo };
+            const [c, q] = await Promise.all([
+              api.get('/api/analytics/cpa-all', { params: p }),
+              api.get('/api/analytics/quality-all', { params: p }),
+            ]);
+            return { label: w.label, isMonth: false, ym, cpa: c.data.data, qual: q.data.data };
+          }));
+          rows.push(...weekResults);
+        }
+        setCompareData(rows);
+        setCpaData(null);
+        setQualData(null);
+        setWeeklyData([]);
+      } else if (periodMode === 'weekly') {
         // 全週分を一括取得
         const weeks = getWeeksInMonth(selectedMonth);
         const results = await Promise.all(
@@ -146,7 +194,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [periodMode, selectedMonth, customFrom, customTo]);
+  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths]);
 
   useEffect(() => {
     if (user && (['admin','manager','consultant'].includes(user.role))) {
@@ -401,6 +449,80 @@ export default function AnalyticsPage() {
     </div>
   );
 
+  // 比較テーブル: 月別 + 週別を縦に並べ、指標列を横に並べる
+  const pickRow = (periodData, metricType) => {
+    if (!periodData) return {};
+    if (compareScope === 'team') return periodData.team || {};
+    return periodData.operators?.find(o => o.userId === Number(compareScope)) || {};
+  };
+
+  const renderCompareTable = () => {
+    const cols = tab === 'cpa' ? cpaColumns : qualColumns;
+    const title = tab === 'cpa' ? 'CPA指標 - 期間比較' : '案件質向上 - 期間比較';
+    const scopeLabel = compareScope === 'team' ? '全体' :
+      (operatorsList.find(o => o.id === Number(compareScope))?.name || '個人');
+    return (
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+          <h2 className="text-sm font-bold text-gray-800">{title}</h2>
+          <span className="text-xs text-gray-500">対象: {scopeLabel} / 直近{compareMonths}ヶ月</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[100px]">期間</th>
+                {cols.map(col => (
+                  <th key={col.key} className={`text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap ${col.highlight ? 'bg-blue-50/50 text-blue-700' : ''}`}>
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {compareData.map((row, ri) => {
+                const d = tab === 'cpa' ? row.cpa : row.qual;
+                const r = pickRow(d);
+                const rowBg = row.isMonth ? 'bg-purple-50/60 font-bold' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
+                return (
+                  <React.Fragment key={ri}>
+                    {/* 値の行 */}
+                    <tr className={`border-b border-gray-50 ${rowBg}`}>
+                      <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg} ${row.isMonth ? 'text-purple-800' : 'text-gray-700'}`}>
+                        {row.label}
+                      </td>
+                      {cols.map(col => (
+                        <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
+                          {formatCell(r[col.key], col.format)}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* 案件質の場合: 割合の行 */}
+                    {tab === 'quality' && (
+                      <tr className={`border-b border-gray-100 ${row.isMonth ? 'bg-purple-50/40' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/20')}`}>
+                        <td className={`py-1.5 px-3 sticky left-0 z-10 ${row.isMonth ? 'bg-purple-50/40' : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/20')} text-gray-400 text-[10px]`}>
+                          -
+                        </td>
+                        {cols.map(col => (
+                          <td key={col.key} className="py-1.5 px-3 text-right text-gray-400 text-[10px]">
+                            {col.pctKey ? fmtPct(r[col.pctKey]) : '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {compareData.length === 0 && (
+                <tr><td colSpan={cols.length + 1} className="py-8 text-center text-gray-400">データがありません</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <div className="mb-5">
@@ -416,6 +538,7 @@ export default function AnalyticsPage() {
             <label className="input-label">表示期間</label>
             <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
               {[
+                { value: 'compare', label: '比較' },
                 { value: 'monthly', label: '月別' },
                 { value: 'weekly', label: '週別' },
                 { value: 'cumulative', label: '累計' },
@@ -439,6 +562,32 @@ export default function AnalyticsPage() {
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
+          )}
+
+          {/* 比較モードのオプション */}
+          {periodMode === 'compare' && (
+            <>
+              <div>
+                <label className="input-label">対象</label>
+                <select className="input text-sm" value={compareScope}
+                  onChange={e => setCompareScope(e.target.value)}>
+                  <option value="team">全体</option>
+                  {operatorsList.map(op => (
+                    <option key={op.id} value={op.id}>{op.name}{op.role === 'intern' ? '[インターン]' : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="input-label">期間</label>
+                <select className="input text-sm" value={compareMonths}
+                  onChange={e => setCompareMonths(Number(e.target.value))}>
+                  <option value={2}>直近2ヶ月</option>
+                  <option value={3}>直近3ヶ月</option>
+                  <option value={6}>直近6ヶ月</option>
+                  <option value={12}>直近12ヶ月</option>
+                </select>
+              </div>
+            </>
           )}
 
           {/* 任意期間の日付ピッカー */}
@@ -521,6 +670,9 @@ export default function AnalyticsPage() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
         </div>
+      ) : periodMode === 'compare' ? (
+        /* ========== 比較モード ========== */
+        renderCompareTable()
       ) : periodMode === 'weekly' ? (
         /* ========== 週別: 全週一覧表示 ========== */
         <div className="space-y-5">
