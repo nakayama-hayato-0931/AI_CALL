@@ -284,6 +284,10 @@ const getNextCallTarget = async (req, res, next) => {
     const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
+    // autoモードのみ: ゴールデンタイム未設定業種を除外
+    const goldenIndFilter = (mode === 'auto')
+      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
+      : '';
 
     // 特別リストモード: is_special=1の企業のみ
     if (isSpecialList) {
@@ -357,6 +361,7 @@ const getNextCallTarget = async (req, res, next) => {
          ${lrFilter}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT 1`,
@@ -376,6 +381,7 @@ const getNextCallTarget = async (req, res, next) => {
          ${lrFilter}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT 1`,
@@ -398,6 +404,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
@@ -421,6 +428,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
@@ -471,6 +479,10 @@ const getCallList = async (req, res, next) => {
     const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
+    // autoモードのみ: ゴールデンタイム未設定業種を除外
+    const goldenIndFilter = (mode === 'auto')
+      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
+      : '';
 
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
@@ -566,6 +578,7 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
@@ -593,6 +606,7 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
@@ -622,6 +636,7 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
@@ -652,6 +667,7 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${irFilter}
+         ${goldenIndFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC

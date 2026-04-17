@@ -880,9 +880,15 @@ const saveKpiAdjustment = async (req, res, next) => {
  */
 const aiSuggestTimeRules = async (req, res, next) => {
   try {
-    const { apply } = req.body; // true: 即適用, false/undefined: プレビューのみ
+    const { apply, industries } = req.body; // true: 即適用 / industries: 対象業種の配列
 
-    // 過去の架電データを業種×時間帯で集計（直近3ヶ月）
+    // 対象業種が未指定または空ならエラー
+    if (!Array.isArray(industries) || industries.length === 0) {
+      return ApiResponse.badRequest(res, '対象業種を1つ以上指定してください');
+    }
+
+    // 過去の架電データを業種×時間帯で集計（直近3ヶ月、指定業種のみ）
+    const placeholders = industries.map(() => '?').join(',');
     const [stats] = await pool.query(`
       SELECT
         co.industry,
@@ -897,12 +903,11 @@ const aiSuggestTimeRules = async (req, res, next) => {
       WHERE c.call_started_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
         AND c.result_code IS NOT NULL
         AND c.result_code != 'SKIP'
-        AND co.industry IS NOT NULL
-        AND co.industry != ''
+        AND co.industry IN (${placeholders})
       GROUP BY co.industry, HOUR(c.call_started_at)
       HAVING total_calls >= 3
       ORDER BY co.industry, call_hour
-    `);
+    `, industries);
 
     if (stats.length === 0) {
       return ApiResponse.badRequest(res, '分析に必要な架電データが不足しています（直近3ヶ月で業種別3件以上必要）');
@@ -974,16 +979,21 @@ const aiSuggestTimeRules = async (req, res, next) => {
     }
     const aiResult = JSON.parse(jsonMatch[0]);
 
-    // 適用モード: 既存ルールを削除して新ルールを挿入
+    // 適用モード: 指定業種の既存ルールのみ削除して新ルールを挿入
     if (apply) {
-      await pool.execute('DELETE FROM industry_time_rules');
+      await pool.execute(
+        `DELETE FROM industry_time_rules WHERE industry_name IN (${placeholders})`,
+        industries
+      );
       for (const rule of aiResult.rules) {
+        // AI返却のルールが指定業種のものかチェック
+        if (!industries.includes(rule.industry_name)) continue;
         await pool.execute(
           'INSERT INTO industry_time_rules (industry_name, start_time, end_time, priority_weight) VALUES (?, ?, ?, ?)',
           [rule.industry_name, rule.start_time, rule.end_time, rule.priority_weight || 10]
         );
       }
-      logger.info(`AI ゴールデンタイム自動設定: ${aiResult.rules.length}件のルールを適用 by user=${req.user.id}`);
+      logger.info(`AI ゴールデンタイム自動設定: 業種=${industries.join(',')} ${aiResult.rules.length}件 by user=${req.user.id}`);
     }
 
     return ApiResponse.success(res, {

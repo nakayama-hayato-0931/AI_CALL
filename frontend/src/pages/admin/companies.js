@@ -66,6 +66,7 @@ export default function AdminCompanies() {
   const [editingTimeRule, setEditingTimeRule] = useState(null); // { id, industry_name, start_time, end_time, priority_weight }
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
+  const [selectedIndustries, setSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -310,10 +311,15 @@ export default function AdminCompanies() {
 
   // === AI自動設定 ===
   const handleAiSuggest = async () => {
+    const industries = Object.keys(selectedIndustries).filter(k => selectedIndustries[k]);
+    if (industries.length === 0) {
+      toast.error('業種を1つ以上選択してください');
+      return;
+    }
     setAiSuggesting(true);
     setAiSuggestion(null);
     try {
-      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: false });
+      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: false, industries });
       if (data.success) {
         setAiSuggestion(data.data);
       }
@@ -326,8 +332,9 @@ export default function AdminCompanies() {
 
   const handleApplyAiSuggestion = async () => {
     if (!aiSuggestion) return;
+    const industries = Object.keys(selectedIndustries).filter(k => selectedIndustries[k]);
     try {
-      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: true });
+      const { data } = await api.post('/api/admin/time-rules/ai-suggest', { apply: true, industries });
       if (data.success) {
         toast.success(`${data.data.rules.length}件のルールを適用しました`);
         setAiSuggestion(null);
@@ -610,9 +617,23 @@ export default function AdminCompanies() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">時間</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">
+                        <div className="text-[10px] text-gray-400 font-normal mb-0.5">AI対象</div>
+                        時間
+                      </th>
                       {INDUSTRIES.map(ind => (
-                        <th key={ind} className="px-3 py-2 text-center text-gray-600 font-semibold">{ind}</th>
+                        <th key={ind} className="px-3 py-2 text-center text-gray-600 font-semibold">
+                          <div className="mb-1">
+                            <input
+                              type="checkbox"
+                              checked={!!selectedIndustries[ind]}
+                              onChange={e => setSelectedIndustries(p => ({ ...p, [ind]: e.target.checked }))}
+                              className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
+                              title={`${ind}をAI自動設定対象にする`}
+                            />
+                          </div>
+                          {ind}
+                        </th>
                       ))}
                     </tr>
                   </thead>
