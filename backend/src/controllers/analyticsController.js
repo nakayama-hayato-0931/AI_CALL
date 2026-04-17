@@ -197,7 +197,7 @@ const getQualityMetrics = async (req, res, next) => {
       `SELECT
          COUNT(*) as total,
          CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-         CAST(SUM(CASE WHEN COALESCE(p.mail_sent, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
+         CAST(SUM(CASE WHEN COALESCE(p.mail_sent, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
          CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
@@ -776,7 +776,7 @@ const getQualityAll = async (req, res, next) => {
         `SELECT p.owner_user_id as user_id,
           COUNT(*) as total,
           CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-          CAST(SUM(CASE WHEN COALESCE(p.mail_sent,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
+          CAST(SUM(CASE WHEN COALESCE(p.mail_sent,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
           CAST(SUM(CASE WHEN p.interview_date IS NOT NULL THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
           CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
           CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
