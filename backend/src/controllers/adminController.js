@@ -1052,11 +1052,20 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
 
     // 2. NGワード（業種除外ワード）
     let ngMatched = 0;
+    let ngKeywordsUsed = [];
     try {
       const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
-      for (const w of ngWords) {
-        const kw = w.keyword;
-        if (!kw) continue;
+      ngKeywordsUsed = ngWords.map(w => w.keyword).filter(k => k);
+      logger.info(`[ApplyRules] NGワード数: ${ngKeywordsUsed.length}, 内容: ${ngKeywordsUsed.join(',')}`);
+      for (const kw of ngKeywordsUsed) {
+        // まず一致する企業数を確認
+        const [cntR] = await pool.execute(
+          `SELECT COUNT(*) as cnt FROM companies
+           WHERE is_special = 0 AND exclusion_flag = 0
+             AND (company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
+          [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
+        );
+        logger.info(`[ApplyRules] NGワード「${kw}」一致: ${cntR[0].cnt}件`);
         const n = await batchUpdate(
           `(company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
           [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
@@ -1092,6 +1101,7 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
       byExclusionList,
       byNgWord: ngMatched,
       byRegionRule,
+      ngKeywordsUsed,
       elapsedMs: Date.now() - startTime,
     }, `${excludedCount}件の企業を除外しました`);
   } catch (err) {

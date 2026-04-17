@@ -780,7 +780,12 @@ export default function AdminCompanies() {
                   if (data.success) {
                     const d = data.data;
                     const secs = Math.round((d.elapsedMs || 0) / 1000);
-                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒`, { duration: 10000 });
+                    const kwInfo = d.ngKeywordsUsed && d.ngKeywordsUsed.length > 0
+                      ? `\n使用NGワード(${d.ngKeywordsUsed.length}): ${d.ngKeywordsUsed.slice(0, 10).join(', ')}${d.ngKeywordsUsed.length > 10 ? '...' : ''}`
+                      : '\nNGワード未設定';
+                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒${kwInfo}`, { duration: 15000 });
+                    // 架電リスト側のリストを再取得
+                    if (typeof fetchCompanies === 'function') fetchCompanies();
                   }
                 } catch (err) {
                   toast.dismiss(progressToast);
