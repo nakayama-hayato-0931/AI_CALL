@@ -780,10 +780,19 @@ export default function AdminCompanies() {
                   if (data.success) {
                     const d = data.data;
                     const secs = Math.round((d.elapsedMs || 0) / 1000);
-                    const kwInfo = d.ngKeywordsUsed && d.ngKeywordsUsed.length > 0
-                      ? `\n使用NGワード(${d.ngKeywordsUsed.length}): ${d.ngKeywordsUsed.slice(0, 10).join(', ')}${d.ngKeywordsUsed.length > 10 ? '...' : ''}`
-                      : '\nNGワード未設定';
-                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒${kwInfo}`, { duration: 15000 });
+                    // 上位5件のNGワード一致状況を表示
+                    const topStats = (d.ngKeywordStats || [])
+                      .filter(s => s.totalMatch > 0 || s.updated > 0)
+                      .slice(0, 5)
+                      .map(s => `${s.keyword}(全${s.totalMatch}/更新${s.updated})`)
+                      .join(', ');
+                    const stats = d.flagStats
+                      ? `\n架電リスト状態: 除外済${d.flagStats.excluded}/全${d.flagStats.total}`
+                      : '';
+                    const kwInfo = topStats
+                      ? `\nNGワード一致TOP5: ${topStats}`
+                      : (d.ngKeywordsUsed?.length ? `\n全NGワードで一致なし(既除外済)` : '\nNGワード未設定');
+                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒${stats}${kwInfo}`, { duration: 20000 });
                     // 架電リスト側のリストを再取得
                     if (typeof fetchCompanies === 'function') fetchCompanies();
                   }

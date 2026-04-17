@@ -1055,13 +1055,31 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
   }
 
   // 2. NGワード
+  const ngKeywordStats = [];
   try {
     logger.info('[ApplyRules] Step2: NGワード開始');
     const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
-    ngKeywordsUsed = ngWords.map(w => w.keyword).filter(k => k);
+    ngKeywordsUsed = ngWords.map(w => (w.keyword || '').trim()).filter(k => k);
     logger.info(`[ApplyRules] Step2: NGワード${ngKeywordsUsed.length}件`);
+
+    // 既存除外数を事前確認
+    const [stats] = await pool.query(
+      `SELECT
+        SUM(CASE WHEN exclusion_flag = 1 THEN 1 ELSE 0 END) as already_excluded,
+        SUM(CASE WHEN exclusion_flag = 0 AND IFNULL(is_special,0) = 0 THEN 1 ELSE 0 END) as eligible
+       FROM companies`
+    );
+    logger.info(`[ApplyRules] 既除外=${stats[0].already_excluded}, 対象候補=${stats[0].eligible}`);
+
     for (const kw of ngKeywordsUsed) {
       try {
+        // 全体一致件数（既除外含む）
+        const [allMatchR] = await pool.query(
+          `SELECT COUNT(*) as cnt FROM companies
+           WHERE (company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
+          [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
+        );
+        // 未除外のみ
         const [rows] = await pool.query(
           `SELECT id FROM companies
            WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
@@ -1069,7 +1087,9 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
           [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
         );
         const n = await updateByIds(rows.map(r => r.id));
-        logger.info(`[ApplyRules] NGワード「${kw}」: ${rows.length}件対象 / ${n}件更新`);
+        const s = { keyword: kw, totalMatch: Number(allMatchR[0].cnt), updated: n };
+        ngKeywordStats.push(s);
+        logger.info(`[ApplyRules] NGワード「${kw}」: 全体一致${s.totalMatch}件 / 対象${rows.length}件 / 更新${n}件`);
         ngMatched += n;
       } catch (e) {
         logger.error(`[ApplyRules] NGワード「${kw}」エラー: ${e.message}`);
@@ -1106,12 +1126,31 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
 
   const excludedCount = byExclusionList + ngMatched + byRegionRule;
   logger.info(`[ApplyRules] 全完了: total=${excludedCount}, errors=${errors.length}, ${Date.now()-startTime}ms`);
+  // 除外フラグのカウント（適用後状態）
+  let flagStats = null;
+  try {
+    const [s] = await pool.query(
+      `SELECT
+        SUM(CASE WHEN exclusion_flag = 1 THEN 1 ELSE 0 END) as excluded,
+        SUM(CASE WHEN exclusion_flag = 0 THEN 1 ELSE 0 END) as active,
+        COUNT(*) as total
+       FROM companies WHERE IFNULL(is_special,0) = 0`
+    );
+    flagStats = {
+      excluded: Number(s[0].excluded),
+      active: Number(s[0].active),
+      total: Number(s[0].total),
+    };
+  } catch (e) { /* skip */ }
+
   return ApiResponse.success(res, {
     total: excludedCount,
     byExclusionList,
     byNgWord: ngMatched,
     byRegionRule,
     ngKeywordsUsed,
+    ngKeywordStats,
+    flagStats,
     errors,
     elapsedMs: Date.now() - startTime,
   }, errors.length > 0 ? `${excludedCount}件除外（${errors.length}件エラー発生）` : `${excludedCount}件の企業を除外しました`);
