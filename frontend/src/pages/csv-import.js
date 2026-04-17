@@ -304,27 +304,9 @@ export default function CallListPage() {
   return (
     <Layout>
       {/* ヘッダー */}
-      <div className="flex items-end justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">リスト管理</h1>
-          <p className="text-sm text-gray-400 mt-0.5">架電リスト・特別リスト・NGリスト・既存案件リストのインポート・手動登録</p>
-        </div>
-        <button
-          onClick={() => setShowImport(!showImport)}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
-            showImport
-              ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-              : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          インポート
-          <svg className={`w-3.5 h-3.5 transition-transform ${showImport ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-gray-900 tracking-tight">リスト管理</h1>
+        <p className="text-sm text-gray-400 mt-0.5">架電リスト・特別リスト・NGリスト・既存案件リストのインポート・手動登録</p>
       </div>
 
       {/* 折りたたみインポートセクション */}
