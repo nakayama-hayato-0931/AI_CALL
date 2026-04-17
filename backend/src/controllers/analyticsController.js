@@ -693,6 +693,28 @@ const getCpaAll = async (req, res, next) => {
           pastByUser.set(pr.user_id, pd);
         }
       }
+
+      // 面接数は案件質の interview_done に合わせる（past_quality_dataから取得）
+      try {
+        const [qAll] = await pool.query(
+          useWeeklyPast
+            ? `SELECT user_id, SUM(interview_done) as interviews FROM past_quality_data
+               WHERE date_from IS NOT NULL AND date_from >= ? AND date_to <= ? GROUP BY user_id`
+            : `SELECT user_id, SUM(interview_done) as interviews FROM past_quality_data
+               WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ? GROUP BY user_id`,
+          useWeeklyPast ? [dateFrom, dateTo] : [fromYM, toYM]
+        );
+        for (const qr of qAll) {
+          const interviews = Number(qr.interviews) || 0;
+          if (!qr.user_id || qr.user_id === 0) {
+            pastInterviews = interviews;
+          } else {
+            const exist = pastByUser.get(qr.user_id);
+            if (exist) exist.interviews = interviews;
+            else pastByUser.set(qr.user_id, { cost:0, calls:0, projects:0, interviews, naitei:0, fugokaku:0, barashi:0, ip:0, er:0 });
+          }
+        }
+      } catch (e) { /* fallback to past_cpa_data.interview_count */ }
     } catch (e) { /* table may not exist yet */ }
 
     // 個人にも過去データを加算
