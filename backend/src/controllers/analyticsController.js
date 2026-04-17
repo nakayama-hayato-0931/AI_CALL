@@ -656,6 +656,7 @@ const getCpaAll = async (req, res, next) => {
       const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
 
       // 週別表示(custom)なら週別データ(date_from有り)のみ、月別/累計なら月別データ(date_from無し)のみ
+      // 週別: 過去レコードの期間がクエリ範囲に完全に含まれる場合のみ集計（重なりではなく含有で判定）
       const useWeeklyPast = (period === 'custom');
       const [pastAll] = await pool.query(
         useWeeklyPast
@@ -664,7 +665,7 @@ const getCpaAll = async (req, res, next) => {
                     SUM(fugokaku_count) as fugokaku, SUM(barashi_lost_count) as barashi,
                     SUM(initial_payment) as ip, SUM(expected_revenue) as er
              FROM past_cpa_data
-             WHERE date_from IS NOT NULL AND date_from <= ? AND date_to >= ?
+             WHERE date_from IS NOT NULL AND date_from >= ? AND date_to <= ?
              GROUP BY user_id`
           : `SELECT user_id, SUM(cost) as cost, SUM(call_count) as calls, SUM(project_count) as projects,
                     SUM(interview_count) as interviews, SUM(naitei_count) as naitei,
@@ -673,7 +674,7 @@ const getCpaAll = async (req, res, next) => {
              FROM past_cpa_data
              WHERE date_from IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?
              GROUP BY user_id`,
-        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+        useWeeklyPast ? [dateFrom, dateTo] : [fromYM, toYM]
       );
       for (const pr of pastAll) {
         const pd = {
@@ -816,22 +817,23 @@ const getQualityAll = async (req, res, next) => {
     const pastUserMap = new Map();
     try {
       // 全体（user_id IS NULL）
+      // 週別: 過去レコードの期間がクエリ範囲に完全に含まれる場合のみ集計（含有判定）
       const pastWhere = useWeeklyPast
-        ? 'date_from IS NOT NULL AND date_from <= ? AND date_to >= ? AND user_id IS NULL'
+        ? 'date_from IS NOT NULL AND date_from >= ? AND date_to <= ? AND user_id IS NULL'
         : 'date_from IS NULL AND user_id IS NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?';
       const [pastRows] = await pool.query(
         `SELECT SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE ${pastWhere}`,
-        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+        useWeeklyPast ? [dateFrom, dateTo] : [fromYM, toYM]
       );
       if (pastRows.length > 0 && pastRows[0].total) pastQ = pastRows[0];
 
       // 個人別
       const pastUserWhere = useWeeklyPast
-        ? 'date_from IS NOT NULL AND date_from <= ? AND date_to >= ? AND user_id IS NOT NULL'
+        ? 'date_from IS NOT NULL AND date_from >= ? AND date_to <= ? AND user_id IS NOT NULL'
         : 'date_from IS NULL AND user_id IS NOT NULL AND (period_year * 100 + period_month) >= ? AND (period_year * 100 + period_month) <= ?';
       const [pastUserRows] = await pool.query(
         `SELECT user_id, SUM(total_projects) as total, SUM(lost) as lost, SUM(waiting_contact) as waiting_contact, SUM(interview_confirmed) as interview_set, SUM(interview_done) as interview_done, SUM(barashi) as barashi, SUM(online_interview) as online_interview, SUM(no_screening) as no_screening, SUM(screening_failed) as screening_failed FROM past_quality_data WHERE ${pastUserWhere} GROUP BY user_id`,
-        useWeeklyPast ? [dateTo, dateFrom] : [fromYM, toYM]
+        useWeeklyPast ? [dateFrom, dateTo] : [fromYM, toYM]
       );
       pastUserRows.forEach(r => pastUserMap.set(r.user_id, r));
     } catch (e) { /* skip */ }
