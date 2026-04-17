@@ -25,6 +25,7 @@ export default function ProjectModal({ projectId, onClose }) {
     job_number: '',
     interview_date: '',
     interview_type: '',
+    document_screening: 'not_required',
     mail_sent: '',
     mail_replied: '',
     phone_confirmed: '',
@@ -85,7 +86,7 @@ export default function ProjectModal({ projectId, onClose }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="input-label">面接日時</label>
                 <input type="datetime-local" value={form.interview_date}
@@ -97,6 +98,13 @@ export default function ProjectModal({ projectId, onClose }) {
                   <option value="">未選択</option>
                   <option value="online">オンライン</option>
                   <option value="in_person">対面</option>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">書類選考</label>
+                <select value={form.document_screening} onChange={e => setForm({...form, document_screening: e.target.value})} className="input">
+                  <option value="not_required">なし</option>
+                  <option value="required">あり</option>
                 </select>
               </div>
             </div>
