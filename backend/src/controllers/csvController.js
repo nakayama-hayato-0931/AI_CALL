@@ -296,12 +296,15 @@ const importCompanies = async (req, res, next) => {
         if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; continue; }
 
         // NGワードチェック: 会社名・業種・職種・コメントにNGワードが含まれる場合は除外
-        const haystack = `${companyName} ${industry || ''} ${jobType || ''} ${comment || ''}`;
-        const matchedNg = ngKeywords.find(kw => haystack.includes(kw));
-        if (matchedNg) {
-          excludedCount++;
-          skippedCount++;
-          continue;
+        // ただしオペレーター自身が自分リストとしてインポートする場合はNGワードチェックをスキップ
+        if (req.user.role !== 'operator') {
+          const haystack = `${companyName} ${industry || ''} ${jobType || ''} ${comment || ''}`;
+          const matchedNg = ngKeywords.find(kw => haystack.includes(kw));
+          if (matchedNg) {
+            excludedCount++;
+            skippedCount++;
+            continue;
+          }
         }
 
         const [insertResult] = await conn.execute(

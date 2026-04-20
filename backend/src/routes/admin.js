@@ -12,6 +12,7 @@ const {
   getExcludeWords, addExcludeWord, deleteExcludeWord,
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
   applyRulesToExistingCompanies,
+  restoreMylistExclusions,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 } = require('../controllers/adminController');
@@ -52,6 +53,7 @@ router.get('/time-rules', requireManager, getTimeRules);
 router.post('/time-rules', requireEditor, addTimeRule);
 router.post('/time-rules/ai-suggest', requireEditor, aiSuggestTimeRules);
 router.post('/apply-rules-to-existing', requireEditor, applyRulesToExistingCompanies);
+router.post('/restore-mylist-exclusions', requireEditor, restoreMylistExclusions);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);
 

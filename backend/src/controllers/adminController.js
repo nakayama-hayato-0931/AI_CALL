@@ -1015,6 +1015,29 @@ const aiSuggestTimeRules = async (req, res, next) => {
  * 現在の業種地域ルール・NGワード・NG/既存案件リストを既存の企業（特別リスト除く）に
  * 適用し、該当する企業を exclusion_flag=1 に更新
  */
+/**
+ * POST /api/admin/restore-mylist-exclusions
+ * 自分リスト（imported_by_user_id IS NOT NULL）で誤って除外された企業を復旧
+ */
+const restoreMylistExclusions = async (req, res, next) => {
+  try {
+    // NGリスト・既存案件リストに一致する企業は残す（本来除外されるべき）
+    const [r] = await pool.query(`
+      UPDATE companies
+      SET exclusion_flag = 0
+      WHERE imported_by_user_id IS NOT NULL
+        AND exclusion_flag = 1
+        AND phone_number NOT IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL AND phone_number != '')
+        AND company_name NOT IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL AND company_name != '')
+    `);
+    logger.info(`[RestoreMyList] ${r.affectedRows}件の自分リストを復旧`);
+    return ApiResponse.success(res, { restored: r.affectedRows }, `${r.affectedRows}件の自分リストを復旧しました`);
+  } catch (err) {
+    logger.error(`[RestoreMyList] error: ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
 const applyRulesToExistingCompanies = async (req, res, next) => {
   const startTime = Date.now();
   const errors = [];
@@ -1037,12 +1060,15 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
     return total;
   };
 
+  // 共通条件: 特別リスト（is_special）と自分リスト（imported_by_user_id）は対象外
+  const baseCond = `(IFNULL(is_special, 0) = 0) AND exclusion_flag = 0 AND imported_by_user_id IS NULL`;
+
   // 1. NGリスト/既存案件リストに一致
   try {
     logger.info('[ApplyRules] Step1: exclusion_list開始');
     const [rows] = await pool.query(
       `SELECT id FROM companies
-       WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+       WHERE ${baseCond}
          AND (
            phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL AND phone_number != '')
            OR company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL AND company_name != '')
@@ -1081,10 +1107,10 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
            WHERE (company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
           [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
         );
-        // 未除外のみ
+        // 未除外かつ自分リスト/特別リスト以外
         const [rows] = await pool.query(
           `SELECT id FROM companies
-           WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+           WHERE ${baseCond}
              AND (company_name LIKE ? OR industry LIKE ? OR job_type LIKE ? OR comment LIKE ?)`,
           [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]
         );
@@ -1111,7 +1137,7 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
     if (Number(ruleCount[0].cnt) > 0) {
       const [rows] = await pool.query(
         `SELECT id FROM companies
-         WHERE (IFNULL(is_special, 0) = 0) AND exclusion_flag = 0
+         WHERE ${baseCond}
            AND NOT EXISTS (
              SELECT 1 FROM industry_region_rules irr
              WHERE companies.industry LIKE CONCAT('%', irr.industry_name, '%')
@@ -1168,4 +1194,5 @@ module.exports = {
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
   applyRulesToExistingCompanies,
+  restoreMylistExclusions,
 };
