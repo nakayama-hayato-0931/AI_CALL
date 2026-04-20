@@ -574,22 +574,30 @@ const refreshTranscriptsBulk = async (req, res, next) => {
     }
 
     const eligible = rows.filter(r => r.phone_number && r.call_started_at);
-    const transcriptMap = await findTranscriptsBatch(eligible);
+    let transcriptMap;
+    try {
+      transcriptMap = await findTranscriptsBatch(eligible);
+    } catch (gsErr) {
+      logger.error(`文字起こしシート取得エラー: ${gsErr.message}`);
+      return ApiResponse.success(res, { found: 0, total: eligible.length, error: gsErr.message }, 'Google Sheetsへのアクセスに失敗しました');
+    }
     const found = transcriptMap.size;
     // バッチ更新（並列5件ずつ）
     const entries = Array.from(transcriptMap.entries());
     for (let i = 0; i < entries.length; i += 5) {
       const batch = entries.slice(i, i + 5);
       await Promise.all(batch.map(([callId, transcript]) =>
-        pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId])
+        pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]).catch(e => {
+          logger.error(`文字起こし保存エラー call=${callId}: ${e.message}`);
+        })
       ));
     }
 
     logger.info(`文字起こし一括取得: ${found}/${eligible.length}件`);
     return ApiResponse.success(res, { found, total: eligible.length }, `${found}件の文字起こしを取得しました`);
   } catch (err) {
-    logger.error('文字起こし一括取得エラー:', err.message);
-    next(err);
+    logger.error(`文字起こし一括取得エラー: code=${err.code} message=${err.message}`);
+    return ApiResponse.error(res, `一括取得失敗: ${err.sqlMessage || err.message}`, 500);
   }
 };
 
