@@ -236,11 +236,13 @@ const importCompanies = async (req, res, next) => {
 
       // 事前にDB全phone_numberをロード（重複チェック高速化）
       logger.info('Pre-loading phone sets...');
-      const [existingPhones] = await conn.query('SELECT phone_number, is_sales_list FROM companies WHERE phone_number IS NOT NULL');
-      const dbPhoneSet = new Set(existingPhones.map(r => r.phone_number));
+      const [existingPhones] = await conn.query('SELECT id, phone_number, is_sales_list, imported_by_user_id FROM companies WHERE phone_number IS NOT NULL');
+      // phone_number → {id, is_sales_list, imported_by_user_id} のマップ
+      const dbPhoneMap = new Map();
+      existingPhones.forEach(r => dbPhoneMap.set(r.phone_number, r));
       // 双方向重複チェック用: 相手側リストの電話番号セット
       const crossListPhoneSet = new Set(existingPhones.filter(r => r.is_sales_list !== isSalesList).map(r => r.phone_number));
-      logger.info(`Companies loaded: ${dbPhoneSet.size}`);
+      logger.info(`Companies loaded: ${dbPhoneMap.size}`);
       const [excludedPhones] = await conn.query('SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL');
       const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
       logger.info(`Exclusions loaded: ${excludePhoneSet.size}. Starting import loop...`);
@@ -280,13 +282,51 @@ const importCompanies = async (req, res, next) => {
           continue;
         }
 
-        // DB重複チェック（メモリ内Set使用）
-        if (dbPhoneSet.has(phoneNumber)) { duplicateCount++; skippedCount++; continue; }
-
         // 双方向重複チェック: 相手側リスト(オペ↔営業)に存在する場合はスキップ
         if (crossListPhoneSet.has(phoneNumber)) {
           const listName = isSalesList ? 'オペレーターリスト' : '営業リスト';
           errors.push({ line: lineNum, message: `${listName}に存在するためスキップ: ${phoneNumber}` });
+          duplicateCount++;
+          skippedCount++;
+          continue;
+        }
+
+        // DB重複チェック: 既存企業があれば「自作リスト優先」ロジック
+        const existing = dbPhoneMap.get(phoneNumber);
+        if (existing) {
+          // オペレーターの自作リストインポート時
+          if (req.user.role === 'operator' && importedByUserId) {
+            if (existing.imported_by_user_id === null) {
+              // 共有リストにある → 自作リストに移す
+              await conn.execute(
+                'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
+                [importedByUserId, industry, jobType, comment, dataSource, region, address, existing.id]
+              );
+              // 自動割り当ても追加
+              try {
+                await conn.execute(
+                  'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+                  [existing.id, req.user.id, req.user.id]
+                );
+              } catch (e) { if (e.code !== 'ER_DUP_ENTRY') throw e; }
+              existing.imported_by_user_id = importedByUserId;
+              insertedCount++;
+              importedPhones.add(phoneNumber);
+              continue;
+            } else if (existing.imported_by_user_id === importedByUserId) {
+              // 既に自分の自作リストにある
+              duplicateCount++;
+              skippedCount++;
+              continue;
+            } else {
+              // 他のオペレーターの自作リストにある
+              errors.push({ line: lineNum, message: `他のオペレーターの自作リストに登録済みのためスキップ: ${companyName} (${phoneNumber})` });
+              duplicateCount++;
+              skippedCount++;
+              continue;
+            }
+          }
+          // 管理者/営業の共有リストインポート時 → 重複スキップ
           duplicateCount++;
           skippedCount++;
           continue;
@@ -316,7 +356,7 @@ const importCompanies = async (req, res, next) => {
         // ファイル内 + DB重複防止
         importedPhones.add(phoneNumber);
         importedNames.add(companyName);
-        dbPhoneSet.add(phoneNumber);
+        dbPhoneMap.set(phoneNumber, { id: insertResult.insertId, is_sales_list: isSalesList, imported_by_user_id: importedByUserId });
 
         if (req.user.role === 'operator') {
           try {
@@ -570,20 +610,14 @@ const manualAddCompany = async (req, res, next) => {
     }
 
     // NGワードチェック（会社名・業種・職種・コメント）
-    const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
-    const haystack = `${companyName} ${industry || ''} ${job_type || ''} ${comment || ''}`;
-    const matchedNg = ngWords.map(r => r.keyword).filter(k => k).find(kw => haystack.includes(kw));
-    if (matchedNg) {
-      return ApiResponse.badRequest(res, `NGワード「${matchedNg}」が含まれているため追加できません`);
-    }
-
-    // 同一リスト内の重複チェック
-    const [existing] = await pool.execute(
-      'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_sales_list = ?',
-      [phoneNumber, companyName, isSalesList]
-    );
-    if (existing.length > 0) {
-      return ApiResponse.badRequest(res, '既に架電リストに登録済みです');
+    // オペレーター自身の自作リスト追加時はNGワードチェックをスキップ
+    if (req.user.role !== 'operator') {
+      const [ngWords] = await pool.query('SELECT keyword FROM industry_exclude_words');
+      const haystack = `${companyName} ${industry || ''} ${job_type || ''} ${comment || ''}`;
+      const matchedNg = ngWords.map(r => r.keyword).filter(k => k).find(kw => haystack.includes(kw));
+      if (matchedNg) {
+        return ApiResponse.badRequest(res, `NGワード「${matchedNg}」が含まれているため追加できません`);
+      }
     }
 
     // 双方向重複チェック: 相手側リストに存在する場合はスキップ
@@ -598,6 +632,42 @@ const manualAddCompany = async (req, res, next) => {
 
     const derivedRegion = region || extractRegionFromAddress(address);
     const importedByUserId = (req.user.role === 'operator' || req.user.role === 'sales') ? req.user.id : null;
+
+    // 既存企業チェック: オペレーターの自作リスト追加時は「自作リスト優先」で UPDATE
+    const [existing] = await pool.execute(
+      'SELECT id, imported_by_user_id FROM companies WHERE phone_number = ? AND is_sales_list = ?',
+      [phoneNumber, isSalesList]
+    );
+    if (existing.length > 0) {
+      const ex = existing[0];
+      if (req.user.role === 'operator' && importedByUserId) {
+        if (ex.imported_by_user_id === null) {
+          // 共有リストにある → 自作リストに移す
+          await pool.execute(
+            `UPDATE companies SET imported_by_user_id = ?,
+              industry = COALESCE(?, industry), job_type = COALESCE(?, job_type),
+              comment = COALESCE(?, comment), data_source = COALESCE(?, data_source),
+              region = COALESCE(?, region), address = COALESCE(?, address),
+              exclusion_flag = 0 WHERE id = ?`,
+            [importedByUserId, industry || null, job_type || null, comment || null,
+             data_source || null, derivedRegion, address || null, ex.id]
+          );
+          try {
+            await pool.execute(
+              'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+              [ex.id, req.user.id, req.user.id]
+            );
+          } catch (e) { if (e.code !== 'ER_DUP_ENTRY') throw e; }
+          logger.info(`手動追加: 共有リストから自作リストへ移動 company=${ex.id}, user=${req.user.id}`);
+          return ApiResponse.success(res, { companyId: ex.id, moved: true }, '共有リストから自作リストに移動しました');
+        } else if (ex.imported_by_user_id === req.user.id) {
+          return ApiResponse.badRequest(res, '既にあなたの自作リストに登録済みです');
+        } else {
+          return ApiResponse.badRequest(res, '他のオペレーターの自作リストに登録済みのため追加できません');
+        }
+      }
+      return ApiResponse.badRequest(res, '既に架電リストに登録済みです');
+    }
 
     const [insertResult] = await pool.execute(
       `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
