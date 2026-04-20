@@ -1205,17 +1205,28 @@ module.exports = {
  */
 async function getDatabaseStats(req, res, next) {
   try {
-    const [tables] = await pool.query(`
-      SELECT TABLE_NAME as name,
-             TABLE_ROWS as rows,
-             ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) as size_mb
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-      ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
-    `);
-    return ApiResponse.success(res, { tables });
+    const [tables] = await pool.query(
+      `SELECT TABLE_NAME AS name,
+              TABLE_ROWS AS row_count,
+              ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS size_mb,
+              ROUND(DATA_LENGTH / 1024 / 1024, 2) AS data_mb,
+              ROUND(INDEX_LENGTH / 1024 / 1024, 2) AS index_mb
+       FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE()
+       ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC`
+    );
+    // フロントが `rows` を期待しているためキー名を合わせる
+    const formatted = tables.map(t => ({
+      name: t.name,
+      rows: Number(t.row_count || 0),
+      size_mb: Number(t.size_mb || 0),
+      data_mb: Number(t.data_mb || 0),
+      index_mb: Number(t.index_mb || 0),
+    }));
+    return ApiResponse.success(res, { tables: formatted });
   } catch (err) {
-    return ApiResponse.error(res, err.message, 500);
+    logger.error(`[database-stats] ${err.code} ${err.message} ${err.sqlMessage}`);
+    return ApiResponse.error(res, `DB容量取得失敗: ${err.sqlMessage || err.message}`, 500);
   }
 }
 
