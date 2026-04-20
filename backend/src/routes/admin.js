@@ -13,6 +13,8 @@ const {
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
   applyRulesToExistingCompanies,
   restoreMylistExclusions,
+  cleanupDatabase,
+  getDatabaseStats,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 } = require('../controllers/adminController');
@@ -54,6 +56,8 @@ router.post('/time-rules', requireEditor, addTimeRule);
 router.post('/time-rules/ai-suggest', requireEditor, aiSuggestTimeRules);
 router.post('/apply-rules-to-existing', requireEditor, applyRulesToExistingCompanies);
 router.post('/restore-mylist-exclusions', requireEditor, restoreMylistExclusions);
+router.get('/database-stats', requireManager, getDatabaseStats);
+router.post('/cleanup-database', requireEditor, cleanupDatabase);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);
 

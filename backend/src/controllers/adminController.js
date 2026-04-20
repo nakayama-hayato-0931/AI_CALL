@@ -1195,4 +1195,86 @@ module.exports = {
   saveKpiAdjustment,
   applyRulesToExistingCompanies,
   restoreMylistExclusions,
+  cleanupDatabase,
+  getDatabaseStats,
 };
+
+/**
+ * GET /api/admin/database-stats
+ * 各テーブルの行数・サイズを返却（MySQL情報）
+ */
+async function getDatabaseStats(req, res, next) {
+  try {
+    const [tables] = await pool.query(`
+      SELECT TABLE_NAME as name,
+             TABLE_ROWS as rows,
+             ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) as size_mb
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+      ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
+    `);
+    return ApiResponse.success(res, { tables });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * POST /api/admin/cleanup-database
+ * 不要データをクリーンアップしてストレージを解放
+ * body: { drop_transcripts_days?: 30, drop_skip_days?: 30, drop_stale_calls?: true }
+ */
+async function cleanupDatabase(req, res, next) {
+  const { drop_transcripts_days = 30, drop_skip_days = 90, drop_stale_calls = true } = req.body || {};
+  const results = {};
+  try {
+    // 1. 古い文字起こしをNULLに（容量削減）
+    if (drop_transcripts_days > 0) {
+      try {
+        const [r] = await pool.execute(
+          `UPDATE calls SET transcript = NULL
+           WHERE transcript IS NOT NULL
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [drop_transcripts_days]
+        );
+        results.transcriptsCleared = r.affectedRows;
+      } catch (e) { results.transcriptsError = e.message; }
+    }
+
+    // 2. 古い SKIP 結果を削除
+    if (drop_skip_days > 0) {
+      try {
+        const [r] = await pool.execute(
+          `DELETE FROM calls
+           WHERE result_code = 'SKIP'
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [drop_skip_days]
+        );
+        results.skipCallsDeleted = r.affectedRows;
+      } catch (e) { results.skipError = e.message; }
+    }
+
+    // 3. 未完了通話（result_code IS NULL）で24時間以上経過したものを削除
+    if (drop_stale_calls) {
+      try {
+        const [r] = await pool.execute(
+          `DELETE FROM calls
+           WHERE result_code IS NULL
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL 1 DAY)`
+        );
+        results.staleCallsDeleted = r.affectedRows;
+      } catch (e) { results.staleError = e.message; }
+    }
+
+    // 4. OPTIMIZE TABLE でディスク領域を解放
+    try {
+      await pool.query('OPTIMIZE TABLE calls');
+      results.optimized = true;
+    } catch (e) { results.optimizeError = e.message; }
+
+    logger.info(`[Cleanup] ${JSON.stringify(results)}`);
+    return ApiResponse.success(res, results, 'クリーンアップ完了');
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}

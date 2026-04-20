@@ -74,9 +74,9 @@ const startCall = async (req, res, next) => {
       }
     }
 
-    // 企業のlast_called_atを更新
+    // 企業のlast_called_atを更新 & ロック時刻も更新（長時間通話対応）
     await pool.execute(
-      'UPDATE companies SET last_called_at = NOW() WHERE id = ?',
+      'UPDATE companies SET last_called_at = NOW(), locked_at = NOW() WHERE id = ?',
       [company_id]
     );
 

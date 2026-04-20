@@ -7,15 +7,22 @@ const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 
 // ロックタイムアウト（分）
-const LOCK_TIMEOUT_MINUTES = 30;
+const LOCK_TIMEOUT_MINUTES = 60;
 
 /**
  * ロックフィルタ条件（他ユーザーのロック中企業を除外、期限切れロックは許可）
+ * さらに他ユーザーが現在通話中(result_code IS NULL)の企業は常に除外
  */
 const lockFilterSQL = `
   AND (c.locked_by_user_id IS NULL
        OR c.locked_by_user_id = ?
        OR c.locked_at < DATE_SUB(NOW(), INTERVAL ${LOCK_TIMEOUT_MINUTES} MINUTE))
+  AND NOT EXISTS (
+    SELECT 1 FROM calls cl_active
+    WHERE cl_active.company_id = c.id
+      AND cl_active.result_code IS NULL
+      AND cl_active.call_started_at > DATE_SUB(NOW(), INTERVAL 2 HOUR)
+  )
 `;
 
 /**
