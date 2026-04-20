@@ -777,145 +777,148 @@ export default function AdminCompanies() {
       {/* ============ ルール設定タブ ============ */}
       {activeTab === 'area' && (
         <>
-          <div className="card p-4 mb-4 bg-blue-50 border-blue-100 flex items-start justify-between gap-4">
-            <p className="text-sm text-blue-800 flex-1">
+          <div className="card p-4 mb-4 bg-blue-50 border-blue-100 space-y-3">
+            <p className="text-sm text-blue-800">
               業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の「業種」に部分一致で判定されます。
               職種にNGワードが含まれる場合は除外されます（例: 飲食店でも職種が事務なら除外）。
               ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
             </p>
-            <button
-              onClick={async () => {
-                try {
-                  const { data } = await api.get('/api/admin/database-stats');
-                  if (data.success) {
-                    setDbStats(data.data);
+            {/* 1列目: ルール適用系 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-gray-500 font-bold w-24">ルール適用:</span>
+              <button
+                disabled={applyingRules}
+                onClick={async () => {
+                  if (!confirm('現在のルール（業種地域・NGワード・NG/既存案件リスト）を既存の架電リストに適用します。\n該当企業は除外フラグが立ちます。（特別リスト・自分リストは対象外）\n\n処理に数分かかる場合があります。実行しますか？')) return;
+                  setApplyingRules(true);
+                  const progressToast = toast.loading('ルール適用中... 数分かかる場合があります', { duration: 600000 });
+                  try {
+                    const { data } = await api.post('/api/admin/apply-rules-to-existing', {}, { timeout: 600000 });
+                    toast.dismiss(progressToast);
+                    if (data.success) {
+                      const d = data.data;
+                      const secs = Math.round((d.elapsedMs || 0) / 1000);
+                      const topStats = (d.ngKeywordStats || [])
+                        .filter(s => s.totalMatch > 0 || s.updated > 0)
+                        .slice(0, 5)
+                        .map(s => `${s.keyword}(全${s.totalMatch}/更新${s.updated})`)
+                        .join(', ');
+                      const stats = d.flagStats
+                        ? `\n架電リスト状態: 除外済${d.flagStats.excluded}/全${d.flagStats.total}`
+                        : '';
+                      const kwInfo = topStats
+                        ? `\nNGワード一致TOP5: ${topStats}`
+                        : (d.ngKeywordsUsed?.length ? `\n全NGワードで一致なし(既除外済)` : '\nNGワード未設定');
+                      toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒${stats}${kwInfo}`, { duration: 20000 });
+                      if (typeof fetchCompanies === 'function') fetchCompanies();
+                    }
+                  } catch (err) {
+                    toast.dismiss(progressToast);
+                    toast.error(err.response?.data?.message || 'ルール適用に失敗しました', { duration: 8000 });
+                  } finally {
+                    setApplyingRules(false);
                   }
-                } catch (err) {
-                  const msg = err.response?.data?.message || 'DB容量取得に失敗しました';
-                  toast.error(msg, { duration: 10000 });
-                }
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white text-sm font-bold rounded-lg hover:from-sky-600 hover:to-blue-700 shadow-md transition-all whitespace-nowrap"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0018 0V5" /><path d="M3 12a9 3 0 0018 0" />
-              </svg>
-              DB容量確認
-            </button>
-            <button
-              onClick={async () => {
-                if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- 7日以上前のNO_ANSWER削除（再ピックアップは2日後なので影響なし）\n- 120日以上前のNG削除（再ピックアップは90日後なので影響なし）\n- 30日以上前のRECALL削除（recall_tasksで別管理）\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
-                try {
-                  const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0, drop_skip_days: 0 });
-                  if (data.success) {
-                    const d = data.data;
-                    toast.success(`クリーンアップ完了\n未完了削除: ${d.staleCallsDeleted || 0}件\n古いNO_ANSWER削除: ${d.noAnswerDeleted || 0}件\n古いNG削除: ${d.ngDeleted || 0}件\n古いRECALL削除: ${d.recallDeleted || 0}件`, { duration: 20000 });
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold rounded-md hover:from-amber-600 hover:to-orange-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm transition-all whitespace-nowrap"
+              >
+                {applyingRules ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    処理中...
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                      <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                    </svg>
+                    既存リストに手動適用
+                  </>
+                )}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('自分リスト（オペレーター自身がインポートした企業）で、NGワード/業種地域ルールにより除外された企業を復旧します。\nNGリスト/既存案件リストに登録されている企業は除外のまま残ります。\n\n実行しますか？')) return;
+                  try {
+                    const { data } = await api.post('/api/admin/restore-mylist-exclusions');
+                    if (data.success) {
+                      toast.success(`${data.data.restored}件の自分リストを復旧しました`, { duration: 10000 });
+                      if (typeof fetchCompanies === 'function') fetchCompanies();
+                    }
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || '復旧に失敗しました');
                   }
-                } catch (err) {
-                  toast.error(err.response?.data?.message || 'クリーンアップに失敗しました');
-                }
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white text-sm font-bold rounded-lg hover:from-red-600 hover:to-pink-700 shadow-md transition-all whitespace-nowrap"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-              </svg>
-              DB容量クリーンアップ
-            </button>
-            <button
-              onClick={async () => {
-                if (!confirm('⚠️ 緊急クリーンアップを実行します\n（通常クリーンアップで解消しない場合のみ）\n\n削除対象（SKIP/PROJECT/文字起こしは保持）:\n- 2日以上前のNO_ANSWER (再ピックアップ可能期間)\n- 90日以上前のNG (再ピックアップ可能期間)\n- 7日以上前のRECALL\n\n実行しますか？')) return;
-                try {
-                  const { data } = await api.post('/api/admin/cleanup-database', { aggressive: true });
-                  if (data.success) {
-                    const d = data.data;
-                    toast.success(`緊急クリーンアップ完了\nNO_ANSWER削除: ${d.noAnswerDeleted || 0}件\nNG削除: ${d.ngDeleted || 0}件\nRECALL削除: ${d.recallDeleted || 0}件\n未完了削除: ${d.staleCallsDeleted || 0}件\nOPTIMIZE: ${d.optimized ? '✓' : '×'}\nALTER: ${d.altered ? '✓' : '×'}`, { duration: 20000 });
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-md hover:from-emerald-600 hover:to-teal-700 shadow-sm transition-all whitespace-nowrap"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8" /><path d="M21 3v5h-5" />
+                </svg>
+                自分リスト復旧
+              </button>
+            </div>
+            {/* 2列目: DB管理系 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-gray-500 font-bold w-24">DB管理:</span>
+              <button
+                onClick={async () => {
+                  try {
+                    const { data } = await api.get('/api/admin/database-stats');
+                    if (data.success) setDbStats(data.data);
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || 'DB容量取得に失敗しました', { duration: 10000 });
                   }
-                } catch (err) {
-                  toast.error(err.response?.data?.message || '緊急クリーンアップに失敗しました');
-                }
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600 to-red-700 text-white text-sm font-bold rounded-lg hover:from-orange-700 hover:to-red-800 shadow-md transition-all whitespace-nowrap"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              ⚡緊急クリーンアップ
-            </button>
-            <button
-              onClick={async () => {
-                if (!confirm('自分リスト（オペレーター自身がインポートした企業）で、NGワード/業種地域ルールにより除外された企業を復旧します。\nNGリスト/既存案件リストに登録されている企業は除外のまま残ります。\n\n実行しますか？')) return;
-                try {
-                  const { data } = await api.post('/api/admin/restore-mylist-exclusions');
-                  if (data.success) {
-                    toast.success(`${data.data.restored}件の自分リストを復旧しました`, { duration: 10000 });
-                    if (typeof fetchCompanies === 'function') fetchCompanies();
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white text-xs font-bold rounded-md hover:from-sky-600 hover:to-blue-700 shadow-sm transition-all whitespace-nowrap"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0018 0V5" /><path d="M3 12a9 3 0 0018 0" />
+                </svg>
+                DB容量確認
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- 7日以上前のNO_ANSWER削除\n- 120日以上前のNG削除\n- 30日以上前のRECALL削除\n- OPTIMIZE TABLE calls\n\n実行しますか？')) return;
+                  try {
+                    const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0, drop_skip_days: 0 });
+                    if (data.success) {
+                      const d = data.data;
+                      toast.success(`クリーンアップ完了\n未完了: ${d.staleCallsDeleted || 0}件\nNO_ANSWER: ${d.noAnswerDeleted || 0}件\nNG: ${d.ngDeleted || 0}件\nRECALL: ${d.recallDeleted || 0}件`, { duration: 20000 });
+                    }
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || 'クリーンアップに失敗しました');
                   }
-                } catch (err) {
-                  toast.error(err.response?.data?.message || '復旧に失敗しました');
-                }
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-bold rounded-lg hover:from-emerald-600 hover:to-teal-700 shadow-md transition-all whitespace-nowrap"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                <path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8" /><path d="M21 3v5h-5" />
-              </svg>
-              自分リスト復旧
-            </button>
-            <button
-              disabled={applyingRules}
-              onClick={async () => {
-                if (!confirm('現在のルール（業種地域・NGワード・NG/既存案件リスト）を既存の架電リストに適用します。\n該当企業は除外フラグが立ちます。（特別リスト・自分リストは対象外）\n\n処理に数分かかる場合があります。実行しますか？')) return;
-                setApplyingRules(true);
-                const progressToast = toast.loading('ルール適用中... 数分かかる場合があります', { duration: 600000 });
-                try {
-                  const { data } = await api.post('/api/admin/apply-rules-to-existing', {}, { timeout: 600000 });
-                  toast.dismiss(progressToast);
-                  if (data.success) {
-                    const d = data.data;
-                    const secs = Math.round((d.elapsedMs || 0) / 1000);
-                    // 上位5件のNGワード一致状況を表示
-                    const topStats = (d.ngKeywordStats || [])
-                      .filter(s => s.totalMatch > 0 || s.updated > 0)
-                      .slice(0, 5)
-                      .map(s => `${s.keyword}(全${s.totalMatch}/更新${s.updated})`)
-                      .join(', ');
-                    const stats = d.flagStats
-                      ? `\n架電リスト状態: 除外済${d.flagStats.excluded}/全${d.flagStats.total}`
-                      : '';
-                    const kwInfo = topStats
-                      ? `\nNGワード一致TOP5: ${topStats}`
-                      : (d.ngKeywordsUsed?.length ? `\n全NGワードで一致なし(既除外済)` : '\nNGワード未設定');
-                    toast.success(`${d.total}件除外（NGリスト:${d.byExclusionList} / NGワード:${d.byNgWord} / 業種地域:${d.byRegionRule}）${secs}秒${stats}${kwInfo}`, { duration: 20000 });
-                    // 架電リスト側のリストを再取得
-                    if (typeof fetchCompanies === 'function') fetchCompanies();
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-red-500 to-pink-600 text-white text-xs font-bold rounded-md hover:from-red-600 hover:to-pink-700 shadow-sm transition-all whitespace-nowrap"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+                DB容量クリーンアップ
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('⚠️ 緊急クリーンアップを実行します\n（通常クリーンアップで解消しない場合のみ）\n\n削除対象（SKIP/PROJECT/文字起こしは保持）:\n- 2日以上前のNO_ANSWER\n- 90日以上前のNG\n- 7日以上前のRECALL\n\n実行しますか？')) return;
+                  try {
+                    const { data } = await api.post('/api/admin/cleanup-database', { aggressive: true });
+                    if (data.success) {
+                      const d = data.data;
+                      toast.success(`緊急クリーンアップ完了\nNO_ANSWER: ${d.noAnswerDeleted || 0}件\nNG: ${d.ngDeleted || 0}件\nRECALL: ${d.recallDeleted || 0}件\nOPTIMIZE: ${d.optimized ? '✓' : '×'}`, { duration: 20000 });
+                    }
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || '緊急クリーンアップに失敗しました');
                   }
-                } catch (err) {
-                  toast.dismiss(progressToast);
-                  toast.error(err.response?.data?.message || 'ルール適用に失敗しました', { duration: 8000 });
-                } finally {
-                  setApplyingRules(false);
-                }
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-bold rounded-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-md transition-all whitespace-nowrap"
-            >
-              {applyingRules ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  処理中...
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-                  </svg>
-                  既存リストに手動適用
-                </>
-              )}
-            </button>
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-600 to-red-700 text-white text-xs font-bold rounded-md hover:from-orange-700 hover:to-red-800 shadow-sm transition-all whitespace-nowrap"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                ⚡緊急クリーンアップ
+              </button>
+            </div>
           </div>
 
           {/* ルール追加フォーム */}
