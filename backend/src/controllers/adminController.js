@@ -1225,10 +1225,11 @@ async function getDatabaseStats(req, res, next) {
  * body: { drop_transcripts_days?: 30, drop_skip_days?: 30, drop_stale_calls?: true }
  */
 async function cleanupDatabase(req, res, next) {
-  const { drop_transcripts_days = 30, drop_skip_days = 90, drop_stale_calls = true } = req.body || {};
+  // デフォルトは文字起こし保持（drop_transcripts_days=0）
+  const { drop_transcripts_days = 0, drop_skip_days = 90, drop_stale_calls = true } = req.body || {};
   const results = {};
   try {
-    // 1. 古い文字起こしをNULLに（容量削減）
+    // 1. 古い文字起こしをNULLに（明示的に指定時のみ）
     if (drop_transcripts_days > 0) {
       try {
         const [r] = await pool.execute(
