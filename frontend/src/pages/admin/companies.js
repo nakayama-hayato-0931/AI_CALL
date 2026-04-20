@@ -791,7 +791,8 @@ export default function AdminCompanies() {
                     setDbStats(data.data);
                   }
                 } catch (err) {
-                  toast.error('DB容量取得に失敗しました');
+                  const msg = err.response?.data?.message || 'DB容量取得に失敗しました';
+                  toast.error(msg, { duration: 10000 });
                 }
               }}
               className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white text-sm font-bold rounded-lg hover:from-sky-600 hover:to-blue-700 shadow-md transition-all whitespace-nowrap"
