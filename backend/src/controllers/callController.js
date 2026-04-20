@@ -86,31 +86,28 @@ const endCall = async (req, res, next) => {
     return ApiResponse.success(res, { callId: req.params.id, projectId: result_code === 'PROJECT' ? `test-proj-${Date.now()}` : null }, '通話結果を保存しました（テストモード）');
   }
 
-  const conn = await pool.getConnection();
+  const { id } = req.params;
+  const {
+    result_code,
+    memo,
+    recall_at,
+    is_effective_connection,
+    is_person_in_charge,
+    is_prospect,
+  } = req.body;
+
+  // バリデーション
+  const validCodes = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
+  if (!result_code || !validCodes.includes(result_code)) {
+    return ApiResponse.badRequest(res, '有効な結果コードを指定してください');
+  }
+  if (result_code === 'RECALL' && !recall_at) {
+    return ApiResponse.badRequest(res, 'リコールの場合はrecall_atが必須です');
+  }
+
   try {
-    const { id } = req.params;
-    const {
-      result_code,
-      memo,
-      recall_at,
-      is_effective_connection,
-      is_person_in_charge,
-      is_prospect,
-    } = req.body;
-
-    // バリデーション（SKIPも許可）
-    const validCodes = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
-    if (!result_code || !validCodes.includes(result_code)) {
-      return ApiResponse.badRequest(res, '有効な結果コードを指定してください');
-    }
-    if (result_code === 'RECALL' && !recall_at) {
-      return ApiResponse.badRequest(res, 'リコールの場合はrecall_atが必須です');
-    }
-
-    await conn.beginTransaction();
-
-    // 通話レコード更新
-    const [updateResult] = await conn.execute(
+    // ステップ1: 通話レコード更新（トランザクションなしでシンプルに）
+    const [updateResult] = await pool.execute(
       `UPDATE calls SET
         call_ended_at = NOW(),
         result_code = ?,
@@ -132,94 +129,95 @@ const endCall = async (req, res, next) => {
     );
 
     if (updateResult.affectedRows === 0) {
-      await conn.rollback();
       return ApiResponse.notFound(res, '通話が見つかりません');
     }
 
     // 通話情報を取得
-    const [callRows] = await conn.execute('SELECT * FROM calls WHERE id = ?', [id]);
+    const [callRows] = await pool.execute('SELECT * FROM calls WHERE id = ?', [id]);
     const call = callRows[0];
+    if (!call) {
+      return ApiResponse.notFound(res, '通話が見つかりません');
+    }
+
+    // ステップ2: 付随処理（失敗しても通話結果は保存済みなので致命的ではない）
+    let projectId = null;
+    const warnings = [];
 
     // RECALL: リコールタスク作成
     if (result_code === 'RECALL') {
-      await conn.execute(
-        `INSERT INTO recall_tasks (call_id, company_id, user_id, recall_at, status)
-         VALUES (?, ?, ?, ?, 'pending')`,
-        [id, call.company_id, call.user_id, recall_at]
-      );
-    }
-
-    // PROJECT: 案件レコード作成
-    let projectId = null;
-    if (result_code === 'PROJECT') {
       try {
-        const [projectResult] = await conn.execute(
-          `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type, document_screening)
-           VALUES (?, ?, ?, 'NEW', ?, ?, 'not_required')`,
-          [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
+        await pool.execute(
+          `INSERT INTO recall_tasks (call_id, company_id, user_id, recall_at, status)
+           VALUES (?, ?, ?, ?, 'pending')`,
+          [id, call.company_id, call.user_id, recall_at]
         );
-        projectId = projectResult.insertId;
-      } catch (projErr) {
-        // document_screening を省いたフォールバック（ENUMが変更されている場合の対策）
-        logger.warn(`[endCall] 案件作成フォールバック: ${projErr.code} ${projErr.message}`);
-        try {
-          const [projectResult] = await conn.execute(
-            `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
-             VALUES (?, ?, ?, 'NEW', ?, ?)`,
-            [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
-          );
-          projectId = projectResult.insertId;
-        } catch (projErr2) {
-          logger.error(`[endCall] 案件作成失敗: ${projErr2.code} ${projErr2.message}`);
-          throw projErr2;
-        }
+      } catch (e) {
+        logger.error(`[endCall] recall_tasks挿入エラー: ${e.message}`);
+        warnings.push(`リコールタスク作成失敗: ${e.sqlMessage || e.message}`);
       }
     }
 
-    // NO_ANSWER: 自動割り当て（他オペレーターに再ピックアップされないようにする）
+    // PROJECT: 案件レコード作成
+    if (result_code === 'PROJECT') {
+      try {
+        const [projectResult] = await pool.execute(
+          `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
+           VALUES (?, ?, ?, 'NEW', ?, ?)`,
+          [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
+        );
+        projectId = projectResult.insertId;
+        // document_screening をデフォルトで 'not_required' に（失敗しても無視）
+        try {
+          await pool.execute(
+            `UPDATE projects SET document_screening = 'not_required' WHERE id = ?`,
+            [projectId]
+          );
+        } catch (e) { /* ENUM変更の場合は無視 */ }
+      } catch (projErr) {
+        logger.error(`[endCall] projects挿入エラー: code=${projErr.code} sqlMessage=${projErr.sqlMessage}`);
+        warnings.push(`案件作成失敗: ${projErr.sqlMessage || projErr.message}`);
+      }
+    }
+
+    // NO_ANSWER: 自動割り当て
     if (result_code === 'NO_ANSWER') {
-      const [existing] = await conn.execute(
-        'SELECT id FROM company_assignments WHERE company_id = ? AND user_id = ?',
-        [call.company_id, call.user_id]
-      );
-      if (existing.length === 0) {
-        await conn.execute(
-          'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+      try {
+        await pool.execute(
+          'INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
           [call.company_id, call.user_id, call.user_id]
         );
-        logger.info(`不通自動割り当て: company=${call.company_id}, user=${call.user_id}`);
+      } catch (e) {
+        logger.error(`[endCall] company_assignments挿入エラー: ${e.message}`);
       }
     }
 
     // ロック解除
-    await conn.execute(
-      'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
-      [call.company_id]
-    );
+    try {
+      await pool.execute(
+        'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
+        [call.company_id]
+      );
+    } catch (e) {
+      logger.error(`[endCall] ロック解除エラー: ${e.message}`);
+    }
 
-    await conn.commit();
+    logger.info(`通話結果登録: call=${id}, result=${result_code}${warnings.length ? `, warnings=${warnings.length}` : ''}`);
 
-    logger.info(`通話結果登録: call=${id}, result=${result_code}`);
-
-    // バックグラウンドで文字起こしを取得・保存（レスポンスはブロックしない）
+    // バックグラウンドで文字起こし取得
     if (call.phone_number && call.call_started_at && !call.transcript) {
       findTranscript(call.phone_number, call.call_started_at).then(async (transcript) => {
         if (transcript) {
-          await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, id]);
-          logger.info(`通話終了時Transcript取得: call=${id}`);
+          try {
+            await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, id]);
+          } catch (e) { /* 無視 */ }
         }
-      }).catch(e => {
-        logger.error('通話終了時Transcript取得エラー:', e.message);
-      });
+      }).catch(() => {});
     }
 
-    return ApiResponse.success(res, { callId: parseInt(id), projectId }, '通話結果を保存しました');
+    return ApiResponse.success(res, { callId: parseInt(id), projectId, warnings }, '通話結果を保存しました');
   } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
     logger.error(`[endCall] エラー: code=${err.code} message=${err.message} sqlMessage=${err.sqlMessage} sql=${err.sql}`);
     return ApiResponse.error(res, `通話結果の保存に失敗: ${err.sqlMessage || err.message}`, 500);
-  } finally {
-    try { conn.release(); } catch (_) {}
   }
 };
 
