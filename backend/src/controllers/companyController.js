@@ -7,7 +7,7 @@ const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 
 // ロックタイムアウト（分）
-const LOCK_TIMEOUT_MINUTES = 5;
+const LOCK_TIMEOUT_MINUTES = 30;
 
 /**
  * ロックフィルタ条件（他ユーザーのロック中企業を除外、期限切れロックは許可）
@@ -759,7 +759,10 @@ const lockCallTarget = async (req, res, next) => {
 const unlockCallTarget = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return ApiResponse.success(res, null, '認証なし（無視）');
+    }
 
     await pool.execute(
       'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ? AND locked_by_user_id = ?',
@@ -768,7 +771,9 @@ const unlockCallTarget = async (req, res, next) => {
 
     return ApiResponse.success(res, null, 'ロックを解除しました');
   } catch (err) {
-    next(err);
+    logger.error(`[unlockCallTarget] code=${err.code} message=${err.message} sqlMessage=${err.sqlMessage}`);
+    // 失敗しても成功扱いにする（ロック解除は致命的ではない）
+    return ApiResponse.success(res, null, 'ロック解除失敗（無視）');
   }
 };
 
