@@ -69,7 +69,8 @@ const startCall = async (req, res, next) => {
 
     return ApiResponse.created(res, { callId: result.insertId }, '架電を開始しました');
   } catch (err) {
-    next(err);
+    logger.error(`[startCall] エラー: code=${err.code} message=${err.message} sqlMessage=${err.sqlMessage} sql=${err.sql}`);
+    return ApiResponse.error(res, `架電開始失敗: ${err.sqlMessage || err.message}`, 500);
   }
 };
 
