@@ -151,12 +151,28 @@ const endCall = async (req, res, next) => {
     // PROJECT: 案件レコード作成
     let projectId = null;
     if (result_code === 'PROJECT') {
-      const [projectResult] = await conn.execute(
-        `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type, document_screening)
-         VALUES (?, ?, ?, 'NEW', ?, ?, 'not_required')`,
-        [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
-      );
-      projectId = projectResult.insertId;
+      try {
+        const [projectResult] = await conn.execute(
+          `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type, document_screening)
+           VALUES (?, ?, ?, 'NEW', ?, ?, 'not_required')`,
+          [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
+        );
+        projectId = projectResult.insertId;
+      } catch (projErr) {
+        // document_screening を省いたフォールバック（ENUMが変更されている場合の対策）
+        logger.warn(`[endCall] 案件作成フォールバック: ${projErr.code} ${projErr.message}`);
+        try {
+          const [projectResult] = await conn.execute(
+            `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
+             VALUES (?, ?, ?, 'NEW', ?, ?)`,
+            [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
+          );
+          projectId = projectResult.insertId;
+        } catch (projErr2) {
+          logger.error(`[endCall] 案件作成失敗: ${projErr2.code} ${projErr2.message}`);
+          throw projErr2;
+        }
+      }
     }
 
     // NO_ANSWER: 自動割り当て（他オペレーターに再ピックアップされないようにする）
@@ -198,10 +214,11 @@ const endCall = async (req, res, next) => {
 
     return ApiResponse.success(res, { callId: parseInt(id), projectId }, '通話結果を保存しました');
   } catch (err) {
-    await conn.rollback();
-    next(err);
+    try { await conn.rollback(); } catch (_) {}
+    logger.error(`[endCall] エラー: code=${err.code} message=${err.message} sqlMessage=${err.sqlMessage} sql=${err.sql}`);
+    return ApiResponse.error(res, `通話結果の保存に失敗: ${err.sqlMessage || err.message}`, 500);
   } finally {
-    conn.release();
+    try { conn.release(); } catch (_) {}
   }
 };
 
