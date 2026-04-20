@@ -1205,25 +1205,25 @@ module.exports = {
  */
 async function getDatabaseStats(req, res, next) {
   try {
-    const [tables] = await pool.query(
-      `SELECT TABLE_NAME AS name,
-              TABLE_ROWS AS row_count,
-              ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS size_mb,
-              ROUND(DATA_LENGTH / 1024 / 1024, 2) AS data_mb,
-              ROUND(INDEX_LENGTH / 1024 / 1024, 2) AS index_mb
-       FROM information_schema.TABLES
-       WHERE TABLE_SCHEMA = DATABASE()
-       ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC`
-    );
-    // フロントが `rows` を期待しているためキー名を合わせる
+    // SHOW TABLE STATUS を使う（Railway で information_schema 権限制限対応）
+    const [tables] = await pool.query('SHOW TABLE STATUS');
     const formatted = tables.map(t => ({
-      name: t.name,
-      rows: Number(t.row_count || 0),
-      size_mb: Number(t.size_mb || 0),
-      data_mb: Number(t.data_mb || 0),
-      index_mb: Number(t.index_mb || 0),
-    }));
-    return ApiResponse.success(res, { tables: formatted });
+      name: t.Name,
+      rows: Number(t.Rows || 0),
+      size_mb: Number(((t.Data_length || 0) + (t.Index_length || 0)) / 1024 / 1024).toFixed(2) * 1,
+      data_mb: Number((t.Data_length || 0) / 1024 / 1024).toFixed(2) * 1,
+      index_mb: Number((t.Index_length || 0) / 1024 / 1024).toFixed(2) * 1,
+      data_free_mb: Number((t.Data_free || 0) / 1024 / 1024).toFixed(2) * 1,
+    })).sort((a, b) => b.size_mb - a.size_mb);
+
+    // 全体のカウント/サイズも取得
+    let totals;
+    try {
+      const [r] = await pool.query('SELECT COUNT(*) as c FROM calls');
+      totals = { calls_count: Number(r[0].c) };
+    } catch (e) { totals = null; }
+
+    return ApiResponse.success(res, { tables: formatted, totals });
   } catch (err) {
     logger.error(`[database-stats] ${err.code} ${err.message} ${err.sqlMessage}`);
     return ApiResponse.error(res, `DB容量取得失敗: ${err.sqlMessage || err.message}`, 500);
@@ -1325,11 +1325,18 @@ async function cleanupDatabase(req, res, next) {
       } catch (e) { results.recallError = e.message; }
     }
 
-    // 4. OPTIMIZE TABLE でディスク領域を解放
+    // 4. OPTIMIZE TABLE でディスク領域を解放（InnoDBではALTER TABLE ... FORCEに相当）
     try {
-      await pool.query('OPTIMIZE TABLE calls');
+      const [r] = await pool.query('OPTIMIZE TABLE calls');
       results.optimized = true;
+      results.optimizeMsg = r && r[0] ? `${r[0].Table}: ${r[0].Op} ${r[0].Msg_type} ${r[0].Msg_text}` : 'done';
     } catch (e) { results.optimizeError = e.message; }
+
+    // 5. ALTER TABLE ENGINE = InnoDB で強制的に領域再構築（OPTIMIZEが効かない場合の代替）
+    try {
+      await pool.query('ALTER TABLE calls ENGINE = InnoDB');
+      results.altered = true;
+    } catch (e) { results.alterError = e.message; }
 
     logger.info(`[Cleanup] ${JSON.stringify(results)}`);
     return ApiResponse.success(res, results, 'クリーンアップ完了');
