@@ -69,6 +69,7 @@ export default function AdminCompanies() {
   const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
   const [aiSelectedIndustries, setAiSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
   const [applyingRules, setApplyingRules] = useState(false);
+  const [dbStats, setDbStats] = useState(null);
 
   useEffect(() => {
     if (user && !['admin','manager','consultant'].includes(user.role)) { router.push('/'); return; }
@@ -784,6 +785,24 @@ export default function AdminCompanies() {
             </p>
             <button
               onClick={async () => {
+                try {
+                  const { data } = await api.get('/api/admin/database-stats');
+                  if (data.success) {
+                    setDbStats(data.data);
+                  }
+                } catch (err) {
+                  toast.error('DB容量取得に失敗しました');
+                }
+              }}
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white text-sm font-bold rounded-lg hover:from-sky-600 hover:to-blue-700 shadow-md transition-all whitespace-nowrap"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0018 0V5" /><path d="M3 12a9 3 0 0018 0" />
+              </svg>
+              DB容量確認
+            </button>
+            <button
+              onClick={async () => {
                 if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
                 try {
                   const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0, drop_skip_days: 0 });
@@ -1118,6 +1137,50 @@ export default function AdminCompanies() {
             )}
           </div>
         </>
+      )}
+
+      {/* DB容量モーダル */}
+      {dbStats && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDbStats(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-sky-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">DB容量一覧</h2>
+                <p className="text-xs text-gray-500">テーブル別のサイズ（上位順）</p>
+              </div>
+              <button onClick={() => setDbStats(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div className="p-4">
+              <div className="mb-3 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-900">
+                  合計: <span className="font-bold">{(dbStats.tables || []).reduce((s, t) => s + Number(t.size_mb || 0), 0).toFixed(1)} MB</span>
+                  {' / '}
+                  全行数: <span className="font-bold">{(dbStats.tables || []).reduce((s, t) => s + Number(t.rows || 0), 0).toLocaleString()}</span>
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-3 py-2 text-left text-gray-600">テーブル</th>
+                    <th className="px-3 py-2 text-right text-gray-600">行数</th>
+                    <th className="px-3 py-2 text-right text-gray-600">サイズ (MB)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dbStats.tables || []).map(t => (
+                    <tr key={t.name} className="border-b border-gray-50">
+                      <td className="px-3 py-2 font-mono text-xs">{t.name}</td>
+                      <td className="px-3 py-2 text-right">{Number(t.rows || 0).toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${Number(t.size_mb) > 500 ? 'text-red-600' : Number(t.size_mb) > 100 ? 'text-amber-600' : 'text-gray-700'}`}>
+                        {Number(t.size_mb || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );
