@@ -784,12 +784,12 @@ export default function AdminCompanies() {
             </p>
             <button
               onClick={async () => {
-                if (!confirm('DB容量クリーンアップを実行します（文字起こしは保持）:\n- 90日以上前のSKIP結果を削除\n- 24時間以上前の未完了通話を削除\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
+                if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
                 try {
-                  const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0 });
+                  const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0, drop_skip_days: 0 });
                   if (data.success) {
                     const d = data.data;
-                    toast.success(`クリーンアップ完了\nSKIP削除: ${d.skipCallsDeleted || 0}件\n未完了削除: ${d.staleCallsDeleted || 0}件`, { duration: 15000 });
+                    toast.success(`クリーンアップ完了\n未完了削除: ${d.staleCallsDeleted || 0}件`, { duration: 15000 });
                   }
                 } catch (err) {
                   toast.error(err.response?.data?.message || 'クリーンアップに失敗しました');

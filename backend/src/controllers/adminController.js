@@ -1225,8 +1225,8 @@ async function getDatabaseStats(req, res, next) {
  * body: { drop_transcripts_days?: 30, drop_skip_days?: 30, drop_stale_calls?: true }
  */
 async function cleanupDatabase(req, res, next) {
-  // デフォルトは文字起こし保持（drop_transcripts_days=0）
-  const { drop_transcripts_days = 0, drop_skip_days = 90, drop_stale_calls = true } = req.body || {};
+  // デフォルト: 文字起こし・SKIP は保持、未完了通話(1日以上前)のみ削除
+  const { drop_transcripts_days = 0, drop_skip_days = 0, drop_stale_calls = true } = req.body || {};
   const results = {};
   try {
     // 1. 古い文字起こしをNULLに（明示的に指定時のみ）
@@ -1242,7 +1242,7 @@ async function cleanupDatabase(req, res, next) {
       } catch (e) { results.transcriptsError = e.message; }
     }
 
-    // 2. 古い SKIP 結果を削除
+    // 2. 古い SKIP 結果を削除（デフォルト無効: 再ピックアップ防止のため保持）
     if (drop_skip_days > 0) {
       try {
         const [r] = await pool.execute(
