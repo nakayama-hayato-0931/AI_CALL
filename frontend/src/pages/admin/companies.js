@@ -803,12 +803,12 @@ export default function AdminCompanies() {
             </button>
             <button
               onClick={async () => {
-                if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
+                if (!confirm('DB容量クリーンアップを実行します（文字起こし・SKIP履歴は保持）:\n- 24時間以上前の未完了通話を削除\n- 7日以上前のNO_ANSWER削除（再ピックアップは2日後なので影響なし）\n- 120日以上前のNG削除（再ピックアップは90日後なので影響なし）\n- 30日以上前のRECALL削除（recall_tasksで別管理）\n- OPTIMIZE TABLE calls で領域を解放\n\n実行しますか？')) return;
                 try {
                   const { data } = await api.post('/api/admin/cleanup-database', { drop_transcripts_days: 0, drop_skip_days: 0 });
                   if (data.success) {
                     const d = data.data;
-                    toast.success(`クリーンアップ完了\n未完了削除: ${d.staleCallsDeleted || 0}件`, { duration: 15000 });
+                    toast.success(`クリーンアップ完了\n未完了削除: ${d.staleCallsDeleted || 0}件\n古いNO_ANSWER削除: ${d.noAnswerDeleted || 0}件\n古いNG削除: ${d.ngDeleted || 0}件\n古いRECALL削除: ${d.recallDeleted || 0}件`, { duration: 20000 });
                   }
                 } catch (err) {
                   toast.error(err.response?.data?.message || 'クリーンアップに失敗しました');

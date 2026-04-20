@@ -1225,8 +1225,16 @@ async function getDatabaseStats(req, res, next) {
  * body: { drop_transcripts_days?: 30, drop_skip_days?: 30, drop_stale_calls?: true }
  */
 async function cleanupDatabase(req, res, next) {
-  // デフォルト: 文字起こし・SKIP は保持、未完了通話(1日以上前)のみ削除
-  const { drop_transcripts_days = 0, drop_skip_days = 0, drop_stale_calls = true } = req.body || {};
+  // デフォルト: SKIP/PROJECT/INTERESTED/文字起こしは保持
+  // 古いNO_ANSWER(7日以上)と古いNG(4ヶ月以上)は削除（再ピックアップに影響しない範囲）
+  const {
+    drop_transcripts_days = 0,
+    drop_skip_days = 0,
+    drop_stale_calls = true,
+    drop_no_answer_days = 7,   // NO_ANSWER再ピックアップは2日後 → 7日で十分
+    drop_ng_days = 120,        // NG再ピックアップは90日後 → 120日で十分
+    drop_recall_days = 30,     // RECALLはrecall_tasksで管理 → 30日以上は不要
+  } = req.body || {};
   const results = {};
   try {
     // 1. 古い文字起こしをNULLに（明示的に指定時のみ）
@@ -1265,6 +1273,45 @@ async function cleanupDatabase(req, res, next) {
         );
         results.staleCallsDeleted = r.affectedRows;
       } catch (e) { results.staleError = e.message; }
+    }
+
+    // 4. 古い NO_ANSWER 削除（同企業に新しいNO_ANSWERがあれば古いのは不要）
+    if (drop_no_answer_days > 0) {
+      try {
+        const [r] = await pool.execute(
+          `DELETE FROM calls
+           WHERE result_code = 'NO_ANSWER'
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [drop_no_answer_days]
+        );
+        results.noAnswerDeleted = r.affectedRows;
+      } catch (e) { results.noAnswerError = e.message; }
+    }
+
+    // 5. 古い NG 削除（NG再ピックアップは90日後 → 120日以上のNGは不要）
+    if (drop_ng_days > 0) {
+      try {
+        const [r] = await pool.execute(
+          `DELETE FROM calls
+           WHERE result_code = 'NG'
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [drop_ng_days]
+        );
+        results.ngDeleted = r.affectedRows;
+      } catch (e) { results.ngError = e.message; }
+    }
+
+    // 6. 古い RECALL 削除（recall_tasksで管理されているので古いcalls.RECALLは不要）
+    if (drop_recall_days > 0) {
+      try {
+        const [r] = await pool.execute(
+          `DELETE FROM calls
+           WHERE result_code = 'RECALL'
+             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [drop_recall_days]
+        );
+        results.recallDeleted = r.affectedRows;
+      } catch (e) { results.recallError = e.message; }
     }
 
     // 4. OPTIMIZE TABLE でディスク領域を解放
