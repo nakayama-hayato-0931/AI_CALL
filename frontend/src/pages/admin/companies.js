@@ -824,6 +824,26 @@ export default function AdminCompanies() {
             </button>
             <button
               onClick={async () => {
+                if (!confirm('⚠️ 緊急クリーンアップを実行します\n（通常クリーンアップで解消しない場合のみ）\n\n削除対象（SKIP/PROJECT/文字起こしは保持）:\n- 2日以上前のNO_ANSWER (再ピックアップ可能期間)\n- 90日以上前のNG (再ピックアップ可能期間)\n- 7日以上前のRECALL\n\n実行しますか？')) return;
+                try {
+                  const { data } = await api.post('/api/admin/cleanup-database', { aggressive: true });
+                  if (data.success) {
+                    const d = data.data;
+                    toast.success(`緊急クリーンアップ完了\nNO_ANSWER削除: ${d.noAnswerDeleted || 0}件\nNG削除: ${d.ngDeleted || 0}件\nRECALL削除: ${d.recallDeleted || 0}件\n未完了削除: ${d.staleCallsDeleted || 0}件\nOPTIMIZE: ${d.optimized ? '✓' : '×'}\nALTER: ${d.altered ? '✓' : '×'}`, { duration: 20000 });
+                  }
+                } catch (err) {
+                  toast.error(err.response?.data?.message || '緊急クリーンアップに失敗しました');
+                }
+              }}
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600 to-red-700 text-white text-sm font-bold rounded-lg hover:from-orange-700 hover:to-red-800 shadow-md transition-all whitespace-nowrap"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              ⚡緊急クリーンアップ
+            </button>
+            <button
+              onClick={async () => {
                 if (!confirm('自分リスト（オペレーター自身がインポートした企業）で、NGワード/業種地域ルールにより除外された企業を復旧します。\nNGリスト/既存案件リストに登録されている企業は除外のまま残ります。\n\n実行しますか？')) return;
                 try {
                   const { data } = await api.post('/api/admin/restore-mylist-exclusions');

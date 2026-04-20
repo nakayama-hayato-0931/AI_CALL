@@ -1237,14 +1237,15 @@ async function getDatabaseStats(req, res, next) {
  */
 async function cleanupDatabase(req, res, next) {
   // デフォルト: SKIP/PROJECT/INTERESTED/文字起こしは保持
-  // 古いNO_ANSWER(7日以上)と古いNG(4ヶ月以上)は削除（再ピックアップに影響しない範囲）
+  // aggressive=true で全NO_ANSWER削除などより積極的に
+  const aggressive = req.body?.aggressive === true;
   const {
     drop_transcripts_days = 0,
     drop_skip_days = 0,
     drop_stale_calls = true,
-    drop_no_answer_days = 7,   // NO_ANSWER再ピックアップは2日後 → 7日で十分
-    drop_ng_days = 120,        // NG再ピックアップは90日後 → 120日で十分
-    drop_recall_days = 30,     // RECALLはrecall_tasksで管理 → 30日以上は不要
+    drop_no_answer_days = aggressive ? 2 : 7,   // aggressive: 2日でも再ピックアップ可になる最短
+    drop_ng_days = aggressive ? 90 : 120,       // aggressive: 90日（NG最短）
+    drop_recall_days = aggressive ? 7 : 30,     // aggressive: 7日
   } = req.body || {};
   const results = {};
   try {
