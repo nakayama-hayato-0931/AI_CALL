@@ -441,7 +441,8 @@ export default function CallPage() {
         toast.error('ロックが失われました。もう一度選択してください。');
         fetchCallList();
       } else {
-        toast.error('架電開始に失敗しました');
+        const msg = err.response?.data?.message || '架電開始に失敗しました';
+        toast.error(msg, { duration: 8000 });
       }
     }
   };

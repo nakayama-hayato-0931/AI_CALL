@@ -53,11 +53,26 @@ const startCall = async (req, res, next) => {
       logger.info(`未完了通話を削除: user=${userId}, count=${stale.affectedRows}`);
     }
 
-    const [result] = await pool.execute(
-      `INSERT INTO calls (user_id, company_id, call_started_at, call_type)
-       VALUES (?, ?, NOW(), ?)`,
-      [userId, company_id, resolvedCallType]
-    );
+    let result;
+    try {
+      [result] = await pool.execute(
+        `INSERT INTO calls (user_id, company_id, call_started_at, call_type)
+         VALUES (?, ?, NOW(), ?)`,
+        [userId, company_id, resolvedCallType]
+      );
+    } catch (insertErr) {
+      // call_type カラムが無い等の場合のフォールバック
+      logger.warn(`[startCall] call_type付きINSERT失敗、フォールバック: ${insertErr.code} ${insertErr.sqlMessage || insertErr.message}`);
+      try {
+        [result] = await pool.execute(
+          `INSERT INTO calls (user_id, company_id, call_started_at) VALUES (?, ?, NOW())`,
+          [userId, company_id]
+        );
+      } catch (insertErr2) {
+        logger.error(`[startCall] INSERT calls フォールバックも失敗: ${insertErr2.code} ${insertErr2.sqlMessage || insertErr2.message}`);
+        throw insertErr2;
+      }
+    }
 
     // 企業のlast_called_atを更新
     await pool.execute(

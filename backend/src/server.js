@@ -340,6 +340,9 @@ const runMigrations = async () => {
     `);
     logger.info('[Migration] past_quality_data テーブル確認完了');
   } catch (e) { logger.warn('[Migration] past_quality_data:', e.message); }
+  // callsテーブルにcall_typeカラム追加（存在しなければ）
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN call_type ENUM('operator','sales') DEFAULT 'operator'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN transcript TEXT DEFAULT NULL`); } catch (e) {}
   // callsテーブルのインデックス追加（パフォーマンス改善）
   try { await pool.execute('CREATE INDEX idx_calls_started_at ON calls(call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_started ON calls(user_id, call_started_at)'); } catch (e) {}
