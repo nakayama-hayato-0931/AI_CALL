@@ -813,21 +813,31 @@ const getQualityAll = async (req, res, next) => {
     }
     const qMap = new Map(rows.map(r => [r.user_id, r]));
 
-    // kpi_adjustments を案件数(total)に反映（CPAと一致させる）
+    // kpi_adjustments を反映（CPAと一致させる）
     if (qSystemFrom) {
       try {
+        // field → rowのキー と 実績算出SQL条件のマップ
+        const adjustMap = {
+          project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?` },
+          q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?` },
+          q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI')) AND DATE(p.created_at) = ?` },
+          q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND DATE(p.created_at) = ?` },
+          q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?` },
+          q_barashi: { rowKey: 'barashi', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'BARASHI' AND DATE(p.created_at) = ?` },
+          q_online_interview: { rowKey: 'online_interview', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_type = 'online' AND DATE(p.created_at) = ?` },
+          q_no_screening: { rowKey: 'no_screening', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening IN ('not_required','なし') AND DATE(p.created_at) = ?` },
+          q_screening_failed: { rowKey: 'screening_failed', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'SHORUI_OCHI' AND DATE(p.created_at) = ?` },
+        };
         const [adjRows] = await pool.query(
-          `SELECT user_id, date, value FROM kpi_adjustments
-           WHERE field = 'project_count' AND date BETWEEN ? AND ?`,
-          [qSystemFrom, dateTo]
+          `SELECT user_id, date, field, value FROM kpi_adjustments
+           WHERE field IN (${Object.keys(adjustMap).map(() => '?').join(',')}) AND date BETWEEN ? AND ?`,
+          [...Object.keys(adjustMap), qSystemFrom, dateTo]
         );
         for (const adj of adjRows) {
+          const cfg = adjustMap[adj.field];
+          if (!cfg) continue;
           const uid = adj.user_id;
-          const [rActual] = await pool.query(
-            `SELECT COUNT(*) as cnt FROM projects p
-             WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?`,
-            [uid, adj.date]
-          );
+          const [rActual] = await pool.query(cfg.actualSql, [uid, adj.date]);
           const actual = Number(rActual[0]?.cnt) || 0;
           const delta = Number(adj.value) - actual;
           let row = qMap.get(uid);
@@ -836,7 +846,7 @@ const getQualityAll = async (req, res, next) => {
             qMap.set(uid, row);
             rows.push(row);
           }
-          row.total = Number(row.total) + delta;
+          row[cfg.rowKey] = Number(row[cfg.rowKey] || 0) + delta;
         }
       } catch (e) { /* ignore */ }
     }

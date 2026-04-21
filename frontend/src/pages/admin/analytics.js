@@ -83,6 +83,7 @@ export default function AnalyticsPage() {
   const [compareUserId, setCompareUserId] = useState(null); // 個人選択時のuserId
   const [compareMonths, setCompareMonths] = useState(6); // 過去Nヶ月分
   const [operatorsList, setOperatorsList] = useState([]);
+  const [kpiModal, setKpiModal] = useState(null); // { date, userId, field, value }
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
   const [loading, setLoading] = useState(true);
@@ -641,6 +642,17 @@ export default function AnalyticsPage() {
                 }`}>案件質向上</button>
             </div>
           </div>
+
+          {/* 手動補正ボタン */}
+          <div>
+            <label className="input-label">&nbsp;</label>
+            <button
+              onClick={() => setKpiModal({ date: new Date().toISOString().slice(0, 10), userId: '', field: 'q_interview_set', value: 0 })}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 rounded-md shadow-sm whitespace-nowrap"
+            >
+              手動補正
+            </button>
+          </div>
         </div>
 
         {/* データ取り込み */}
@@ -697,6 +709,85 @@ export default function AnalyticsPage() {
       ) : (
         /* ========== 月別・累計: 案件質 ========== */
         qualData && renderQualTable(qualData, '案件質向上 - 全員比較', `${qualData.dateFrom} 〜 ${qualData.dateTo}`)
+      )}
+
+      {/* 手動補正モーダル */}
+      {kpiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setKpiModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-amber-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-gray-900">KPI手動補正</h2>
+              <p className="text-xs text-gray-500 mt-1">指定日・対象者・項目の値を強制的に上書きします</p>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <div>
+                <label className="input-label">対象日</label>
+                <input type="date" className="input text-sm" value={kpiModal.date}
+                  onChange={e => setKpiModal({...kpiModal, date: e.target.value})} />
+              </div>
+              <div>
+                <label className="input-label">対象オペレーター</label>
+                <select className="input text-sm" value={kpiModal.userId}
+                  onChange={e => setKpiModal({...kpiModal, userId: e.target.value})}>
+                  <option value="">選択してください</option>
+                  {operatorsList.map(op => (
+                    <option key={op.id} value={op.id}>{op.name}{op.role === 'intern' ? '[インターン]' : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="input-label">項目</label>
+                <select className="input text-sm" value={kpiModal.field}
+                  onChange={e => setKpiModal({...kpiModal, field: e.target.value})}>
+                  <optgroup label="CPA指標">
+                    <option value="project_count">案件数</option>
+                    <option value="call_count">コール数</option>
+                  </optgroup>
+                  <optgroup label="案件質向上">
+                    <option value="q_lost">失注</option>
+                    <option value="q_waiting_contact">連絡待ち</option>
+                    <option value="q_interview_set">面接日確定</option>
+                    <option value="q_interview_done">面接実施</option>
+                    <option value="q_barashi">バラシ</option>
+                    <option value="q_online_interview">オンライン面接</option>
+                    <option value="q_no_screening">書類選考無し</option>
+                    <option value="q_screening_failed">書類選考落ち</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">補正後の値（その日の合計値）</label>
+                <input type="number" className="input text-sm" value={kpiModal.value}
+                  onChange={e => setKpiModal({...kpiModal, value: e.target.value})} />
+                <p className="text-[10px] text-gray-400 mt-1">※実データとの差分が補正として記録されます</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!kpiModal.userId || !kpiModal.date || !kpiModal.field) {
+                    toast.error('全項目を入力してください'); return;
+                  }
+                  try {
+                    await api.put('/api/admin/kpi-adjustment', {
+                      user_id: Number(kpiModal.userId),
+                      date: kpiModal.date,
+                      field: kpiModal.field,
+                      value: Number(kpiModal.value) || 0,
+                    });
+                    toast.success('補正を保存しました');
+                    setKpiModal(null);
+                    fetchData();
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || '保存に失敗しました');
+                  }
+                }}
+                className="flex-1 btn-primary"
+              >保存</button>
+              <button onClick={() => setKpiModal(null)} className="flex-1 btn-secondary">キャンセル</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 打刻ログ重複確認モーダル */}

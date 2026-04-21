@@ -860,7 +860,12 @@ const exportSpecialListBatch = async (req, res, next) => {
 const saveKpiAdjustment = async (req, res, next) => {
   try {
     const { user_id, date, field, value } = req.body;
-    const validFields = ['call_count', 'recall_gained', 'recall_done', 'effective_count', 'person_count', 'project_count'];
+    const validFields = [
+      'call_count', 'recall_gained', 'recall_done', 'effective_count', 'person_count', 'project_count',
+      // 案件質向上フィールド
+      'q_lost', 'q_waiting_contact', 'q_interview_set', 'q_interview_done', 'q_barashi',
+      'q_online_interview', 'q_no_screening', 'q_screening_failed',
+    ];
     if (!user_id || !date || !field || !validFields.includes(field)) {
       return ApiResponse.badRequest(res, 'user_id, date, field（有効なフィールド名）は必須です');
     }
