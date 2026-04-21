@@ -208,22 +208,45 @@ const updateCompany = async (req, res, next) => {
 };
 
 /**
- * 業種×地域ルールフィルタ（ルールに合致する企業のみ表示）
+ * 業種×地域ルールフィルタ（ホワイトリスト方式）
  * ルールが0件の場合はフィルターをスキップ（全企業表示）
  *
- * 判定ロジック:
- * 1. industry_name キーワードで c.industry を部分一致 (例: 飲食 → 飲食店, 飲食料品小売業)
- * 2. region（都道府県名）で c.address を前方一致 (例: 富山県 → 富山県黒部市...)
- * 3. industry_exclude_words に登録されたNGワードが c.job_type / c.industry / c.comment に含まれていたら除外
- *    (例: industry=飲食店 でも job_type=事務作業 なら除外)
+ * 業種判定: 大枠カテゴリ名（飲食/製造/小売/建設/宿泊/農業/介護等）で
+ *   ルール登録された場合、優先順位付きカテゴリ判定で厳密マッチ。
+ *   → 「飲食料品小売業」は "小売" のみにマッチし "飲食" には含まれない
+ *   → 「食料品製造業」は "製造" のみにマッチ
+ * 自由キーワード（大枠以外）は従来の部分一致。
  */
+const CATEGORY_SQL_EXPR = `
+  CASE
+    WHEN c.industry LIKE '%製造業%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工業%' THEN '製造'
+    WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%' OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%販売%' OR c.industry LIKE '%物販%' THEN '小売'
+    WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%' OR c.industry LIKE '%リフォーム%' THEN '建設'
+    WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+    WHEN c.industry LIKE '%農業%' OR c.industry LIKE '%農産%' OR c.industry LIKE '%畜産%' OR c.industry LIKE '%水産%' OR c.industry LIKE '%漁業%' OR c.industry LIKE '%林業%' THEN '農業'
+    WHEN c.industry LIKE '%介護%' OR c.industry LIKE '%医療%' OR c.industry LIKE '%福祉%' OR c.industry LIKE '%病院%' OR c.industry LIKE '%クリニック%' OR c.industry LIKE '%歯科%' THEN '介護'
+    WHEN c.industry LIKE '%運輸%' OR c.industry LIKE '%運送%' OR c.industry LIKE '%輸送%' OR c.industry LIKE '%物流%' OR c.industry LIKE '%タクシー%' OR c.industry LIKE '%鉄道%' OR c.industry LIKE '%配送%' THEN '運輸'
+    WHEN c.industry LIKE '%情報通信%' OR c.industry LIKE '%ソフトウェア%' OR c.industry LIKE '%IT業%' OR c.industry LIKE '%システム%' THEN 'IT'
+    WHEN c.industry LIKE '%金融%' OR c.industry LIKE '%銀行%' OR c.industry LIKE '%保険%' OR c.industry LIKE '%証券%' THEN '金融'
+    WHEN c.industry LIKE '%不動産%' THEN '不動産'
+    WHEN c.industry LIKE '%美容%' OR c.industry LIKE '%エステ%' OR c.industry LIKE '%理容%' OR c.industry LIKE '%サロン%' THEN '美容'
+    WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%' OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%' OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%' OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%' OR c.industry LIKE '%菓子%' THEN '飲食'
+    WHEN c.industry LIKE '%サービス%' THEN 'サービス'
+    ELSE 'その他'
+  END
+`;
+const CATEGORY_NAMES_SQL = "('飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス')";
+
 const industryRegionFilterSQL = `
   AND (
     (SELECT COUNT(*) FROM industry_region_rules) = 0
     OR EXISTS (
       SELECT 1 FROM industry_region_rules irr
-      WHERE c.industry LIKE CONCAT('%', irr.industry_name, '%')
-        AND c.address LIKE CONCAT(irr.region, '%')
+      WHERE (
+        (irr.industry_name IN ${CATEGORY_NAMES_SQL} AND (${CATEGORY_SQL_EXPR}) = irr.industry_name)
+        OR (irr.industry_name NOT IN ${CATEGORY_NAMES_SQL} AND c.industry LIKE CONCAT('%', irr.industry_name, '%'))
+      )
+      AND c.address LIKE CONCAT(irr.region, '%')
     )
   )
   AND NOT EXISTS (
@@ -231,6 +254,7 @@ const industryRegionFilterSQL = `
     WHERE c.job_type LIKE CONCAT('%', iew.keyword, '%')
        OR c.industry LIKE CONCAT('%', iew.keyword, '%')
        OR c.comment LIKE CONCAT('%', iew.keyword, '%')
+       OR c.company_name LIKE CONCAT('%', iew.keyword, '%')
   )
 `;
 
