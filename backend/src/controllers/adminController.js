@@ -1282,9 +1282,9 @@ async function getCompaniesIndustryStats(req, res, next) {
       categoryMap.set(cat, (categoryMap.get(cat) || 0) + Number(r.cnt));
     }
 
-    // 定義順でソート（その他は最後）
-    const categoryOrder = [...CATEGORIES.map(c => c.name), 'その他'];
-    const industries = categoryOrder
+    // 表示順（飲食・小売を先頭に、その他は最後）
+    const displayOrder = ['飲食', '小売', '製造', '建設', '宿泊', '農業', '介護', '運輸', 'IT', '金融', '不動産', '美容', 'サービス', 'その他'];
+    const industries = displayOrder
       .filter(name => categoryMap.has(name))
       .map(name => ({ industry: name, count: categoryMap.get(name) }));
 
