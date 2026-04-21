@@ -45,7 +45,7 @@ export default function AdminCompanies() {
   const [searchInput, setSearchInput] = useState('');
   const [showExcluded, setShowExcluded] = useState(false);
   const [industryStats, setIndustryStats] = useState(null);
-  const [statsActionable, setStatsActionable] = useState(false);
+  const [statsActionable, setStatsActionable] = useState(true);
   const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
 
