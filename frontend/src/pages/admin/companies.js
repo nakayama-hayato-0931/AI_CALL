@@ -46,6 +46,8 @@ export default function AdminCompanies() {
   const [showExcluded, setShowExcluded] = useState(false);
   const [industryStats, setIndustryStats] = useState(null);
   const [statsActionable, setStatsActionable] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState(''); // クリックされた業種カテゴリ
+  const [selectedIds, setSelectedIds] = useState([]); // 一括削除用の選択ID
   const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
 
@@ -80,7 +82,10 @@ export default function AdminCompanies() {
 
   useEffect(() => {
     if (user) fetchCompanies();
-  }, [user, page, search, showExcluded]);
+  }, [user, page, search, showExcluded, categoryFilter, statsActionable]);
+
+  // フィルター変更時は選択をクリア
+  useEffect(() => { setSelectedIds([]); }, [categoryFilter, statsActionable, search, page]);
 
   useEffect(() => {
     const fetchIndustryStats = async () => {
@@ -112,6 +117,8 @@ export default function AdminCompanies() {
       const params = new URLSearchParams({ page, limit: 20 });
       if (search) params.append('search', search);
       if (showExcluded) params.append('include_excluded', '1');
+      if (categoryFilter) params.append('category', categoryFilter);
+      if (statsActionable) params.append('actionable', '1');
       const { data } = await api.get(`/api/admin/companies?${params}`);
       if (data.success) {
         setCompanies(data.data.companies);
@@ -482,10 +489,17 @@ export default function AdminCompanies() {
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
+                {categoryFilter && (
+                  <button
+                    onClick={() => { setCategoryFilter(''); setPage(1); }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-bold bg-gray-800 text-white border-gray-800 hover:bg-gray-700"
+                  >
+                    <span>× {categoryFilter} フィルター解除</span>
+                  </button>
+                )}
                 {industryStats.industries.length === 0 ? (
                   <span className="text-xs text-gray-400">データなし</span>
                 ) : industryStats.industries.map(ind => {
-                  // 業種名ごとに色を変える（簡易ハッシュ）
                   const colors = [
                     'bg-blue-50 text-blue-700 border-blue-200',
                     'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -498,16 +512,49 @@ export default function AdminCompanies() {
                   ];
                   const hash = [...ind.industry].reduce((s, c) => s + c.charCodeAt(0), 0);
                   const colorClass = colors[hash % colors.length];
+                  const isActive = categoryFilter === ind.industry;
                   return (
-                    <span
+                    <button
                       key={ind.industry}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium ${colorClass}`}
+                      onClick={() => { setCategoryFilter(isActive ? '' : ind.industry); setPage(1); }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium cursor-pointer transition-all ${
+                        isActive ? 'ring-2 ring-offset-1 ring-blue-500 ' : 'hover:ring-1 hover:ring-blue-300 '
+                      }${colorClass}`}
                     >
                       <span>{ind.industry}</span>
                       <span className="font-bold">{ind.count.toLocaleString()}</span>
-                    </span>
+                    </button>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* 選択中のアクションバー */}
+          {selectedIds.length > 0 && (
+            <div className="card p-3 mb-3 bg-red-50 border-red-200 flex items-center justify-between">
+              <span className="text-sm font-bold text-red-800">{selectedIds.length}件選択中</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="px-3 py-1.5 text-xs font-medium bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100"
+                >選択解除</button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`${selectedIds.length}件の企業を一括削除（除外）します。実行しますか？`)) return;
+                    try {
+                      const { data } = await api.post('/api/admin/companies/bulk-delete', { ids: selectedIds });
+                      if (data.success) {
+                        toast.success(`${data.data.affected}件を除外しました`);
+                        setSelectedIds([]);
+                        fetchCompanies();
+                      }
+                    } catch (err) {
+                      toast.error(err.response?.data?.message || '削除に失敗しました');
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-md"
+                >選択した企業を一括削除</button>
               </div>
             </div>
           )}
@@ -516,6 +563,22 @@ export default function AdminCompanies() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="table-header w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={companies.length > 0 && companies.every(c => selectedIds.includes(c.id))}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          const all = new Set([...selectedIds, ...companies.map(c => c.id)]);
+                          setSelectedIds([...all]);
+                        } else {
+                          const pageIds = new Set(companies.map(c => c.id));
+                          setSelectedIds(selectedIds.filter(id => !pageIds.has(id)));
+                        }
+                      }}
+                      className="w-4 h-4 accent-red-600 cursor-pointer"
+                    />
+                  </th>
                   <th className="table-header">企業名</th>
                   <th className="table-header">電話番号</th>
                   <th className="table-header">業種</th>
@@ -526,7 +589,18 @@ export default function AdminCompanies() {
               </thead>
               <tbody>
                 {companies.map(c => (
-                  <tr key={c.id} className={`border-b border-gray-100 transition-colors ${c.exclusion_flag ? 'bg-red-50/60 hover:bg-red-100/60' : 'hover:bg-blue-50/30'}`}>
+                  <tr key={c.id} className={`border-b border-gray-100 transition-colors ${c.exclusion_flag ? 'bg-red-50/60 hover:bg-red-100/60' : selectedIds.includes(c.id) ? 'bg-red-50/40' : 'hover:bg-blue-50/30'}`}>
+                    <td className="table-cell text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(c.id)}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedIds([...selectedIds, c.id]);
+                          else setSelectedIds(selectedIds.filter(id => id !== c.id));
+                        }}
+                        className="w-4 h-4 accent-red-600 cursor-pointer"
+                      />
+                    </td>
                     <td className="table-cell font-medium">
                       {c.exclusion_flag ? <span className="mr-1.5 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">除外</span> : null}
                       {c.company_name}

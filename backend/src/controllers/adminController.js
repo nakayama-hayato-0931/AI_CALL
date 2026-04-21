@@ -425,7 +425,7 @@ const getCompanies = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const offset = (page - 1) * limit;
-    const { search, industry } = req.query;
+    const { search, industry, category, actionable } = req.query;
     const includeExcluded = req.query.include_excluded === '1' || req.query.include_excluded === 'true';
 
     let whereClauses = [];
@@ -439,6 +439,32 @@ const getCompanies = async (req, res, next) => {
     if (industry) {
       whereClauses.push('co.industry = ?');
       params.push(industry);
+    }
+    // 大枠カテゴリフィルタ（同優先順位ロジック）
+    if (category) {
+      const catExpr = `
+        CASE
+          WHEN co.industry LIKE '%製造業%' OR co.industry LIKE '%メーカー%' OR co.industry LIKE '%加工業%' THEN '製造'
+          WHEN co.industry LIKE '%小売%' OR co.industry LIKE '%卸売%' OR co.industry LIKE '%スーパー%' OR co.industry LIKE '%コンビニ%' OR co.industry LIKE '%ショッピング%' OR co.industry LIKE '%商社%' OR co.industry LIKE '%販売%' OR co.industry LIKE '%物販%' THEN '小売'
+          WHEN co.industry LIKE '%建設%' OR co.industry LIKE '%工事%' OR co.industry LIKE '%建築%' OR co.industry LIKE '%土木%' OR co.industry LIKE '%リフォーム%' THEN '建設'
+          WHEN co.industry LIKE '%宿泊%' OR co.industry LIKE '%ホテル%' OR co.industry LIKE '%旅館%' OR co.industry LIKE '%民宿%' THEN '宿泊'
+          WHEN co.industry LIKE '%農業%' OR co.industry LIKE '%農産%' OR co.industry LIKE '%畜産%' OR co.industry LIKE '%水産%' OR co.industry LIKE '%漁業%' OR co.industry LIKE '%林業%' THEN '農業'
+          WHEN co.industry LIKE '%介護%' OR co.industry LIKE '%医療%' OR co.industry LIKE '%福祉%' OR co.industry LIKE '%病院%' OR co.industry LIKE '%クリニック%' OR co.industry LIKE '%歯科%' THEN '介護'
+          WHEN co.industry LIKE '%運輸%' OR co.industry LIKE '%運送%' OR co.industry LIKE '%輸送%' OR co.industry LIKE '%物流%' OR co.industry LIKE '%タクシー%' OR co.industry LIKE '%鉄道%' OR co.industry LIKE '%配送%' THEN '運輸'
+          WHEN co.industry LIKE '%情報通信%' OR co.industry LIKE '%ソフトウェア%' OR co.industry LIKE '%IT業%' OR co.industry LIKE '%システム%' THEN 'IT'
+          WHEN co.industry LIKE '%金融%' OR co.industry LIKE '%銀行%' OR co.industry LIKE '%保険%' OR co.industry LIKE '%証券%' THEN '金融'
+          WHEN co.industry LIKE '%不動産%' THEN '不動産'
+          WHEN co.industry LIKE '%美容%' OR co.industry LIKE '%エステ%' OR co.industry LIKE '%理容%' OR co.industry LIKE '%サロン%' THEN '美容'
+          WHEN co.industry LIKE '%飲食店%' OR co.industry LIKE '%グルメ%' OR co.industry LIKE '%レストラン%' OR co.industry LIKE '%居酒屋%' OR co.industry LIKE '%ラーメン%' OR co.industry LIKE '%カフェ%' OR co.industry LIKE '%喫茶店%' OR co.industry LIKE '%寿司%' OR co.industry LIKE '%焼肉%' OR co.industry LIKE '%和食%' OR co.industry LIKE '%中華%' OR co.industry LIKE '%洋食%' OR co.industry LIKE '%食堂%' OR co.industry LIKE '%ダイニング%' OR co.industry LIKE '%そば%' OR co.industry LIKE '%うどん%' OR co.industry LIKE '%菓子%' THEN '飲食'
+          WHEN co.industry LIKE '%サービス%' THEN 'サービス'
+          ELSE 'その他'
+        END`;
+      whereClauses.push(`(${catExpr}) = ?`);
+      params.push(category);
+    }
+    // 未架電+不通のみフィルタ
+    if (actionable === '1' || actionable === 'true') {
+      whereClauses.push(`(co.last_called_at IS NULL OR (SELECT cl.result_code FROM calls cl WHERE cl.company_id = co.id ORDER BY cl.call_started_at DESC LIMIT 1) = 'NO_ANSWER')`);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -1211,7 +1237,45 @@ module.exports = {
   cleanupDatabase,
   getDatabaseStats,
   getCompaniesIndustryStats,
+  bulkDeleteCompanies,
 };
+
+/**
+ * POST /api/admin/companies/bulk-delete
+ * body: { ids: [1,2,3] }
+ * 選択された企業を exclusion_flag=1 で除外（物理削除ではなくフラグ除外）
+ */
+async function bulkDeleteCompanies(req, res, next) {
+  try {
+    const { ids, physical } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return ApiResponse.badRequest(res, 'ids配列が必要です');
+    }
+    // 500件ずつチャンクで処理
+    let affected = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const placeholders = chunk.map(() => '?').join(',');
+      if (physical === true) {
+        // 物理削除（関連データのカスケード問題あり得るので基本使わない）
+        const [r] = await pool.query(
+          `DELETE FROM companies WHERE id IN (${placeholders})`, chunk
+        );
+        affected += r.affectedRows;
+      } else {
+        const [r] = await pool.query(
+          `UPDATE companies SET exclusion_flag = 1 WHERE id IN (${placeholders})`, chunk
+        );
+        affected += r.affectedRows;
+      }
+    }
+    logger.info(`[bulkDeleteCompanies] ${affected}件 by user=${req.user.id}`);
+    return ApiResponse.success(res, { affected }, `${affected}件を除外しました`);
+  } catch (err) {
+    logger.error(`[bulkDeleteCompanies] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * GET /api/admin/companies/industry-stats
