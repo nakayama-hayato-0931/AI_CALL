@@ -1222,16 +1222,35 @@ async function getCompaniesIndustryStats(req, res, next) {
   try {
     const actionableOnly = req.query.actionable === '1' || req.query.actionable === 'true';
 
-    // 業種を正規化（カンマ区切りの先頭業種のみ使う）
-    // 単純に industry のまま集計
+    // 大枠カテゴリ判定（キーワード部分一致、上から順に判定）
+    const CATEGORIES = [
+      { name: '飲食', keywords: ['飲食', 'グルメ', 'レストラン', '居酒屋', 'ラーメン', '和洋菓子', '菓子'] },
+      { name: '小売', keywords: ['小売', 'スーパー', 'コンビニ', 'ショッピング', '卸', '商社'] },
+      { name: '製造', keywords: ['製造', 'メーカー', '加工'] },
+      { name: '建設', keywords: ['建設', '工事', '建築', '土木'] },
+      { name: '宿泊', keywords: ['宿泊', 'ホテル', '旅館'] },
+      { name: '農業', keywords: ['農業', '農産', '畜産', '水産', '漁業'] },
+      { name: '介護', keywords: ['介護', '医療', '福祉', '病院', 'クリニック'] },
+      { name: '運輸', keywords: ['運輸', '運送', '輸送', '物流', 'タクシー', '鉄道'] },
+      { name: 'IT', keywords: ['情報', '通信', 'ソフト', 'IT', 'インターネット', 'システム'] },
+      { name: '金融', keywords: ['金融', '銀行', '保険', '証券'] },
+      { name: '不動産', keywords: ['不動産'] },
+      { name: '美容', keywords: ['美容', 'エステ', '理容', 'サロン'] },
+      { name: 'サービス', keywords: ['サービス'] },
+    ];
+
+    const categorize = (industry) => {
+      if (!industry) return 'その他';
+      for (const c of CATEGORIES) {
+        if (c.keywords.some(kw => industry.includes(kw))) return c.name;
+      }
+      return 'その他';
+    };
+
     let rows;
     if (actionableOnly) {
-      // 未架電 = last_called_at IS NULL
-      // 不通 = 最終通話の result_code = NO_ANSWER
       [rows] = await pool.query(`
-        SELECT
-          CASE WHEN c.industry IS NULL OR c.industry = '' THEN '(未分類)' ELSE c.industry END AS industry,
-          COUNT(*) AS cnt
+        SELECT c.industry AS industry, COUNT(*) AS cnt
         FROM companies c
         WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
           AND (
@@ -1242,26 +1261,35 @@ async function getCompaniesIndustryStats(req, res, next) {
               ORDER BY cl.call_started_at DESC LIMIT 1
             ) = 'NO_ANSWER'
           )
-        GROUP BY industry
-        ORDER BY cnt DESC
+        GROUP BY c.industry
       `);
     } else {
       [rows] = await pool.query(`
-        SELECT
-          CASE WHEN c.industry IS NULL OR c.industry = '' THEN '(未分類)' ELSE c.industry END AS industry,
-          COUNT(*) AS cnt
+        SELECT c.industry AS industry, COUNT(*) AS cnt
         FROM companies c
         WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
-        GROUP BY industry
-        ORDER BY cnt DESC
+        GROUP BY c.industry
       `);
     }
 
-    const total = rows.reduce((s, r) => s + Number(r.cnt || 0), 0);
+    // カテゴリに集約
+    const categoryMap = new Map();
+    for (const r of rows) {
+      const cat = categorize(r.industry);
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + Number(r.cnt));
+    }
+
+    // 定義順でソート（その他は最後）
+    const categoryOrder = [...CATEGORIES.map(c => c.name), 'その他'];
+    const industries = categoryOrder
+      .filter(name => categoryMap.has(name))
+      .map(name => ({ industry: name, count: categoryMap.get(name) }));
+
+    const total = industries.reduce((s, r) => s + r.count, 0);
     return ApiResponse.success(res, {
       total,
       actionable: actionableOnly,
-      industries: rows.map(r => ({ industry: r.industry, count: Number(r.cnt) })),
+      industries,
     });
   } catch (err) {
     logger.error(`[industry-stats] ${err.message}`);
