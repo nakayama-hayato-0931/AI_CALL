@@ -813,6 +813,34 @@ const getQualityAll = async (req, res, next) => {
     }
     const qMap = new Map(rows.map(r => [r.user_id, r]));
 
+    // kpi_adjustments を案件数(total)に反映（CPAと一致させる）
+    if (qSystemFrom) {
+      try {
+        const [adjRows] = await pool.query(
+          `SELECT user_id, date, value FROM kpi_adjustments
+           WHERE field = 'project_count' AND date BETWEEN ? AND ?`,
+          [qSystemFrom, dateTo]
+        );
+        for (const adj of adjRows) {
+          const uid = adj.user_id;
+          const [rActual] = await pool.query(
+            `SELECT COUNT(*) as cnt FROM projects p
+             WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?`,
+            [uid, adj.date]
+          );
+          const actual = Number(rActual[0]?.cnt) || 0;
+          const delta = Number(adj.value) - actual;
+          let row = qMap.get(uid);
+          if (!row) {
+            row = { user_id: uid, total: 0, lost: 0, waiting_contact: 0, interview_set: 0, interview_done: 0, barashi: 0, online_interview: 0, no_screening: 0, screening_failed: 0 };
+            qMap.set(uid, row);
+            rows.push(row);
+          }
+          row.total = Number(row.total) + delta;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     const buildQ = (r) => {
       const t = r ? Number(r.total) : 0;
       const p = (v) => t > 0 ? Math.round(v / t * 10000) / 100 : 0;
