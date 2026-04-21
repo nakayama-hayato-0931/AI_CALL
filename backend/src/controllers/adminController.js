@@ -1210,7 +1210,64 @@ module.exports = {
   restoreMylistExclusions,
   cleanupDatabase,
   getDatabaseStats,
+  getCompaniesIndustryStats,
 };
+
+/**
+ * GET /api/admin/companies/industry-stats
+ * 業種別の件数統計
+ * ?actionable=1 で「未架電 + 最終結果が不通」の件数を返却
+ */
+async function getCompaniesIndustryStats(req, res, next) {
+  try {
+    const actionableOnly = req.query.actionable === '1' || req.query.actionable === 'true';
+
+    // 業種を正規化（カンマ区切りの先頭業種のみ使う）
+    // 単純に industry のまま集計
+    let rows;
+    if (actionableOnly) {
+      // 未架電 = last_called_at IS NULL
+      // 不通 = 最終通話の result_code = NO_ANSWER
+      [rows] = await pool.query(`
+        SELECT
+          CASE WHEN c.industry IS NULL OR c.industry = '' THEN '(未分類)' ELSE c.industry END AS industry,
+          COUNT(*) AS cnt
+        FROM companies c
+        WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
+          AND (
+            c.last_called_at IS NULL
+            OR (
+              SELECT cl.result_code FROM calls cl
+              WHERE cl.company_id = c.id
+              ORDER BY cl.call_started_at DESC LIMIT 1
+            ) = 'NO_ANSWER'
+          )
+        GROUP BY industry
+        ORDER BY cnt DESC
+      `);
+    } else {
+      [rows] = await pool.query(`
+        SELECT
+          CASE WHEN c.industry IS NULL OR c.industry = '' THEN '(未分類)' ELSE c.industry END AS industry,
+          COUNT(*) AS cnt
+        FROM companies c
+        WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
+        GROUP BY industry
+        ORDER BY cnt DESC
+      `);
+    }
+
+    const total = rows.reduce((s, r) => s + Number(r.cnt || 0), 0);
+    return ApiResponse.success(res, {
+      total,
+      actionable: actionableOnly,
+      industries: rows.map(r => ({ industry: r.industry, count: Number(r.cnt) })),
+    });
+  } catch (err) {
+    logger.error(`[industry-stats] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * GET /api/admin/database-stats

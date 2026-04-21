@@ -44,6 +44,8 @@ export default function AdminCompanies() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [showExcluded, setShowExcluded] = useState(false);
+  const [industryStats, setIndustryStats] = useState(null);
+  const [statsActionable, setStatsActionable] = useState(false);
   const [assignModal, setAssignModal] = useState(null);
   const [selectedOp, setSelectedOp] = useState('');
 
@@ -79,6 +81,18 @@ export default function AdminCompanies() {
   useEffect(() => {
     if (user) fetchCompanies();
   }, [user, page, search, showExcluded]);
+
+  useEffect(() => {
+    const fetchIndustryStats = async () => {
+      try {
+        const { data } = await api.get('/api/admin/companies/industry-stats', {
+          params: { actionable: statsActionable ? '1' : '0' },
+        });
+        if (data.success) setIndustryStats(data.data);
+      } catch (err) { /* silent */ }
+    };
+    if (user && activeTab === 'list') fetchIndustryStats();
+  }, [user, activeTab, statsActionable]);
 
   useEffect(() => {
     if (user && activeTab === 'area') fetchRules();
@@ -444,6 +458,58 @@ export default function AdminCompanies() {
 
           {pagination.total !== undefined && (
             <p className="text-sm text-gray-500 mb-3">全 {pagination.total.toLocaleString()} 件</p>
+          )}
+
+          {/* 業種別件数バッジ */}
+          {industryStats && (
+            <div className="card p-3 mb-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs text-gray-500 font-bold">業種別件数</span>
+                  <span className="text-sm font-bold text-gray-800">合計 {industryStats.total.toLocaleString()} 件</span>
+                  <span className="text-[10px] text-gray-400">
+                    {statsActionable ? '（未架電＋不通のみ）' : '（全件）'}
+                  </span>
+                </div>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={statsActionable}
+                    onChange={e => setStatsActionable(e.target.checked)}
+                    className="w-4 h-4 accent-blue-600 cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-600">未架電＋不通のみ</span>
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {industryStats.industries.length === 0 ? (
+                  <span className="text-xs text-gray-400">データなし</span>
+                ) : industryStats.industries.map(ind => {
+                  // 業種名ごとに色を変える（簡易ハッシュ）
+                  const colors = [
+                    'bg-blue-50 text-blue-700 border-blue-200',
+                    'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    'bg-amber-50 text-amber-700 border-amber-200',
+                    'bg-purple-50 text-purple-700 border-purple-200',
+                    'bg-pink-50 text-pink-700 border-pink-200',
+                    'bg-cyan-50 text-cyan-700 border-cyan-200',
+                    'bg-orange-50 text-orange-700 border-orange-200',
+                    'bg-lime-50 text-lime-700 border-lime-200',
+                  ];
+                  const hash = [...ind.industry].reduce((s, c) => s + c.charCodeAt(0), 0);
+                  const colorClass = colors[hash % colors.length];
+                  return (
+                    <span
+                      key={ind.industry}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium ${colorClass}`}
+                    >
+                      <span>{ind.industry}</span>
+                      <span className="font-bold">{ind.count.toLocaleString()}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           <div className="card overflow-hidden">

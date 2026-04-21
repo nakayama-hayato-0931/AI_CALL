@@ -15,6 +15,7 @@ const {
   restoreMylistExclusions,
   cleanupDatabase,
   getDatabaseStats,
+  getCompaniesIndustryStats,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 } = require('../controllers/adminController');
@@ -57,6 +58,7 @@ router.post('/time-rules/ai-suggest', requireEditor, aiSuggestTimeRules);
 router.post('/apply-rules-to-existing', requireEditor, applyRulesToExistingCompanies);
 router.post('/restore-mylist-exclusions', requireEditor, restoreMylistExclusions);
 router.get('/database-stats', requireManager, getDatabaseStats);
+router.get('/companies/industry-stats', requireManager, getCompaniesIndustryStats);
 router.post('/cleanup-database', requireEditor, cleanupDatabase);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);
