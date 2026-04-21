@@ -476,9 +476,9 @@ const getCpaAll = async (req, res, next) => {
       dateTo = range.dateTo;
     }
 
-    // アクティブオペレーター（交通費情報含む）
+    // オペレーター一覧（無効ユーザーも含む。データがあれば集計に含めるため）
     const [users] = await pool.execute(
-      "SELECT id, name, role, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // コスト（全員分一括）
@@ -729,7 +729,7 @@ const getCpaAll = async (req, res, next) => {
       const curWorkHours = workHoursMap.get(u.id) || 0;
       if (past) {
         return {
-          userId: u.id, name: u.name, role: u.role, workHours: curWorkHours,
+          userId: u.id, name: u.name, role: u.role, isActive: !!u.is_active, workHours: curWorkHours,
           ...buildRow(
             curCost + past.cost,
             curCalls + past.calls,
@@ -745,9 +745,14 @@ const getCpaAll = async (req, res, next) => {
         };
       }
       return {
-        userId: u.id, name: u.name, role: u.role, workHours: curWorkHours,
+        userId: u.id, name: u.name, role: u.role, isActive: !!u.is_active, workHours: curWorkHours,
         ...buildRow(curCost, curCalls, curProj, curFin),
       };
+    }).filter(op => {
+      // 無効ユーザーは数値が1以上の時のみ含める
+      if (op.isActive) return true;
+      return (Number(op.callCount) || 0) > 0 || (Number(op.projectCount) || 0) > 0
+        || (Number(op.interviewCount) || 0) > 0 || (Number(op.cost) || 0) > 0;
     });
 
     const effectiveTeamCost = teamCost; // cost_records（3月以降の打刻データ）
@@ -785,7 +790,7 @@ const getQualityAll = async (req, res, next) => {
     }
 
     const [users] = await pool.execute(
-      "SELECT id, name, role, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, is_active, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得
@@ -912,9 +917,13 @@ const getQualityAll = async (req, res, next) => {
       if (sysData && pastData) {
         const merged = { ...sysData };
         for (const f of fields) merged[f] = Number(sysData[f] || 0) + Number(pastData[f] || 0);
-        return { userId: u.id, name: u.name, role: u.role, ...buildQ(merged) };
+        return { userId: u.id, name: u.name, role: u.role, isActive: !!u.is_active, ...buildQ(merged) };
       }
-      return { userId: u.id, name: u.name, role: u.role, ...buildQ(sysData || pastData || null) };
+      return { userId: u.id, name: u.name, role: u.role, isActive: !!u.is_active, ...buildQ(sysData || pastData || null) };
+    }).filter(op => {
+      // 無効ユーザーは案件数が1以上の時のみ含める
+      if (op.isActive) return true;
+      return (Number(op.total) || 0) > 0;
     });
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
