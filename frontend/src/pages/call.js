@@ -57,6 +57,8 @@ export default function CallPage() {
 
   // 架電リスト
   const [targetList, setTargetList] = useState([]);
+  const prefetchedListRef = useRef(null); // バックグラウンドで事前取得した次の候補リスト
+  const prefetchPromiseRef = useRef(null); // 進行中のprefetchプロミス
   const [listLoading, setListLoading] = useState(true);
 
   // 選択中の企業
@@ -363,15 +365,41 @@ export default function CallPage() {
   };
 
   // 自動架電モード: 次の架電先に進み、自動で架電開始
+  // バックグラウンドで次の候補を事前取得
+  const prefetchNextCallList = (excludeId = null) => {
+    const params = {};
+    if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
+    if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
+    if (excludeId) params.exclude = excludeId;
+    const p = api.get('/api/companies/call-list', { params })
+      .then(res => {
+        prefetchedListRef.current = res.data?.data?.targets || [];
+        return prefetchedListRef.current;
+      })
+      .catch(() => { prefetchedListRef.current = null; return null; })
+      .finally(() => { prefetchPromiseRef.current = null; });
+    prefetchPromiseRef.current = p;
+    return p;
+  };
+
   const autoAdvanceAndCall = async (excludeId = null) => {
     try {
-      // 最新リストを取得（refから最新モード値を取得）
-      const params = {};
-      if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
-      if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
-      if (excludeId) params.exclude = excludeId;
-      const { data } = await api.get('/api/companies/call-list', { params });
-      const targets = data.data.targets || [];
+      // 事前取得済みがあればそれを優先使用
+      let targets;
+      if (prefetchedListRef.current && prefetchedListRef.current.length > 0) {
+        targets = prefetchedListRef.current;
+        prefetchedListRef.current = null; // 使い切り
+      } else if (prefetchPromiseRef.current) {
+        // prefetch進行中なら待つ
+        targets = (await prefetchPromiseRef.current) || [];
+      } else {
+        const params = {};
+        if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
+        if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
+        if (excludeId) params.exclude = excludeId;
+        const { data } = await api.get('/api/companies/call-list', { params });
+        targets = data.data.targets || [];
+      }
       setTargetList(targets);
 
       if (targets.length === 0) {
@@ -425,6 +453,8 @@ export default function CallPage() {
       const phoneForZoom = formatPhoneForZoom(nextCompany.phone_number);
       window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success(`自動架電: ${nextCompany.company_name}`);
+      // 架電開始直後にバックグラウンドで次候補を事前取得
+      setTimeout(() => prefetchNextCallList(nextCompany.id), 500);
     } catch (err) {
       toast.error('自動架電に失敗しました');
       setAutoMode(false);
@@ -463,6 +493,8 @@ export default function CallPage() {
       const phoneForZoom = formatPhoneForZoom(company.phone_number);
       window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success('自動架電モードを開始しました');
+      // 架電中にバックグラウンドで次候補を事前取得
+      setTimeout(() => prefetchNextCallList(company.id), 500);
     } catch (err) {
       if (err.response?.status === 409) {
         toast.error('ロックが失われました。もう一度選択してください。');
