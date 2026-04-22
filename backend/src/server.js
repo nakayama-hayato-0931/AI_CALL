@@ -352,6 +352,13 @@ const runMigrations = async () => {
   // companiesの頻用フィルタ用インデックス
   try { await pool.execute('CREATE INDEX idx_companies_exc_spec ON companies(exclusion_flag, is_special)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_locked ON companies(locked_by_user_id, locked_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_last_called ON companies(last_called_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_industry ON companies(industry)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_imported ON companies(imported_by_user_id)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_sales ON companies(is_sales_list, exclusion_flag, is_special)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_calls_user_result ON calls(user_id, result_code, call_started_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
   // system_settings テーブル（チーム目標値等）
   try {
     await pool.execute(`

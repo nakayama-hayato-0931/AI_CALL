@@ -504,10 +504,19 @@ const getCallList = async (req, res, next) => {
     const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
-    // autoモードのみ: ゴールデンタイム未設定業種を除外
-    const goldenIndFilter = (mode === 'auto')
-      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
+    // パフォーマンス: 頻繁に参照するマスタを先に取得してサブクエリを回避
+    let goldenIndList = [];
+    if (mode === 'auto') {
+      try {
+        const [rows] = await pool.query('SELECT DISTINCT industry_name FROM industry_time_rules');
+        goldenIndList = rows.map(r => r.industry_name).filter(Boolean);
+      } catch (e) { /* ignore */ }
+    }
+    // autoモードのみ: ゴールデンタイム未設定業種を除外（サブクエリをIN句に変換）
+    const goldenIndFilter = (mode === 'auto' && goldenIndList.length > 0)
+      ? `AND c.industry IN (${goldenIndList.map(() => '?').join(',')})`
       : '';
+    const goldenIndParams = (mode === 'auto' && goldenIndList.length > 0) ? goldenIndList : [];
 
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
@@ -608,7 +617,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining2]
+      [userId, currentTime, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining2]
     );
     targets.push(...goldenRows);
     excludeIds = targets.map(t => t.id);
@@ -636,7 +645,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);
@@ -666,7 +675,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining4]
+      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining4]
     );
     targets.push(...retryRows);
     excludeIds = targets.map(t => t.id);
@@ -697,7 +706,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining5]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining5]
     );
     targets.push(...ngRetryRows);
 
