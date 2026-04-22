@@ -14,6 +14,18 @@ import toast from 'react-hot-toast';
 const GMAIL_URL = 'https://mail.google.com/mail/u/0/?authuser=hitokiwa.recruit@gmail.com';
 const DASHBOARD_URL = 'https://hitokiwa-dashboard.vercel.app/';
 
+// ZoomPhone用の電話番号整形: ハイフン・空白・全角除去し、0始まりは+81に変換
+const formatPhoneForZoom = (raw) => {
+  if (!raw) return '';
+  // 全角→半角、ハイフン・空白・括弧を除去
+  let digits = String(raw)
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[^\d+]/g, ''); // 数字と+以外を全部除去
+  if (digits.startsWith('+')) return digits; // 既に国際形式
+  if (digits.startsWith('0')) return '+81' + digits.slice(1);
+  return digits;
+};
+
 const RESULT_CODES = [
   { code: 'NO_ANSWER', label: '不通', bg: 'bg-gray-100', text: 'text-gray-700', activeBg: 'bg-gray-600', activeText: 'text-white' },
   { code: 'NG', label: 'NG', bg: 'bg-red-50', text: 'text-red-700', activeBg: 'bg-red-500', activeText: 'text-white' },
@@ -382,9 +394,7 @@ export default function CallPage() {
       const callRes = await api.post('/api/calls/start', { company_id: nextCompany.id, call_type: callType });
       setCallId(callRes.data.data.callId);
       setCalling(true);
-      const phoneForZoom = nextCompany.phone_number.startsWith('0')
-        ? '+81' + nextCompany.phone_number.slice(1)
-        : nextCompany.phone_number;
+      const phoneForZoom = formatPhoneForZoom(nextCompany.phone_number);
       window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success(`自動架電: ${nextCompany.company_name}`);
     } catch (err) {
@@ -431,9 +441,7 @@ export default function CallPage() {
       setAutoPaused(false);
       autoPausedRef.current = false;
       // ZoomPhone起動: zoomphonecall://電話番号 でZoom Phoneアプリを起動
-      const phoneForZoom = company.phone_number.startsWith('0')
-        ? '+81' + company.phone_number.slice(1)
-        : company.phone_number;
+      const phoneForZoom = formatPhoneForZoom(company.phone_number);
       window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success('自動架電モードを開始しました');
     } catch (err) {
@@ -829,7 +837,8 @@ export default function CallPage() {
               {/* 架電操作 */}
               <div className="card p-5 flex flex-col items-center justify-center min-h-[400px]">
                 <p className="text-xl font-bold text-gray-900 tracking-wider mb-1">{company.phone_number}</p>
-                <p className="text-sm text-gray-400 mb-8">{company.company_name}</p>
+                <p className="text-[10px] text-gray-400 -mt-0.5">Zoom発信先: {formatPhoneForZoom(company.phone_number)}</p>
+                <p className="text-sm text-gray-400 mb-8 mt-1">{company.company_name}</p>
 
                 {!calling ? (
                   <button
