@@ -26,6 +26,25 @@ const formatPhoneForZoom = (raw) => {
   return digits;
 };
 
+// ZoomPhone起動: 確実に新しいURLが送信されるよう<a>タグ経由で実行
+// window.location.href は連続呼び出しで古い値が残ることがある
+const launchZoomPhone = (phoneNumber) => {
+  const url = `zoomphonecall://${phoneNumber}`;
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_self';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { try { document.body.removeChild(a); } catch (_) {} }, 100);
+    console.log('[ZoomPhone] 発信:', phoneNumber);
+  } catch (e) {
+    // フォールバック
+    window.location.href = url;
+  }
+};
+
 const RESULT_CODES = [
   { code: 'NO_ANSWER', label: '不通', bg: 'bg-gray-100', text: 'text-gray-700', activeBg: 'bg-gray-600', activeText: 'text-white' },
   { code: 'NG', label: 'NG', bg: 'bg-red-50', text: 'text-red-700', activeBg: 'bg-red-500', activeText: 'text-white' },
@@ -265,6 +284,8 @@ export default function CallPage() {
   // ターゲット選択 & ロック取得
   const handleSelectTarget = async (target) => {
     if (calling) return;
+    // 手動選択時はプリフェッチキャッシュを無効化（古い情報で次架電しないように）
+    prefetchedListRef.current = null;
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
@@ -451,7 +472,7 @@ export default function CallPage() {
       setCallId(callRes.data.data.callId);
       setCalling(true);
       const phoneForZoom = formatPhoneForZoom(nextCompany.phone_number);
-      window.location.href = `zoomphonecall://${phoneForZoom}`;
+      launchZoomPhone(phoneForZoom);
       toast.success(`自動架電: ${nextCompany.company_name}`);
       // 架電開始直後にバックグラウンドで次候補を事前取得
       setTimeout(() => prefetchNextCallList(nextCompany.id), 500);
@@ -491,7 +512,7 @@ export default function CallPage() {
       autoPausedRef.current = false;
       // ZoomPhone起動: zoomphonecall://電話番号 でZoom Phoneアプリを起動
       const phoneForZoom = formatPhoneForZoom(company.phone_number);
-      window.location.href = `zoomphonecall://${phoneForZoom}`;
+      launchZoomPhone(phoneForZoom);
       toast.success('自動架電モードを開始しました');
       // 架電中にバックグラウンドで次候補を事前取得
       setTimeout(() => prefetchNextCallList(company.id), 500);
@@ -605,8 +626,11 @@ export default function CallPage() {
         setSelectedTargetId(null);
       }
       await api.post('/api/calls/skip', { company_id: targetId });
-      // リストから即座に除外
+      // リストから即座に除外 & プリフェッチキャッシュも無効化
       setTargetList(prev => prev.filter(t => t.id !== targetId));
+      if (prefetchedListRef.current) {
+        prefetchedListRef.current = prefetchedListRef.current.filter(t => t.id !== targetId);
+      }
       toast.success('スキップしました');
     } catch (err) {
       toast.error('スキップに失敗しました');
