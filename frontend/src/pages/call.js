@@ -324,33 +324,41 @@ export default function CallPage() {
         return;
       }
 
-      // リスト先頭のターゲットを自動選択
-      const nextTarget = targets[0];
+      // 候補を順番にロック取得試行（競合時は自動で次候補へ）
+      let nextTarget = null;
+      let lockData = null;
+      for (const t of targets) {
+        try {
+          const lockRes = await api.post(`/api/companies/${t.id}/lock`);
+          nextTarget = t;
+          lockData = lockRes.data.data;
+          break;
+        } catch (lockErr) {
+          if (lockErr.response?.status === 409) continue;
+          throw lockErr;
+        }
+      }
 
-      // ロック取得
-      const lockRes = await api.post(`/api/companies/${nextTarget.id}/lock`);
-      const nextCompany = lockRes.data.data.company;
-      setCompany(nextCompany);
-      setCallHistory(lockRes.data.data.callHistory || []);
+      if (!nextTarget || !lockData) {
+        toast('全候補が他のオペレーターと競合しています', { icon: '🔄' });
+        setCompany(null);
+        setSelectedTargetId(null);
+        await fetchCallList();
+        return;
+      }
+
+      setCompany(lockData.company);
+      setCallHistory(lockData.callHistory || []);
       setSelectedTargetId(nextTarget.id);
       setReason(nextTarget.reason);
       resetForm();
 
-      // ここで止まる（架電開始ボタンを手動で押す）
-      toast.success(`次の架電先: ${nextCompany.company_name}`);
+      toast.success(`次の架電先: ${lockData.company.company_name}`);
     } catch (err) {
-      if (err.response?.status === 409) {
-        // ロック競合 → リスト再取得して手動選択に戻す
-        toast.error('次の架電先は他のオペレーターが対応中です。リストから選択してください。');
-        setCompany(null);
-        setSelectedTargetId(null);
-        await fetchCallList();
-      } else {
-        toast.error('自動選択に失敗しました');
-        setCompany(null);
-        setSelectedTargetId(null);
-        await fetchCallList();
-      }
+      toast.error('自動選択に失敗しました');
+      setCompany(null);
+      setSelectedTargetId(null);
+      await fetchCallList();
     }
   };
 
@@ -378,14 +386,34 @@ export default function CallPage() {
         return;
       }
 
-      // リスト先頭のターゲットを自動選択
-      const nextTarget = targets[0];
+      // 候補を順番にロック取得試行（他オペレーター競合時は自動で次候補へ）
+      let nextTarget = null;
+      let lockData = null;
+      for (const t of targets) {
+        try {
+          const lockRes = await api.post(`/api/companies/${t.id}/lock`);
+          nextTarget = t;
+          lockData = lockRes.data.data;
+          break;
+        } catch (lockErr) {
+          if (lockErr.response?.status === 409) {
+            // 他OPが取得済み → 次の候補を試行
+            continue;
+          }
+          throw lockErr;
+        }
+      }
 
-      // ロック取得
-      const lockRes = await api.post(`/api/companies/${nextTarget.id}/lock`);
-      const nextCompany = lockRes.data.data.company;
+      if (!nextTarget || !lockData) {
+        // 全候補が競合していた → リスト再取得のみ
+        toast('全候補が他のオペレーターと競合しています。再取得します...', { icon: '🔄' });
+        await fetchCallList();
+        return;
+      }
+
+      const nextCompany = lockData.company;
       setCompany(nextCompany);
-      setCallHistory(lockRes.data.data.callHistory || []);
+      setCallHistory(lockData.callHistory || []);
       setSelectedTargetId(nextTarget.id);
       setReason(nextTarget.reason);
       resetForm();
@@ -398,21 +426,12 @@ export default function CallPage() {
       window.location.href = `zoomphonecall://${phoneForZoom}`;
       toast.success(`自動架電: ${nextCompany.company_name}`);
     } catch (err) {
-      if (err.response?.status === 409) {
-        toast.error('次の架電先は他のオペレーターが対応中です。リストから選択してください。');
-        setAutoMode(false);
-        setCalling(false);
-        setCompany(null);
-        setSelectedTargetId(null);
-        await fetchCallList();
-      } else {
-        toast.error('自動架電に失敗しました');
-        setAutoMode(false);
-        setCalling(false);
-        setCompany(null);
-        setSelectedTargetId(null);
-        await fetchCallList();
-      }
+      toast.error('自動架電に失敗しました');
+      setAutoMode(false);
+      setCalling(false);
+      setCompany(null);
+      setSelectedTargetId(null);
+      await fetchCallList();
     }
   };
 
