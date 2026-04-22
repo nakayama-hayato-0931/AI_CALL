@@ -347,6 +347,11 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_calls_started_at ON calls(call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_started ON calls(user_id, call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_result_started ON calls(result_code, call_started_at)'); } catch (e) {}
+  // 自動ピックアップのlockFilter内NOT EXISTS高速化
+  try { await pool.execute('CREATE INDEX idx_calls_company_result_started ON calls(company_id, result_code, call_started_at)'); } catch (e) {}
+  // companiesの頻用フィルタ用インデックス
+  try { await pool.execute('CREATE INDEX idx_companies_exc_spec ON companies(exclusion_flag, is_special)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_locked ON companies(locked_by_user_id, locked_at)'); } catch (e) {}
   // system_settings テーブル（チーム目標値等）
   try {
     await pool.execute(`
