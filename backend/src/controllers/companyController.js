@@ -297,9 +297,17 @@ const getNextCallTarget = async (req, res, next) => {
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
+    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
-      modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
-      modeFilterParams = [industryParam];
+      if (CATEGORY_NAMES_LIST.includes(industryParam)) {
+        // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
+        modeFilterSQL = `AND (${CATEGORY_SQL_EXPR}) = ?`;
+        modeFilterParams = [industryParam];
+      } else {
+        // 自由キーワードは従来の部分一致
+        modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
+        modeFilterParams = [industryParam];
+      }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
       modeFilterParams = [userId];
@@ -492,9 +500,17 @@ const getCallList = async (req, res, next) => {
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
+    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
-      modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
-      modeFilterParams = [industryParam];
+      if (CATEGORY_NAMES_LIST.includes(industryParam)) {
+        // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
+        modeFilterSQL = `AND (${CATEGORY_SQL_EXPR}) = ?`;
+        modeFilterParams = [industryParam];
+      } else {
+        // 自由キーワードは従来の部分一致
+        modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
+        modeFilterParams = [industryParam];
+      }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
       modeFilterParams = [userId];
