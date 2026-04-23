@@ -1238,7 +1238,50 @@ module.exports = {
   getDatabaseStats,
   getCompaniesIndustryStats,
   bulkDeleteCompanies,
+  getAutoPickupIndustries,
+  setAutoPickupIndustries,
 };
+
+/**
+ * GET /api/admin/auto-pickup-industries
+ * 自動ピックアップ対象業種マップ（system_settings）を返す
+ */
+async function getAutoPickupIndustries(req, res, next) {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
+    );
+    let map = {};
+    if (rows.length > 0) {
+      try { map = JSON.parse(rows[0].setting_value); } catch (e) {}
+    }
+    return ApiResponse.success(res, { industries: map });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * PUT /api/admin/auto-pickup-industries
+ * body: { industries: { 飲食: true, 製造: false, ... } }
+ */
+async function setAutoPickupIndustries(req, res, next) {
+  try {
+    const { industries } = req.body || {};
+    if (!industries || typeof industries !== 'object') {
+      return ApiResponse.badRequest(res, 'industries オブジェクトが必要です');
+    }
+    await pool.execute(
+      `INSERT INTO system_settings (setting_key, setting_value) VALUES ('auto_pickup_industries', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [JSON.stringify(industries)]
+    );
+    logger.info(`自動ピックアップ業種更新: ${JSON.stringify(industries)}`);
+    return ApiResponse.success(res, { industries });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * POST /api/admin/companies/bulk-delete

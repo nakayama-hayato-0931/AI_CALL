@@ -17,6 +17,8 @@ const {
   getDatabaseStats,
   getCompaniesIndustryStats,
   bulkDeleteCompanies,
+  getAutoPickupIndustries,
+  setAutoPickupIndustries,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
 } = require('../controllers/adminController');
@@ -61,6 +63,8 @@ router.post('/restore-mylist-exclusions', requireEditor, restoreMylistExclusions
 router.get('/database-stats', requireManager, getDatabaseStats);
 router.get('/companies/industry-stats', requireManager, getCompaniesIndustryStats);
 router.post('/companies/bulk-delete', requireEditor, bulkDeleteCompanies);
+router.get('/auto-pickup-industries', requireManager, getAutoPickupIndustries);
+router.put('/auto-pickup-industries', requireEditor, setAutoPickupIndustries);
 router.post('/cleanup-database', requireEditor, cleanupDatabase);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);

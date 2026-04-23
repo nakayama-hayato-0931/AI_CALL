@@ -531,6 +531,24 @@ const getCallList = async (req, res, next) => {
           goldenIndFilter = `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`;
         }
       } catch (e) { /* テーブル無しは無視 */ }
+
+      // 自動対象業種の有効/無効設定を取得（チェック外し業種を除外）
+      try {
+        const [rows] = await pool.execute(
+          "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
+        );
+        if (rows.length > 0) {
+          const map = JSON.parse(rows[0].setting_value || '{}');
+          // 無効化されているカテゴリを収集
+          const disabledCats = Object.entries(map).filter(([k, v]) => v === false).map(([k]) => k);
+          if (disabledCats.length > 0) {
+            // カテゴリ判定で無効化カテゴリに該当する企業を除外
+            const placeholders = disabledCats.map(() => '?').join(',');
+            goldenIndFilter += ` AND (${CATEGORY_SQL_EXPR}) NOT IN (${placeholders})`;
+            goldenIndParams.push(...disabledCats);
+          }
+        }
+      } catch (e) { /* ignore */ }
     }
 
     let targets = [];

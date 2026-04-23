@@ -72,6 +72,8 @@ export default function AdminCompanies() {
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { rules, summary, rawData }
   const [aiSelectedIndustries, setAiSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
+  // 自動ピックアップ対象業種（サーバー保存）
+  const [autoPickupLoaded, setAutoPickupLoaded] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
   const [dbStats, setDbStats] = useState(null);
 
@@ -101,8 +103,32 @@ export default function AdminCompanies() {
 
   useEffect(() => {
     if (user && activeTab === 'area') fetchRules();
-    if (user && activeTab === 'time') fetchTimeRules();
+    if (user && activeTab === 'time') {
+      fetchTimeRules();
+      // 自動ピックアップ対象業種マップ取得
+      api.get('/api/admin/auto-pickup-industries').then(res => {
+        if (res.data.success) {
+          const map = res.data.data.industries || {};
+          // 保存済みマップがあれば優先、なければデフォルト全部true
+          const merged = INDUSTRIES.reduce((acc, ind) => ({
+            ...acc,
+            [ind]: map[ind] !== undefined ? map[ind] : true,
+          }), {});
+          setAiSelectedIndustries(merged);
+          setAutoPickupLoaded(true);
+        }
+      }).catch(() => {});
+    }
   }, [user, activeTab]);
+
+  // チェックボックス変更時にサーバー保存
+  const updateAutoPickupIndustries = async (newMap) => {
+    try {
+      await api.put('/api/admin/auto-pickup-industries', { industries: newMap });
+    } catch (err) {
+      toast.error('自動対象業種の保存に失敗しました');
+    }
+  };
 
   // === 架電リスト 関数 ===
   const fetchOperators = async () => {
@@ -774,7 +800,7 @@ export default function AdminCompanies() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
                       <th className="px-3 py-2 text-left text-gray-500 font-semibold">
-                        <div className="text-[10px] text-gray-400 font-normal mb-0.5">AI対象</div>
+                        <div className="text-[10px] text-gray-400 font-normal mb-0.5">自動対象</div>
                         時間
                       </th>
                       {INDUSTRIES.map(ind => (
@@ -783,9 +809,13 @@ export default function AdminCompanies() {
                             <input
                               type="checkbox"
                               checked={!!aiSelectedIndustries[ind]}
-                              onChange={e => setAiSelectedIndustries(p => ({ ...p, [ind]: e.target.checked }))}
+                              onChange={e => {
+                                const newMap = { ...aiSelectedIndustries, [ind]: e.target.checked };
+                                setAiSelectedIndustries(newMap);
+                                updateAutoPickupIndustries(newMap);
+                              }}
                               className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
-                              title={`${ind}をAI自動設定対象にする`}
+                              title={`${ind}を自動ピックアップ対象にする（AI自動設定対象も兼ねる）`}
                             />
                           </div>
                           {ind}
