@@ -513,19 +513,12 @@ const getCallList = async (req, res, next) => {
     const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
-    // autoモードのみ: ゴールデンタイム未設定業種を除外
-    // ただし industry_time_rules が空の場合はフィルタをスキップ（全業種対象）
+    // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外
+    // ※ 旧「ゴールデンタイム未設定業種除外」は STRICT equality でAUTOが全除外される問題があったため削除
+    //   ゴールデンタイム優先はTier2でJOIN industry_time_rulesにより実現
     let goldenIndFilter = '';
     const goldenIndParams = [];
     if (mode === 'auto') {
-      try {
-        const [r] = await pool.query('SELECT COUNT(*) as cnt FROM industry_time_rules');
-        if (Number(r[0]?.cnt || 0) > 0) {
-          goldenIndFilter = `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`;
-        }
-      } catch (e) { /* テーブル無しは無視 */ }
-
-      // 自動対象業種の有効/無効設定を取得（チェック外し業種を除外）
       try {
         const [rows] = await pool.execute(
           "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
@@ -534,9 +527,8 @@ const getCallList = async (req, res, next) => {
           const map = JSON.parse(rows[0].setting_value || '{}');
           const disabledCats = Object.entries(map).filter(([k, v]) => v === false).map(([k]) => k);
           if (disabledCats.length > 0) {
-            // 事前計算済みindustry_categoryカラムで高速除外
             const placeholders = disabledCats.map(() => '?').join(',');
-            goldenIndFilter += ` AND (c.industry_category IS NULL OR c.industry_category NOT IN (${placeholders}))`;
+            goldenIndFilter = `AND (c.industry_category IS NULL OR c.industry_category NOT IN (${placeholders}))`;
             goldenIndParams.push(...disabledCats);
           }
         }
