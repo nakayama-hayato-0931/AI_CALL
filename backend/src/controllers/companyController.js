@@ -39,7 +39,7 @@ const getCompanies = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { search, industry, region, show_excluded, list_type, is_sales_list } = req.query;
+    const { search, industry, region, show_excluded, list_type, is_sales_list, mylist } = req.query;
 
     let whereClauses = [];
     let params = [];
@@ -54,6 +54,12 @@ const getCompanies = async (req, res, next) => {
       whereClauses.push('c.is_special = 1');
     } else {
       whereClauses.push('c.is_special = 0');
+    }
+
+    // mylist=1 なら自作リスト（リクエストユーザーがインポートした企業）のみ
+    if (mylist === '1' && req.user?.id) {
+      whereClauses.push('c.imported_by_user_id = ?');
+      params.push(req.user.id);
     }
 
     // 営業/オペレーターリスト分離

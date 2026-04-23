@@ -107,6 +107,7 @@ export default function CallListPage() {
       if (region) params.region = region;
       if (showExcluded) params.show_excluded = '1';
       if (listView === 'special') params.list_type = 'special';
+      else if (listView === 'mylist') params.mylist = '1';
       const { data } = await api.get('/api/companies', { params });
       setCompanies(data.data.companies);
       setPagination(data.data.pagination);
@@ -742,6 +743,7 @@ export default function CallListPage() {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-4">
         {[
           { key: 'calllist', label: '架電リスト' },
+          { key: 'mylist', label: '自作リスト' },
           { key: 'special', label: '特別リスト' },
         ].map((tab) => (
           <button
