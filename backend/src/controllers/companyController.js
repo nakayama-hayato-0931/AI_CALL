@@ -505,12 +505,17 @@ const getCallList = async (req, res, next) => {
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
     // autoモードのみ: ゴールデンタイム未設定業種を除外
-    // パフォーマンス: 毎回サブクエリではなく起動時にDBマスタをキャッシュしたいが
-    // 安全のためサブクエリ維持（インデックス追加で高速化済み）
-    const goldenIndFilter = (mode === 'auto')
-      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
-      : '';
+    // ただし industry_time_rules が空の場合はフィルタをスキップ（全業種対象）
+    let goldenIndFilter = '';
     const goldenIndParams = [];
+    if (mode === 'auto') {
+      try {
+        const [r] = await pool.query('SELECT COUNT(*) as cnt FROM industry_time_rules');
+        if (Number(r[0]?.cnt || 0) > 0) {
+          goldenIndFilter = `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`;
+        }
+      } catch (e) { /* テーブル無しは無視 */ }
+    }
 
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
