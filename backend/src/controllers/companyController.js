@@ -725,7 +725,16 @@ const getCallList = async (req, res, next) => {
     );
     targets.push(...ngRetryRows);
 
-    return ApiResponse.success(res, { targets });
+    // デバッグ: 各ティアの件数をログ出力
+    logger.info(`[getCallList] mode=${mode} user=${userId} recall=${recallRows.length} golden=${goldenRows.length} untouched=${untouchedRows.length} retry_na=${retryRows.length} retry_ng=${ngRetryRows.length} total=${targets.length}`);
+
+    return ApiResponse.success(res, { targets, debug: {
+      recall: recallRows.length,
+      golden: goldenRows.length,
+      untouched: untouchedRows.length,
+      retry_no_answer: retryRows.length,
+      retry_ng: ngRetryRows.length,
+    } });
   } catch (err) {
     logger.error(`[getCallList] ${err.code} ${err.message} sqlMessage=${err.sqlMessage} sql=${(err.sql || '').slice(0, 500)}`);
     return ApiResponse.error(res, `架電リスト取得失敗: ${err.sqlMessage || err.message}`, 500);
