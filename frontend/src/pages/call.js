@@ -76,6 +76,7 @@ export default function CallPage() {
 
   // 架電リスト
   const [targetList, setTargetList] = useState([]);
+  const [selecting, setSelecting] = useState(false); // 選択処理中フラグ（ボタン無効化用）
   const prefetchedListRef = useRef(null); // バックグラウンドで事前取得した次の候補リスト
   const prefetchPromiseRef = useRef(null); // 進行中のprefetchプロミス
   const [listLoading, setListLoading] = useState(true);
@@ -283,9 +284,21 @@ export default function CallPage() {
 
   // ターゲット選択 & ロック取得
   const handleSelectTarget = async (target) => {
-    if (calling) return;
+    if (calling || selecting) return;
+    setSelecting(true);
     // 手動選択時はプリフェッチキャッシュを無効化（古い情報で次架電しないように）
     prefetchedListRef.current = null;
+    // UI即時更新: 選択中の企業情報を即座に反映（ロック前でも表示を切替）
+    setSelectedTargetId(target.id);
+    // 先に仮のcompanyを設定（完全な情報はlock後に上書き）
+    setCompany({ id: target.id, company_name: target.company_name, phone_number: target.phone_number, industry: target.industry, job_type: target.job_type, comment: target.comment, address: target.address, region: target.region, data_source: target.data_source });
+    setCallHistory([]);
+    setReason(target.reason);
+    setResultCode('');
+    setMemo('');
+    setRecallAt('');
+    setIsEffective(false);
+    setIsPerson(false);
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
@@ -295,23 +308,23 @@ export default function CallPage() {
       }
       // 新しいロックを取得
       const { data } = await api.post(`/api/companies/${target.id}/lock`);
+      // ロック成功後、完全な企業情報で上書き
       setCompany(data.data.company);
       setCallHistory(data.data.callHistory || []);
-      setSelectedTargetId(target.id);
-      setReason(target.reason);
-      // フォームリセット
-      setResultCode('');
-      setMemo('');
-      setRecallAt('');
-      setIsEffective(false);
-      setIsPerson(false);
     } catch (err) {
       if (err.response?.status === 409) {
         toast.error('この企業は他のオペレーターが対応中です');
+        // 失敗したので選択解除
+        setCompany(null);
+        setSelectedTargetId(null);
         fetchCallList();
       } else {
         toast.error('選択に失敗しました');
+        setCompany(null);
+        setSelectedTargetId(null);
       }
+    } finally {
+      setSelecting(false);
     }
   };
 
@@ -501,6 +514,15 @@ export default function CallPage() {
 
   const handleStartCall = async () => {
     if (!company) return;
+    if (selecting) {
+      toast('選択処理中です。完了までお待ちください', { icon: '⏳' });
+      return;
+    }
+    // 念のため: company.id と selectedTargetId が一致しているか確認
+    if (selectedTargetId && company.id !== selectedTargetId) {
+      toast.error('選択情報が同期していません。もう一度企業を選んでください');
+      return;
+    }
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
@@ -918,13 +940,26 @@ export default function CallPage() {
                 {!calling ? (
                   <button
                     onClick={handleStartCall}
-                    className="group w-36 h-36 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-lg font-bold shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-emerald-500/30 hover:scale-[1.03] active:scale-95 flex items-center justify-center"
+                    disabled={selecting}
+                    className={`group w-36 h-36 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-lg font-bold shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-emerald-500/30 hover:scale-[1.03] active:scale-95 flex items-center justify-center ${selecting ? 'opacity-60 cursor-not-allowed hover:scale-100' : ''}`}
                   >
                     <div className="text-center">
-                      <svg className="w-8 h-8 mx-auto mb-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                      </svg>
-                      <span className="text-sm font-bold">自動架電開始</span>
+                      {selecting ? (
+                        <>
+                          <svg className="w-8 h-8 mx-auto mb-1.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span className="text-sm font-bold">選択中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-8 h-8 mx-auto mb-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                          </svg>
+                          <span className="text-sm font-bold">自動架電開始</span>
+                        </>
+                      )}
                     </div>
                   </button>
                 ) : (
