@@ -182,7 +182,8 @@ export default function CallPage() {
       const { data } = await api.get('/api/companies/call-list', { params: getModeParams() });
       setTargetList(data.data.targets || []);
     } catch (err) {
-      toast.error('架電リストの取得に失敗しました');
+      const msg = err.response?.data?.message || '架電リストの取得に失敗しました';
+      toast.error(msg, { duration: 10000 });
     } finally {
       setListLoading(false);
     }
