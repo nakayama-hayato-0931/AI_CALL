@@ -193,6 +193,15 @@ export default function CallPage() {
     fetchCallList();
   }, [fetchCallList]);
 
+  // 架電中でない時、15秒ごとに自動リフレッシュ（他OPがピックアップした企業を除外するため）
+  useEffect(() => {
+    if (calling || selecting) return;
+    const interval = setInterval(() => {
+      fetchCallList();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [calling, selecting, fetchCallList]);
+
   // 管理者: オペレーター一覧取得（特別リスト割り当て用）
   useEffect(() => {
     if (isManager) {
