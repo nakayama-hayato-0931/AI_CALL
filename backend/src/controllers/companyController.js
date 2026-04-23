@@ -504,19 +504,13 @@ const getCallList = async (req, res, next) => {
     const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
-    // パフォーマンス: 頻繁に参照するマスタを先に取得してサブクエリを回避
-    let goldenIndList = [];
-    if (mode === 'auto') {
-      try {
-        const [rows] = await pool.query('SELECT DISTINCT industry_name FROM industry_time_rules');
-        goldenIndList = rows.map(r => r.industry_name).filter(Boolean);
-      } catch (e) { /* ignore */ }
-    }
-    // autoモードのみ: ゴールデンタイム未設定業種を除外（サブクエリをIN句に変換）
-    const goldenIndFilter = (mode === 'auto' && goldenIndList.length > 0)
-      ? `AND c.industry IN (${goldenIndList.map(() => '?').join(',')})`
+    // autoモードのみ: ゴールデンタイム未設定業種を除外
+    // パフォーマンス: 毎回サブクエリではなく起動時にDBマスタをキャッシュしたいが
+    // 安全のためサブクエリ維持（インデックス追加で高速化済み）
+    const goldenIndFilter = (mode === 'auto')
+      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
       : '';
-    const goldenIndParams = (mode === 'auto' && goldenIndList.length > 0) ? goldenIndList : [];
+    const goldenIndParams = [];
 
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
