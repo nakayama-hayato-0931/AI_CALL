@@ -662,7 +662,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);
