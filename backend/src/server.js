@@ -367,17 +367,17 @@ const runMigrations = async () => {
   try {
     await pool.execute('CREATE INDEX idx_companies_category ON companies(industry_category)');
   } catch (e) {}
-  // 未設定企業のカテゴリを一括計算（一回限り）
+  // industry_category 一括再計算（v2: 製造/加工キーワードを広めに）
   try {
-    const [check] = await pool.query(
-      `SELECT COUNT(*) as cnt FROM companies WHERE industry_category IS NULL AND industry IS NOT NULL AND industry != ''`
+    const [flag] = await pool.query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'industry_category_v2_applied'"
     );
-    if (Number(check[0]?.cnt || 0) > 0) {
-      logger.info(`[Migration] industry_category 事前計算開始: ${check[0].cnt}件`);
+    if (flag.length === 0) {
+      logger.info(`[Migration] industry_category v2 一括再計算開始`);
       await pool.execute(`
         UPDATE companies SET industry_category = CASE
-          WHEN industry LIKE '%製造業%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工業%' THEN '製造'
-          WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%販売%' OR industry LIKE '%物販%' THEN '小売'
+          WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' THEN '製造'
+          WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' THEN '小売'
           WHEN industry LIKE '%建設%' OR industry LIKE '%工事%' OR industry LIKE '%建築%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' THEN '建設'
           WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
           WHEN industry LIKE '%農業%' OR industry LIKE '%農産%' OR industry LIKE '%畜産%' OR industry LIKE '%水産%' OR industry LIKE '%漁業%' OR industry LIKE '%林業%' THEN '農業'
@@ -391,9 +391,12 @@ const runMigrations = async () => {
           WHEN industry LIKE '%サービス%' THEN 'サービス'
           ELSE 'その他'
         END
-        WHERE industry_category IS NULL AND industry IS NOT NULL AND industry != ''
+        WHERE industry IS NOT NULL AND industry != ''
       `);
-      logger.info(`[Migration] industry_category 事前計算完了`);
+      await pool.execute(
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('industry_category_v2_applied', 'true')"
+      );
+      logger.info(`[Migration] industry_category v2 再計算完了`);
     }
   } catch (e) { logger.warn('[Migration] industry_category:', e.message); }
   // system_settings テーブル（チーム目標値等）

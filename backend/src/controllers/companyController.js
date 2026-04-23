@@ -213,8 +213,8 @@ const updateCompany = async (req, res, next) => {
  */
 const CATEGORY_SQL_EXPR = `
   CASE
-    WHEN c.industry LIKE '%製造業%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工業%' THEN '製造'
-    WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%' OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%販売%' OR c.industry LIKE '%物販%' THEN '小売'
+    WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
+    WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%' OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
     WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%' OR c.industry LIKE '%リフォーム%' THEN '建設'
     WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
     WHEN c.industry LIKE '%農業%' OR c.industry LIKE '%農産%' OR c.industry LIKE '%畜産%' OR c.industry LIKE '%水産%' OR c.industry LIKE '%漁業%' OR c.industry LIKE '%林業%' THEN '農業'
