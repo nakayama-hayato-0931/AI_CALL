@@ -1357,10 +1357,11 @@ async function getCompaniesIndustryStats(req, res, next) {
       return 'その他';
     };
 
+    // 事前計算済み industry_category カラムを使って高速集計
     let rows;
     if (actionableOnly) {
       [rows] = await pool.query(`
-        SELECT c.industry AS industry, COUNT(*) AS cnt
+        SELECT IFNULL(c.industry_category, 'その他') AS category, COUNT(*) AS cnt
         FROM companies c
         WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
           AND (
@@ -1371,22 +1372,20 @@ async function getCompaniesIndustryStats(req, res, next) {
               ORDER BY cl.call_started_at DESC LIMIT 1
             ) = 'NO_ANSWER'
           )
-        GROUP BY c.industry
+        GROUP BY IFNULL(c.industry_category, 'その他')
       `);
     } else {
       [rows] = await pool.query(`
-        SELECT c.industry AS industry, COUNT(*) AS cnt
+        SELECT IFNULL(c.industry_category, 'その他') AS category, COUNT(*) AS cnt
         FROM companies c
         WHERE c.exclusion_flag = 0 AND IFNULL(c.is_special, 0) = 0
-        GROUP BY c.industry
+        GROUP BY IFNULL(c.industry_category, 'その他')
       `);
     }
 
-    // カテゴリに集約
     const categoryMap = new Map();
     for (const r of rows) {
-      const cat = categorize(r.industry);
-      categoryMap.set(cat, (categoryMap.get(cat) || 0) + Number(r.cnt));
+      categoryMap.set(r.category, Number(r.cnt));
     }
 
     // 表示順（飲食・小売を先頭に、その他は最後）

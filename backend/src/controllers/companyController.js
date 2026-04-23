@@ -237,18 +237,11 @@ const industryRegionFilterSQL = `
     OR EXISTS (
       SELECT 1 FROM industry_region_rules irr
       WHERE (
-        (irr.industry_name IN ${CATEGORY_NAMES_SQL} AND (${CATEGORY_SQL_EXPR}) = irr.industry_name)
+        (irr.industry_name IN ${CATEGORY_NAMES_SQL} AND c.industry_category = irr.industry_name)
         OR (irr.industry_name NOT IN ${CATEGORY_NAMES_SQL} AND c.industry LIKE CONCAT('%', irr.industry_name, '%'))
       )
       AND c.address LIKE CONCAT(irr.region, '%')
     )
-  )
-  AND NOT EXISTS (
-    SELECT 1 FROM industry_exclude_words iew
-    WHERE c.job_type LIKE CONCAT('%', iew.keyword, '%')
-       OR c.industry LIKE CONCAT('%', iew.keyword, '%')
-       OR c.comment LIKE CONCAT('%', iew.keyword, '%')
-       OR c.company_name LIKE CONCAT('%', iew.keyword, '%')
   )
 `;
 
@@ -301,7 +294,7 @@ const getNextCallTarget = async (req, res, next) => {
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
         // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
-        modeFilterSQL = `AND (${CATEGORY_SQL_EXPR}) = ?`;
+        modeFilterSQL = `AND c.industry_category = ?`;
         modeFilterParams = [industryParam];
       } else {
         // 自由キーワードは従来の部分一致
@@ -504,7 +497,7 @@ const getCallList = async (req, res, next) => {
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
         // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
-        modeFilterSQL = `AND (${CATEGORY_SQL_EXPR}) = ?`;
+        modeFilterSQL = `AND c.industry_category = ?`;
         modeFilterParams = [industryParam];
       } else {
         // 自由キーワードは従来の部分一致
@@ -539,12 +532,11 @@ const getCallList = async (req, res, next) => {
         );
         if (rows.length > 0) {
           const map = JSON.parse(rows[0].setting_value || '{}');
-          // 無効化されているカテゴリを収集
           const disabledCats = Object.entries(map).filter(([k, v]) => v === false).map(([k]) => k);
           if (disabledCats.length > 0) {
-            // カテゴリ判定で無効化カテゴリに該当する企業を除外
+            // 事前計算済みindustry_categoryカラムで高速除外
             const placeholders = disabledCats.map(() => '?').join(',');
-            goldenIndFilter += ` AND (${CATEGORY_SQL_EXPR}) NOT IN (${placeholders})`;
+            goldenIndFilter += ` AND (c.industry_category IS NULL OR c.industry_category NOT IN (${placeholders}))`;
             goldenIndParams.push(...disabledCats);
           }
         }
@@ -678,7 +670,7 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);

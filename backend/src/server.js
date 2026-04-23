@@ -359,6 +359,43 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_calls_user_result ON calls(user_id, result_code, call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
+
+  // companies に industry_category カラム追加 + 事前計算
+  try {
+    await pool.execute(`ALTER TABLE companies ADD COLUMN industry_category VARCHAR(20) DEFAULT NULL`);
+  } catch (e) {}
+  try {
+    await pool.execute('CREATE INDEX idx_companies_category ON companies(industry_category)');
+  } catch (e) {}
+  // 未設定企業のカテゴリを一括計算（一回限り）
+  try {
+    const [check] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM companies WHERE industry_category IS NULL AND industry IS NOT NULL AND industry != ''`
+    );
+    if (Number(check[0]?.cnt || 0) > 0) {
+      logger.info(`[Migration] industry_category 事前計算開始: ${check[0].cnt}件`);
+      await pool.execute(`
+        UPDATE companies SET industry_category = CASE
+          WHEN industry LIKE '%製造業%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工業%' THEN '製造'
+          WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%販売%' OR industry LIKE '%物販%' THEN '小売'
+          WHEN industry LIKE '%建設%' OR industry LIKE '%工事%' OR industry LIKE '%建築%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' THEN '建設'
+          WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
+          WHEN industry LIKE '%農業%' OR industry LIKE '%農産%' OR industry LIKE '%畜産%' OR industry LIKE '%水産%' OR industry LIKE '%漁業%' OR industry LIKE '%林業%' THEN '農業'
+          WHEN industry LIKE '%介護%' OR industry LIKE '%医療%' OR industry LIKE '%福祉%' OR industry LIKE '%病院%' OR industry LIKE '%クリニック%' OR industry LIKE '%歯科%' THEN '介護'
+          WHEN industry LIKE '%運輸%' OR industry LIKE '%運送%' OR industry LIKE '%輸送%' OR industry LIKE '%物流%' OR industry LIKE '%タクシー%' OR industry LIKE '%鉄道%' OR industry LIKE '%配送%' THEN '運輸'
+          WHEN industry LIKE '%情報通信%' OR industry LIKE '%ソフトウェア%' OR industry LIKE '%IT業%' OR industry LIKE '%システム%' THEN 'IT'
+          WHEN industry LIKE '%金融%' OR industry LIKE '%銀行%' OR industry LIKE '%保険%' OR industry LIKE '%証券%' THEN '金融'
+          WHEN industry LIKE '%不動産%' THEN '不動産'
+          WHEN industry LIKE '%美容%' OR industry LIKE '%エステ%' OR industry LIKE '%理容%' OR industry LIKE '%サロン%' THEN '美容'
+          WHEN industry LIKE '%飲食店%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
+          WHEN industry LIKE '%サービス%' THEN 'サービス'
+          ELSE 'その他'
+        END
+        WHERE industry_category IS NULL AND industry IS NOT NULL AND industry != ''
+      `);
+      logger.info(`[Migration] industry_category 事前計算完了`);
+    }
+  } catch (e) { logger.warn('[Migration] industry_category:', e.message); }
   // system_settings テーブル（チーム目標値等）
   try {
     await pool.execute(`
