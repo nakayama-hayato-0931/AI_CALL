@@ -1,7 +1,7 @@
 /**
- * インセンティブ管理ページ
- * 各オペレーターが獲得した内定を、内定日ベースで月別に集計して表示。
- * 各行はトグルで展開でき、内定した企業情報の一覧が見られる。
+ * インセンティブ管理ページ（月別）
+ * サマリ: 内定社数合計 / 初回入金合計 / 見込入金合計 / コスト / ROAS
+ * オペレーター別内訳（トグルで案件一覧を展開）
  */
 import { Fragment, useState, useEffect } from 'react';
 import Layout from '../../components/common/Layout';
@@ -9,13 +9,11 @@ import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
-const MONTH_LABELS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-
 function formatMoney(n) {
   if (n == null) return '-';
   const num = Number(n);
   if (!isFinite(num)) return '-';
-  return num.toLocaleString('ja-JP') + '円';
+  return '¥' + num.toLocaleString('ja-JP');
 }
 
 function formatDate(d) {
@@ -29,27 +27,45 @@ function formatDate(d) {
   }
 }
 
+// 月候補（2025-01 〜 翌年12月）
+const MONTHS = (() => {
+  const arr = [];
+  const nextYear = new Date().getFullYear() + 1;
+  for (let y = nextYear; y >= 2025; y--) {
+    for (let m = 12; m >= 1; m--) {
+      arr.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+  }
+  return arr;
+})();
+
+function SummaryCard({ label, value, sub, color }) {
+  return (
+    <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${color || 'border-blue-500'}`}>
+      <div className="text-xs text-gray-500 mb-1">{label}</div>
+      <div className="text-2xl font-bold">{value}</div>
+      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    </div>
+  );
+}
+
 export default function IncentivePage() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
-  const [expanded, setExpanded] = useState({}); // { userId: true }
-  const [monthFilter, setMonthFilter] = useState({}); // { userId: monthIndex|null }
-
-  const years = [];
-  for (let y = currentYear + 1; y >= 2024; y--) years.push(y);
+  const nowMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(nowMonth);
+  const [expanded, setExpanded] = useState({});
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) return;
     fetchData();
-  }, [user, year]);
+  }, [user, month]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: res } = await api.get(`/api/admin/incentive?year=${year}`);
+      const { data: res } = await api.get(`/api/admin/incentive?month=${month}`);
       if (res.success) setData(res.data);
       else toast.error('取得に失敗しました');
     } catch (err) {
@@ -63,14 +79,6 @@ export default function IncentivePage() {
     setExpanded((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
-  const onMonthCellClick = (userId, monthIdx) => {
-    setExpanded((prev) => ({ ...prev, [userId]: true }));
-    setMonthFilter((prev) => ({
-      ...prev,
-      [userId]: prev[userId] === monthIdx ? null : monthIdx,
-    }));
-  };
-
   if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
     return (
       <Layout>
@@ -79,29 +87,64 @@ export default function IncentivePage() {
     );
   }
 
+  const s = data?.summary;
+
   return (
     <Layout>
       <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl font-bold">インセンティブ管理</h1>
           <div className="flex items-center gap-2">
-            <label className="text-sm">対象年:</label>
+            <label className="text-sm">対象月:</label>
             <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
               className="border rounded px-2 py-1 text-sm"
             >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}年</option>
-              ))}
+              {MONTHS.map((m) => {
+                const [yy, mm] = m.split('-');
+                return (
+                  <option key={m} value={m}>{yy}年{Number(mm)}月</option>
+                );
+              })}
             </select>
           </div>
         </div>
 
         <p className="text-sm text-gray-600 mb-4">
-          内定日ベースで集計しています。行をクリックすると、内定した企業情報の一覧が表示されます。
-          月のセルをクリックすると、その月の案件のみ絞り込みできます。
+          内定日ベースで集計しています。ROAS = 初回入金 ÷ コスト × 100%
         </p>
+
+        {/* サマリカード */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <SummaryCard
+            label="内定社数合計"
+            value={loading || !s ? '-' : `${s.naiteiCount}社`}
+            sub={s ? `計 ${s.hireTotal}人` : null}
+            color="border-blue-500"
+          />
+          <SummaryCard
+            label="初回入金合計"
+            value={loading || !s ? '-' : formatMoney(s.initialPayment)}
+            color="border-green-500"
+          />
+          <SummaryCard
+            label="見込入金合計"
+            value={loading || !s ? '-' : formatMoney(s.expectedRevenue)}
+            color="border-teal-500"
+          />
+          <SummaryCard
+            label="コスト合計"
+            value={loading || !s ? '-' : formatMoney(s.cost)}
+            color="border-orange-500"
+          />
+          <SummaryCard
+            label="ROAS"
+            value={loading || !s ? '-' : `${s.roas}%`}
+            sub="初回入金 ÷ コスト"
+            color={s && s.roas >= 100 ? 'border-green-600' : 'border-red-500'}
+          />
+        </div>
 
         {loading ? (
           <div className="text-center py-12 text-gray-500">読み込み中...</div>
@@ -112,86 +155,57 @@ export default function IncentivePage() {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-3 py-2 text-left sticky left-0 bg-gray-100 z-10">オペレーター</th>
-                  {MONTH_LABELS.map((m) => (
-                    <th key={m} className="px-2 py-2 text-center whitespace-nowrap">{m}</th>
-                  ))}
-                  <th className="px-3 py-2 text-center bg-blue-50">年間合計</th>
+                  <th className="px-3 py-2 text-left">オペレーター</th>
+                  <th className="px-3 py-2 text-right">内定社数</th>
+                  <th className="px-3 py-2 text-right">内定人数</th>
+                  <th className="px-3 py-2 text-right">初回入金</th>
+                  <th className="px-3 py-2 text-right">見込入金</th>
+                  <th className="px-3 py-2 text-right">コスト</th>
+                  <th className="px-3 py-2 text-right">ROAS</th>
                 </tr>
               </thead>
               <tbody>
                 {data.operators.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="text-center py-8 text-gray-500">
+                    <td colSpan={7} className="text-center py-8 text-gray-500">
                       対象オペレーターがいません
                     </td>
                   </tr>
                 )}
                 {data.operators.map((op) => {
                   const isOpen = !!expanded[op.userId];
-                  const activeMonth = monthFilter[op.userId];
-                  const filteredProjects =
-                    activeMonth != null
-                      ? op.projects.filter((p) => {
-                          if (!p.naiteiDate) return false;
-                          return new Date(p.naiteiDate).getMonth() === activeMonth;
-                        })
-                      : op.projects;
                   return (
                     <Fragment key={op.userId}>
                       <tr
-                        key={`row-${op.userId}`}
                         className="border-t hover:bg-gray-50 cursor-pointer"
                         onClick={() => toggle(op.userId)}
                       >
-                        <td className="px-3 py-2 sticky left-0 bg-white z-10">
+                        <td className="px-3 py-2">
                           <span className="mr-1">{isOpen ? '▼' : '▶'}</span>
                           {op.name}
-                          {!op.isActive && (
-                            <span className="ml-2 text-xs text-gray-400">(無効)</span>
-                          )}
+                          {!op.isActive && <span className="ml-2 text-xs text-gray-400">(無効)</span>}
                           {op.role === 'intern' && (
                             <span className="ml-2 text-xs text-purple-600">[インターン]</span>
                           )}
                         </td>
-                        {op.monthlyCounts.map((c, idx) => (
-                          <td
-                            key={idx}
-                            className={`px-2 py-2 text-center ${c > 0 ? 'font-semibold text-blue-700' : 'text-gray-300'} ${
-                              activeMonth === idx ? 'bg-blue-100' : ''
-                            } hover:bg-blue-50`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (c > 0) onMonthCellClick(op.userId, idx);
-                            }}
-                          >
-                            {c || '-'}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-center font-bold bg-blue-50">
-                          {op.yearTotal}
+                        <td className="px-3 py-2 text-right font-semibold">
+                          {op.naiteiCount > 0 ? `${op.naiteiCount}社` : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {op.hireTotal > 0 ? `${op.hireTotal}人` : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-right">{op.initialPayment ? formatMoney(op.initialPayment) : '-'}</td>
+                        <td className="px-3 py-2 text-right">{op.expectedRevenue ? formatMoney(op.expectedRevenue) : '-'}</td>
+                        <td className="px-3 py-2 text-right">{op.cost ? formatMoney(op.cost) : '-'}</td>
+                        <td className={`px-3 py-2 text-right font-semibold ${op.roas >= 100 ? 'text-green-700' : op.roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {op.cost > 0 ? `${op.roas}%` : '-'}
                         </td>
                       </tr>
                       {isOpen && (
-                        <tr key={`detail-${op.userId}`} className="bg-gray-50">
-                          <td colSpan={14} className="p-0">
+                        <tr className="bg-gray-50">
+                          <td colSpan={7} className="p-0">
                             <div className="p-4">
-                              {activeMonth != null && (
-                                <div className="mb-2 text-sm">
-                                  <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                                    {MONTH_LABELS[activeMonth]}で絞り込み中
-                                  </span>
-                                  <button
-                                    className="ml-2 text-xs text-blue-600 hover:underline"
-                                    onClick={() =>
-                                      setMonthFilter((prev) => ({ ...prev, [op.userId]: null }))
-                                    }
-                                  >
-                                    クリア
-                                  </button>
-                                </div>
-                              )}
-                              {filteredProjects.length === 0 ? (
+                              {op.projects.length === 0 ? (
                                 <div className="text-center py-4 text-gray-500 text-sm">
                                   内定案件はありません
                                 </div>
@@ -210,7 +224,7 @@ export default function IncentivePage() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {filteredProjects.map((p) => (
+                                      {op.projects.map((p) => (
                                         <tr key={p.projectId} className="border-t hover:bg-gray-50">
                                           <td className="px-2 py-1">{p.jobNumber || '-'}</td>
                                           <td className="px-2 py-1">{p.companyName || '-'}</td>
@@ -221,18 +235,6 @@ export default function IncentivePage() {
                                           <td className="px-2 py-1 text-right">{formatMoney(p.expectedRevenue)}</td>
                                         </tr>
                                       ))}
-                                      <tr className="border-t bg-blue-50 font-semibold">
-                                        <td colSpan={4} className="px-2 py-1 text-right">合計</td>
-                                        <td className="px-2 py-1 text-right">
-                                          {filteredProjects.reduce((s, p) => s + (Number(p.hireCount) || 0), 0)}人
-                                        </td>
-                                        <td className="px-2 py-1 text-right">
-                                          {formatMoney(filteredProjects.reduce((s, p) => s + (Number(p.initialPayment) || 0), 0))}
-                                        </td>
-                                        <td className="px-2 py-1 text-right">
-                                          {formatMoney(filteredProjects.reduce((s, p) => s + (Number(p.expectedRevenue) || 0), 0))}
-                                        </td>
-                                      </tr>
                                     </tbody>
                                   </table>
                                 </div>
@@ -244,18 +246,22 @@ export default function IncentivePage() {
                     </Fragment>
                   );
                 })}
-                {data.team && (
-                  <tr className="border-t bg-yellow-50 font-bold">
-                    <td className="px-3 py-2 sticky left-0 bg-yellow-50 z-10">チーム合計</td>
-                    {data.team.monthlyCounts.map((c, idx) => (
-                      <td key={idx} className="px-2 py-2 text-center">
-                        {c || '-'}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2 text-center bg-yellow-100">{data.team.yearTotal}</td>
-                  </tr>
-                )}
               </tbody>
+              {data.operators.length > 0 && (
+                <tfoot className="bg-yellow-50 font-bold">
+                  <tr className="border-t">
+                    <td className="px-3 py-2">合計</td>
+                    <td className="px-3 py-2 text-right">{s.naiteiCount}社</td>
+                    <td className="px-3 py-2 text-right">{s.hireTotal}人</td>
+                    <td className="px-3 py-2 text-right">{formatMoney(s.initialPayment)}</td>
+                    <td className="px-3 py-2 text-right">{formatMoney(s.expectedRevenue)}</td>
+                    <td className="px-3 py-2 text-right">{formatMoney(s.cost)}</td>
+                    <td className={`px-3 py-2 text-right ${s.roas >= 100 ? 'text-green-700' : 'text-red-600'}`}>
+                      {s.cost > 0 ? `${s.roas}%` : '-'}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}

@@ -1244,25 +1244,38 @@ module.exports = {
 };
 
 /**
- * GET /api/admin/incentive?year=YYYY
- * 内定日ベースのインセンティブ集計
- * 各オペレーター × 各月の内定件数 + 詳細
+ * GET /api/admin/incentive?month=YYYY-MM
+ * 内定日ベースのインセンティブ集計（月別）
+ * サマリ: 内定社数合計 / 初回入金合計 / 見込入金合計 / コスト / ROAS
+ * オペレーター別内訳 + 案件一覧
  */
 async function getIncentiveData(req, res, next) {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
-    const dateFrom = `${year}-01-01`;
-    const dateTo = `${year}-12-31`;
+    const HOURLY_RATE = 1500;
+    const INTERN_HOURLY_RATE = 1250;
 
-    // オペレーター一覧（アクティブ + 過去にデータがある無効ユーザー）
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const month = (req.query.month || defaultMonth).slice(0, 7);
+    const [yStr, mStr] = month.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      return ApiResponse.error(res, 'Invalid month', 400);
+    }
+    const lastDay = new Date(y, m, 0).getDate();
+    const dateFrom = `${month}-01`;
+    const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+    // オペレーター一覧
     const [users] = await pool.query(
-      `SELECT u.id, u.name, u.role, u.is_active
+      `SELECT u.id, u.name, u.role, u.is_active, u.commute_type, u.commute_teiki_monthly, u.commute_daily_amount
        FROM users u
        WHERE u.role IN ('operator','intern') AND u.is_test_account = 0
        ORDER BY u.id ASC`
     );
 
-    // 内定案件（指定年の naitei_date がある案件）
+    // 内定案件（指定月の naitei_date）
     const [projects] = await pool.query(
       `SELECT
          p.id AS project_id,
@@ -1285,7 +1298,36 @@ async function getIncentiveData(req, res, next) {
       [dateFrom, dateTo]
     );
 
-    // 月別・オペレーター別に集計
+    // コスト計算（cost_records）
+    const [costRows] = await pool.query(
+      `SELECT cr.user_id,
+        COALESCE(SUM(TIMESTAMPDIFF(MINUTE, CONCAT(cr.date,' ',cr.start_time), CONCAT(cr.date,' ',cr.end_time)) - COALESCE(cr.break_minutes,0)), 0) AS total_minutes,
+        COUNT(DISTINCT cr.date) AS work_days
+       FROM cost_records cr
+       WHERE cr.date BETWEEN ? AND ?
+       GROUP BY cr.user_id`,
+      [dateFrom, dateTo]
+    );
+    const costMap = new Map();
+    for (const r of costRows) {
+      const u = users.find(uu => uu.id === r.user_id);
+      if (!u) continue;
+      const isIntern = u.role === 'intern';
+      const rate = isIntern ? INTERN_HOURLY_RATE : HOURLY_RATE;
+      const totalMinutes = Number(r.total_minutes) || 0;
+      const labor = Math.round(totalMinutes / 60 * rate);
+      let commute = 0;
+      if (u.commute_type === 'teiki') {
+        const days = lastDay; // 月額を月日数按分（ここでは該当月まるごと）
+        commute = Math.round((u.commute_teiki_monthly || 0) / 30 * days);
+      } else if (u.commute_type === 'daily') {
+        commute = (u.commute_daily_amount || 0) * Number(r.work_days || 0);
+      }
+      const total = labor + commute;
+      costMap.set(r.user_id, isIntern ? Math.round(total / 2) : total);
+    }
+
+    // オペレーター別集計
     const operatorMap = new Map();
     for (const u of users) {
       operatorMap.set(u.id, {
@@ -1293,8 +1335,11 @@ async function getIncentiveData(req, res, next) {
         name: u.name,
         role: u.role,
         isActive: !!u.is_active,
-        monthlyCounts: Array(12).fill(0),
-        yearTotal: 0,
+        naiteiCount: 0,
+        hireTotal: 0,
+        initialPayment: 0,
+        expectedRevenue: 0,
+        cost: costMap.get(u.id) || 0,
         projects: [],
       });
     }
@@ -1302,42 +1347,54 @@ async function getIncentiveData(req, res, next) {
     for (const p of projects) {
       const op = operatorMap.get(p.owner_user_id);
       if (!op) continue;
-      const month = new Date(p.naitei_date).getMonth(); // 0-11
-      op.monthlyCounts[month]++;
-      op.yearTotal++;
+      const ip = Number(p.initial_payment) || 0;
+      const er = Number(p.expected_revenue) || 0;
+      const hc = Number(p.hire_count) || 0;
+      op.naiteiCount++;
+      op.hireTotal += hc;
+      op.initialPayment += ip;
+      op.expectedRevenue += er;
       op.projects.push({
         projectId: p.project_id,
         jobNumber: p.job_number,
         companyName: p.company_name,
         naiteiDate: p.naitei_date instanceof Date ? p.naitei_date.toISOString().slice(0, 10) : p.naitei_date,
         salesName: p.sales_name,
-        hireCount: Number(p.hire_count) || 0,
-        initialPayment: Number(p.initial_payment) || 0,
-        expectedRevenue: Number(p.expected_revenue) || 0,
-        month: month + 1,
+        hireCount: hc,
+        initialPayment: ip,
+        expectedRevenue: er,
       });
+    }
+
+    // オペレーター毎に ROAS 計算
+    for (const op of operatorMap.values()) {
+      op.roas = op.cost > 0 ? Math.round(op.initialPayment / op.cost * 10000) / 100 : 0;
     }
 
     const operators = [...operatorMap.values()]
-      .filter(op => op.isActive || op.yearTotal > 0)
+      .filter(op => op.isActive || op.naiteiCount > 0 || op.cost > 0)
       .sort((a, b) => {
         if (a.role === 'intern' && b.role !== 'intern') return 1;
         if (a.role !== 'intern' && b.role === 'intern') return -1;
-        return b.yearTotal - a.yearTotal;
+        return b.naiteiCount - a.naiteiCount;
       });
 
-    // 全体合計
-    const teamMonthlyCounts = Array(12).fill(0);
-    let teamTotal = 0;
-    for (const op of operators) {
-      for (let m = 0; m < 12; m++) teamMonthlyCounts[m] += op.monthlyCounts[m];
-      teamTotal += op.yearTotal;
-    }
+    // チーム全体サマリ
+    const summary = {
+      naiteiCount: operators.reduce((s, o) => s + o.naiteiCount, 0),
+      hireTotal: operators.reduce((s, o) => s + o.hireTotal, 0),
+      initialPayment: operators.reduce((s, o) => s + o.initialPayment, 0),
+      expectedRevenue: operators.reduce((s, o) => s + o.expectedRevenue, 0),
+      cost: operators.reduce((s, o) => s + o.cost, 0),
+    };
+    summary.roas = summary.cost > 0 ? Math.round(summary.initialPayment / summary.cost * 10000) / 100 : 0;
 
     return ApiResponse.success(res, {
-      year,
+      month,
+      dateFrom,
+      dateTo,
+      summary,
       operators,
-      team: { monthlyCounts: teamMonthlyCounts, yearTotal: teamTotal },
     });
   } catch (err) {
     logger.error(`[getIncentiveData] ${err.message}`);
