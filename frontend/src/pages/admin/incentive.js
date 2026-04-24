@@ -216,6 +216,7 @@ export default function IncentivePage() {
                                       <tr>
                                         <th className="px-2 py-1 text-left">求人番号</th>
                                         <th className="px-2 py-1 text-left">企業名</th>
+                                        <th className="px-2 py-1 text-left">案件獲得日</th>
                                         <th className="px-2 py-1 text-left">内定日</th>
                                         <th className="px-2 py-1 text-left">担当営業</th>
                                         <th className="px-2 py-1 text-right">内定人数</th>
@@ -228,6 +229,7 @@ export default function IncentivePage() {
                                         <tr key={p.projectId} className="border-t hover:bg-gray-50">
                                           <td className="px-2 py-1">{p.jobNumber || '-'}</td>
                                           <td className="px-2 py-1">{p.companyName || '-'}</td>
+                                          <td className="px-2 py-1">{formatDate(p.acquiredDate)}</td>
                                           <td className="px-2 py-1">{formatDate(p.naiteiDate)}</td>
                                           <td className="px-2 py-1">{p.salesName || '-'}</td>
                                           <td className="px-2 py-1 text-right">{p.hireCount || 0}人</td>
