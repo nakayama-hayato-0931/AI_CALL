@@ -201,50 +201,38 @@ export default function IncentivePage() {
                           {op.cost > 0 ? `${op.roas}%` : '-'}
                         </td>
                       </tr>
-                      {isOpen && (
+                      {isOpen && op.projects.length === 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={7} className="p-0">
-                            <div className="p-4">
-                              {op.projects.length === 0 ? (
-                                <div className="text-center py-4 text-gray-500 text-sm">
-                                  内定案件はありません
-                                </div>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="min-w-full text-xs bg-white border">
-                                    <thead className="bg-gray-100">
-                                      <tr>
-                                        <th className="px-2 py-1 text-left">求人番号</th>
-                                        <th className="px-2 py-1 text-left">企業名</th>
-                                        <th className="px-2 py-1 text-left">案件獲得日</th>
-                                        <th className="px-2 py-1 text-left">内定日</th>
-                                        <th className="px-2 py-1 text-left">担当営業</th>
-                                        <th className="px-2 py-1 text-right">内定人数</th>
-                                        <th className="px-2 py-1 text-right">初回入金</th>
-                                        <th className="px-2 py-1 text-right">見込入金</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {op.projects.map((p) => (
-                                        <tr key={p.projectId} className="border-t hover:bg-gray-50">
-                                          <td className="px-2 py-1">{p.jobNumber || '-'}</td>
-                                          <td className="px-2 py-1">{p.companyName || '-'}</td>
-                                          <td className="px-2 py-1">{formatDate(p.acquiredDate)}</td>
-                                          <td className="px-2 py-1">{formatDate(p.naiteiDate)}</td>
-                                          <td className="px-2 py-1">{p.salesName || '-'}</td>
-                                          <td className="px-2 py-1 text-right">{p.hireCount || 0}人</td>
-                                          <td className="px-2 py-1 text-right">{formatMoney(p.initialPayment)}</td>
-                                          <td className="px-2 py-1 text-right">{formatMoney(p.expectedRevenue)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
+                          <td colSpan={7} className="text-center py-3 text-gray-500 text-xs">
+                            内定案件はありません
                           </td>
                         </tr>
                       )}
+                      {isOpen && op.projects.length > 0 && (
+                        <tr className="bg-gray-100 text-xs text-gray-600">
+                          <th className="px-3 py-1 text-left font-normal pl-8">求人番号 / 企業名</th>
+                          <th className="px-3 py-1 text-right font-normal">案件獲得日</th>
+                          <th className="px-3 py-1 text-right font-normal">内定人数</th>
+                          <th className="px-3 py-1 text-right font-normal">初回入金</th>
+                          <th className="px-3 py-1 text-right font-normal">見込入金</th>
+                          <th className="px-3 py-1 text-right font-normal">内定日</th>
+                          <th className="px-3 py-1 text-right font-normal">担当営業</th>
+                        </tr>
+                      )}
+                      {isOpen && op.projects.map((p) => (
+                        <tr key={`proj-${p.projectId}`} className="bg-gray-50 text-xs border-t hover:bg-gray-100">
+                          <td className="px-3 py-1 pl-8">
+                            <span className="text-gray-500 mr-2">{p.jobNumber || '-'}</span>
+                            <span>{p.companyName || '-'}</span>
+                          </td>
+                          <td className="px-3 py-1 text-right">{formatDate(p.acquiredDate)}</td>
+                          <td className="px-3 py-1 text-right">{p.hireCount || 0}人</td>
+                          <td className="px-3 py-1 text-right">{formatMoney(p.initialPayment)}</td>
+                          <td className="px-3 py-1 text-right">{formatMoney(p.expectedRevenue)}</td>
+                          <td className="px-3 py-1 text-right">{formatDate(p.naiteiDate)}</td>
+                          <td className="px-3 py-1 text-right">{p.salesName || '-'}</td>
+                        </tr>
+                      ))}
                     </Fragment>
                   );
                 })}
