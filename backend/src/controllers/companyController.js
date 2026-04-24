@@ -763,7 +763,7 @@ const lockCallTarget = async (req, res, next) => {
 
     // 行ロック取得
     const [rows] = await conn.execute(
-      'SELECT id, locked_by_user_id, locked_at FROM companies WHERE id = ? FOR UPDATE',
+      'SELECT id, locked_by_user_id, locked_at, imported_by_user_id FROM companies WHERE id = ? FOR UPDATE',
       [id]
     );
 
@@ -775,8 +775,21 @@ const lockCallTarget = async (req, res, next) => {
     const company = rows[0];
     const now = new Date();
 
+    // 自分がこの企業の割当ユーザー(company_assignments) または
+    // 自作リストとしてインポートしたユーザーなら、他のロックを上書き可能
+    let canOverride = false;
+    if (company.imported_by_user_id === userId) {
+      canOverride = true;
+    } else {
+      const [assignRows] = await conn.execute(
+        'SELECT 1 FROM company_assignments WHERE company_id = ? AND user_id = ? LIMIT 1',
+        [id, userId]
+      );
+      if (assignRows.length > 0) canOverride = true;
+    }
+
     // 他ユーザーが有効なロックを保持しているか確認
-    if (company.locked_by_user_id && company.locked_by_user_id !== userId) {
+    if (!canOverride && company.locked_by_user_id && company.locked_by_user_id !== userId) {
       const lockedAt = new Date(company.locked_at);
       const elapsedMs = now - lockedAt;
       if (elapsedMs < LOCK_TIMEOUT_MINUTES * 60 * 1000) {
