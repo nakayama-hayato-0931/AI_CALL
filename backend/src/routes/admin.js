@@ -21,6 +21,7 @@ const {
   setAutoPickupIndustries,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
+  getIncentiveData,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -88,5 +89,8 @@ router.put('/kpi-adjustment', requireAdmin, saveKpiAdjustment);
 router.get('/special-list-batches', requireManager, getSpecialListBatches);
 router.get('/special-list-batches/:id/details', requireManager, getSpecialListBatchDetails);
 router.get('/special-list-batches/:id/export', requireManager, exportSpecialListBatch);
+
+// インセンティブ管理 (内定日ベース集計)
+router.get('/incentive', requireManager, getIncentiveData);
 
 module.exports = router;

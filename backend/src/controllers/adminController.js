@@ -1240,7 +1240,110 @@ module.exports = {
   bulkDeleteCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
+  getIncentiveData,
 };
+
+/**
+ * GET /api/admin/incentive?year=YYYY
+ * 内定日ベースのインセンティブ集計
+ * 各オペレーター × 各月の内定件数 + 詳細
+ */
+async function getIncentiveData(req, res, next) {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const dateFrom = `${year}-01-01`;
+    const dateTo = `${year}-12-31`;
+
+    // オペレーター一覧（アクティブ + 過去にデータがある無効ユーザー）
+    const [users] = await pool.query(
+      `SELECT u.id, u.name, u.role, u.is_active
+       FROM users u
+       WHERE u.role IN ('operator','intern') AND u.is_test_account = 0
+       ORDER BY u.id ASC`
+    );
+
+    // 内定案件（指定年の naitei_date がある案件）
+    const [projects] = await pool.query(
+      `SELECT
+         p.id AS project_id,
+         p.owner_user_id,
+         p.job_number,
+         p.naitei_date,
+         p.sales_user_id,
+         COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+         su.name AS sales_name,
+         (SELECT COUNT(*) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS hire_count,
+         (SELECT COALESCE(SUM(ph.initial_payment), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS initial_payment,
+         (SELECT COALESCE(SUM(ph.expected_revenue), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS expected_revenue
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.is_prospect = 0
+         AND p.status = 'NAITEI'
+         AND p.naitei_date BETWEEN ? AND ?
+       ORDER BY p.naitei_date DESC`,
+      [dateFrom, dateTo]
+    );
+
+    // 月別・オペレーター別に集計
+    const operatorMap = new Map();
+    for (const u of users) {
+      operatorMap.set(u.id, {
+        userId: u.id,
+        name: u.name,
+        role: u.role,
+        isActive: !!u.is_active,
+        monthlyCounts: Array(12).fill(0),
+        yearTotal: 0,
+        projects: [],
+      });
+    }
+
+    for (const p of projects) {
+      const op = operatorMap.get(p.owner_user_id);
+      if (!op) continue;
+      const month = new Date(p.naitei_date).getMonth(); // 0-11
+      op.monthlyCounts[month]++;
+      op.yearTotal++;
+      op.projects.push({
+        projectId: p.project_id,
+        jobNumber: p.job_number,
+        companyName: p.company_name,
+        naiteiDate: p.naitei_date instanceof Date ? p.naitei_date.toISOString().slice(0, 10) : p.naitei_date,
+        salesName: p.sales_name,
+        hireCount: Number(p.hire_count) || 0,
+        initialPayment: Number(p.initial_payment) || 0,
+        expectedRevenue: Number(p.expected_revenue) || 0,
+        month: month + 1,
+      });
+    }
+
+    const operators = [...operatorMap.values()]
+      .filter(op => op.isActive || op.yearTotal > 0)
+      .sort((a, b) => {
+        if (a.role === 'intern' && b.role !== 'intern') return 1;
+        if (a.role !== 'intern' && b.role === 'intern') return -1;
+        return b.yearTotal - a.yearTotal;
+      });
+
+    // 全体合計
+    const teamMonthlyCounts = Array(12).fill(0);
+    let teamTotal = 0;
+    for (const op of operators) {
+      for (let m = 0; m < 12; m++) teamMonthlyCounts[m] += op.monthlyCounts[m];
+      teamTotal += op.yearTotal;
+    }
+
+    return ApiResponse.success(res, {
+      year,
+      operators,
+      team: { monthlyCounts: teamMonthlyCounts, yearTotal: teamTotal },
+    });
+  } catch (err) {
+    logger.error(`[getIncentiveData] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * GET /api/admin/auto-pickup-industries
