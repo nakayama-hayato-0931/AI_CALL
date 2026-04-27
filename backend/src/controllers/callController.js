@@ -410,7 +410,7 @@ const getCalls = async (req, res, next) => {
       `SELECT c.id, c.user_id, c.company_id, c.call_started_at, c.call_ended_at,
               c.result_code, c.is_effective_connection, c.is_person_in_charge,
               c.memo, c.call_type,
-              (c.transcript IS NOT NULL AND c.transcript != '') AS has_transcript,
+              CHAR_LENGTH(COALESCE(c.transcript, '')) AS transcript_length,
               u.name as operator_name, co.company_name, co.phone_number
        FROM calls c
        LEFT JOIN users u ON c.user_id = u.id
@@ -422,8 +422,8 @@ const getCalls = async (req, res, next) => {
     );
 
     // 文字起こし未取得の通話分はGoogle Sheetsから取得（4秒タイムアウト）
-    // 取得できたものはhas_transcriptフラグを更新してレスポンスに反映
-    const missingIds = rows.filter(r => !r.has_transcript).map(r => r.id);
+    // 取得できたものは transcript_length をレスポンスに反映
+    const missingIds = rows.filter(r => !Number(r.transcript_length)).map(r => r.id);
     if (missingIds.length > 0) {
       try {
         const [missingRows] = await pool.execute(
@@ -448,9 +448,10 @@ const getCalls = async (req, res, next) => {
                 logger.info(`Transcript同期: ${transcriptMap.size}件保存`);
               } catch (e) { /* ignore */ }
             });
-            // レスポンスのhas_transcriptフラグを反映
+            // レスポンスのtranscript_lengthを反映
             for (const row of rows) {
-              if (transcriptMap.has(row.id)) row.has_transcript = 1;
+              const t = transcriptMap.get(row.id);
+              if (t) row.transcript_length = t.length;
             }
           }
         }

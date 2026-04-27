@@ -122,7 +122,7 @@ export default function CallResultsPage() {
         setPagination(data.data.pagination);
         // 文字起こし未取得の通話があれば、バックグラウンド同期を待ってから一度だけリロード
         if (!silent) {
-          const hasMissing = (data.data.calls || []).some(c => !c.has_transcript);
+          const hasMissing = (data.data.calls || []).some(c => !(Number(c.transcript_length) > 0 || c.has_transcript));
           if (hasMissing) {
             setTimeout(() => { fetchCalls({ silent: true }); }, 6000);
           }
@@ -324,7 +324,7 @@ export default function CallResultsPage() {
                   const isOwn = user && call.user_id === user.id;
                   const isEditing = editingId === call.id;
                   const isExpanded = expandedId === call.id;
-                  const hasTranscript = !!call.has_transcript || (call.transcript && call.transcript.trim().length > 0);
+                  const hasTranscript = Number(call.transcript_length) > 0 || !!call.has_transcript || (call.transcript && call.transcript.trim().length > 0);
 
                   return (
                     <React.Fragment key={call.id}>
