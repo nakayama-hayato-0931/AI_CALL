@@ -386,71 +386,48 @@ const getCalls = async (req, res, next) => {
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // COUNT + 結果コード別集計を1クエリで
-    const [summaryRows] = await pool.execute(
-      `SELECT c.result_code, COUNT(*) as cnt FROM calls c
-       LEFT JOIN companies co ON c.company_id = co.id
-       ${whereStr}
-       GROUP BY c.result_code`,
-      params
-    );
+    // COUNT + 結果コード別集計を1クエリで（companiesは検索時のみJOIN）
+    const needsCompanyJoin = !!search;
+    const summarySql = needsCompanyJoin
+      ? `SELECT c.result_code, COUNT(*) as cnt FROM calls c
+         LEFT JOIN companies co ON c.company_id = co.id
+         ${whereStr}
+         GROUP BY c.result_code`
+      : `SELECT c.result_code, COUNT(*) as cnt FROM calls c
+         ${whereStr}
+         GROUP BY c.result_code`;
+    const [summaryRows] = await pool.execute(summarySql, params);
     const resultSummary = {};
     let totalCount = 0;
     for (const r of summaryRows) {
       if (r.result_code) resultSummary[r.result_code] = r.cnt;
       totalCount += r.cnt;
     }
-    const countRows = [{ total: totalCount }];
 
+    // 一覧用に必要な列だけ取得（transcriptは存在フラグのみ→展開時にlazy load）
+    // ai_evaluationsのJOINは一覧では使わないので削除
     const [rows] = await pool.execute(
-      `SELECT c.*, u.name as operator_name, co.company_name, co.phone_number,
-       ae.overall_score as ai_overall, ae.opening_score as ai_opening,
-       ae.clarity_score as ai_clarity, ae.hearing_score as ai_hearing,
-       ae.rebuttal_score as ai_rebuttal, ae.closing_score as ai_closing,
-       ae.summary as ai_summary, ae.good_points as ai_good_points,
-       ae.improvement_points as ai_improvement_points
+      `SELECT c.id, c.user_id, c.company_id, c.call_started_at, c.call_ended_at,
+              c.result_code, c.is_effective_connection, c.is_person_in_charge,
+              c.memo, c.call_type,
+              (c.transcript IS NOT NULL AND c.transcript != '') AS has_transcript,
+              u.name as operator_name, co.company_name, co.phone_number
        FROM calls c
        LEFT JOIN users u ON c.user_id = u.id
        LEFT JOIN companies co ON c.company_id = co.id
-       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
        ${whereStr}
        ORDER BY c.call_started_at DESC
        LIMIT ? OFFSET ?`,
       [...params, String(limit), String(offset)]
     );
 
-    // transcriptがnullの通話をGoogle Sheetsから同期取得（3秒タイムアウト）
-    const missingTranscripts = rows.filter(r => !r.transcript && r.phone_number && r.call_started_at);
-    if (missingTranscripts.length > 0) {
-      try {
-        const transcriptMap = await Promise.race([
-          findTranscriptsBatch(missingTranscripts),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
-        ]);
-        for (const [callId, transcript] of transcriptMap) {
-          await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
-          // レスポンスにも反映
-          const row = rows.find(r => r.id === callId);
-          if (row) row.transcript = transcript;
-        }
-        if (transcriptMap.size > 0) {
-          logger.info(`Transcript同期取得: ${transcriptMap.size}件保存`);
-        }
-      } catch (e) {
-        // タイムアウトやエラーの場合はスキップ（レスポンスは返す）
-        if (e.message !== 'timeout') {
-          logger.error('Transcript取得エラー:', e.message);
-        }
-      }
-    }
-
     return ApiResponse.success(res, {
       calls: rows,
       pagination: {
         page,
         limit,
-        total: countRows[0].total,
-        totalPages: Math.ceil(countRows[0].total / limit),
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
       },
       resultSummary,
     });
@@ -616,4 +593,19 @@ const refreshTranscriptsBulk = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk };
+/**
+ * GET /api/calls/:id/transcript
+ * 文字起こしテキストを取得（展開時にlazy load）
+ */
+const getCallTranscript = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.execute('SELECT transcript FROM calls WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) return ApiResponse.notFound(res, '通話が見つかりません');
+    return ApiResponse.success(res, { transcript: rows[0].transcript || '' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, getCallTranscript };
