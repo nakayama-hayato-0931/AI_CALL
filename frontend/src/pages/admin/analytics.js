@@ -149,9 +149,9 @@ export default function AnalyticsPage() {
         setQualData(null);
         setWeeklyData([]);
       } else if (periodMode === 'weekly') {
-        // 全週分を一括取得
+        // 全週分を一括取得（個別失敗を許容）
         const weeks = getWeeksInMonth(selectedMonth);
-        const results = await Promise.all(
+        const settled = await Promise.allSettled(
           weeks.map(async (w) => {
             const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo };
             const [cpaRes, qualRes] = await Promise.all([
@@ -161,6 +161,24 @@ export default function AnalyticsPage() {
             return { weekLabel: w.label, cpa: cpaRes.data.data, qual: qualRes.data.data };
           })
         );
+        const results = [];
+        let failed = 0;
+        settled.forEach((r, idx) => {
+          if (r.status === 'fulfilled') {
+            results.push(r.value);
+          } else {
+            failed++;
+            // データなしのプレースホルダで残す
+            const w = weeks[idx];
+            const empty = { team: {}, operators: [], dateFrom: w.dateFrom, dateTo: w.dateTo };
+            results.push({ weekLabel: w.label, cpa: empty, qual: empty });
+            // eslint-disable-next-line no-console
+            console.error('[weekly fetch failed]', w.label, r.reason);
+          }
+        });
+        if (failed > 0) {
+          toast.error(`${failed}週分のデータ取得に失敗しました`);
+        }
         setWeeklyData(results);
         setCpaData(null);
         setQualData(null);
