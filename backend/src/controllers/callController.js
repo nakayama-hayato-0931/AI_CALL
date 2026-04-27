@@ -421,8 +421,48 @@ const getCalls = async (req, res, next) => {
       [...params, String(limit), String(offset)]
     );
 
-    // レスポンスは先に返す（高速化）
-    ApiResponse.success(res, {
+    // 文字起こし未取得の通話分はGoogle Sheetsから取得（4秒タイムアウト）
+    // 取得できたものはhas_transcriptフラグを更新してレスポンスに反映
+    const missingIds = rows.filter(r => !r.has_transcript).map(r => r.id);
+    if (missingIds.length > 0) {
+      try {
+        const [missingRows] = await pool.execute(
+          `SELECT c.id, c.call_started_at, co.phone_number
+           FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+           WHERE c.id IN (${missingIds.map(() => '?').join(',')})
+             AND co.phone_number IS NOT NULL`,
+          missingIds
+        );
+        if (missingRows.length > 0) {
+          const transcriptMap = await Promise.race([
+            findTranscriptsBatch(missingRows),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+          ]);
+          // DB更新は背景で（レスポンスをブロックしない）
+          if (transcriptMap.size > 0) {
+            setImmediate(async () => {
+              try {
+                for (const [callId, transcript] of transcriptMap) {
+                  await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
+                }
+                logger.info(`Transcript同期: ${transcriptMap.size}件保存`);
+              } catch (e) { /* ignore */ }
+            });
+            // レスポンスのhas_transcriptフラグを反映
+            for (const row of rows) {
+              if (transcriptMap.has(row.id)) row.has_transcript = 1;
+            }
+          }
+        }
+      } catch (e) {
+        if (e.message !== 'timeout') {
+          logger.warn('Transcript取得エラー:', e.message);
+        }
+        // タイムアウト時はそのまま返す（次回リロードで取得済みになる）
+      }
+    }
+
+    return ApiResponse.success(res, {
       calls: rows,
       pagination: {
         page,
@@ -432,36 +472,6 @@ const getCalls = async (req, res, next) => {
       },
       resultSummary,
     });
-
-    // バックグラウンドでGoogle Sheetsから文字起こしを補完（fire-and-forget）
-    // 次回のリロード時に表示される
-    const missingIds = rows.filter(r => !r.has_transcript).map(r => r.id);
-    if (missingIds.length > 0) {
-      // 一覧で見えている分だけ対象（30件程度）
-      setImmediate(async () => {
-        try {
-          const [missingRows] = await pool.execute(
-            `SELECT c.id, c.call_started_at, co.phone_number
-             FROM calls c LEFT JOIN companies co ON c.company_id = co.id
-             WHERE c.id IN (${missingIds.map(() => '?').join(',')})
-               AND co.phone_number IS NOT NULL`,
-            missingIds
-          );
-          if (missingRows.length === 0) return;
-          const transcriptMap = await findTranscriptsBatch(missingRows);
-          for (const [callId, transcript] of transcriptMap) {
-            await pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]);
-          }
-          if (transcriptMap.size > 0) {
-            logger.info(`Transcript背景同期: ${transcriptMap.size}件保存`);
-          }
-        } catch (e) {
-          // ログだけ残してエラー無視（レスポンスは既に送信済み）
-          logger.warn('Transcript背景同期エラー:', e.message);
-        }
-      });
-    }
-    return;
   } catch (err) {
     next(err);
   }
