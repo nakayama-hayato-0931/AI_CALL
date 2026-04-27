@@ -98,8 +98,8 @@ export default function CallResultsPage() {
     } catch (err) { /* ignore */ }
   };
 
-  const fetchCalls = async () => {
-    setLoading(true);
+  const fetchCalls = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const params = { page, limit: 30 };
       if (viewMode === 'daily') {
@@ -120,11 +120,18 @@ export default function CallResultsPage() {
       if (data.success) {
         setCalls(data.data.calls);
         setPagination(data.data.pagination);
+        // 文字起こし未取得の通話があれば、バックグラウンド同期を待ってから一度だけリロード
+        if (!silent) {
+          const hasMissing = (data.data.calls || []).some(c => !c.has_transcript);
+          if (hasMissing) {
+            setTimeout(() => { fetchCalls({ silent: true }); }, 6000);
+          }
+        }
       }
     } catch (err) {
-      toast.error('架電結果の取得に失敗しました');
+      if (!silent) toast.error('架電結果の取得に失敗しました');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
