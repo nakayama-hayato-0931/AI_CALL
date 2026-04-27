@@ -58,29 +58,6 @@ export default function CallResultsPage() {
 
   // 展開
   const [expandedId, setExpandedId] = useState(null);
-  const [transcriptCache, setTranscriptCache] = useState({}); // { callId: text }
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
-
-  const handleExpand = async (callId) => {
-    if (expandedId === callId) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(callId);
-    if (transcriptCache[callId] === undefined) {
-      setTranscriptLoading(true);
-      try {
-        const { data } = await api.get(`/api/calls/${callId}/transcript`);
-        if (data.success) {
-          setTranscriptCache(prev => ({ ...prev, [callId]: data.data.transcript || '' }));
-        }
-      } catch (err) {
-        setTranscriptCache(prev => ({ ...prev, [callId]: '' }));
-      } finally {
-        setTranscriptLoading(false);
-      }
-    }
-  };
 
   useEffect(() => {
     // 営業も架電結果を閲覧可能
@@ -122,7 +99,7 @@ export default function CallResultsPage() {
         setPagination(data.data.pagination);
         // 文字起こし未取得の通話があれば、バックグラウンド同期を待ってから一度だけリロード
         if (!silent) {
-          const hasMissing = (data.data.calls || []).some(c => !(Number(c.transcript_length) > 0 || c.has_transcript));
+          const hasMissing = (data.data.calls || []).some(c => !c.transcript);
           if (hasMissing) {
             setTimeout(() => { fetchCalls({ silent: true }); }, 6000);
           }
@@ -324,7 +301,7 @@ export default function CallResultsPage() {
                   const isOwn = user && call.user_id === user.id;
                   const isEditing = editingId === call.id;
                   const isExpanded = expandedId === call.id;
-                  const hasTranscript = Number(call.transcript_length) > 0 || !!call.has_transcript || (call.transcript && call.transcript.trim().length > 0);
+                  const hasTranscript = call.transcript && call.transcript.trim().length > 0;
 
                   return (
                     <React.Fragment key={call.id}>
@@ -388,7 +365,7 @@ export default function CallResultsPage() {
                       <td className="table-cell text-center">
                         {hasTranscript ? (
                           <button
-                            onClick={() => handleExpand(call.id)}
+                            onClick={() => setExpandedId(isExpanded ? null : call.id)}
                             className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
                             <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -427,13 +404,9 @@ export default function CallResultsPage() {
                               <h4 className="text-xs font-semibold text-gray-500">文字起こし</h4>
                             </div>
                             <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-80 overflow-y-auto">
-                              {transcriptCache[call.id] === undefined ? (
-                                <div className="text-xs text-gray-400 text-center py-2">読み込み中...</div>
-                              ) : (
-                                <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                                  {transcriptCache[call.id] || call.transcript || ''}
-                                </pre>
-                              )}
+                              <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                                {call.transcript}
+                              </pre>
                             </div>
                           </div>
                         </td>
