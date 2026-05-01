@@ -841,6 +841,21 @@ const getAssignmentOverview = async (req, res, next) => {
     const EXCLUDE_STATUSES = ['LOST', 'BARASHI'];
     const placeholders = EXCLUDE_STATUSES.map(() => '?').join(',');
 
+    // 月フィルター（YYYY-MM、'all'または未指定で全期間）
+    const month = (req.query.month || '').slice(0, 7);
+    let dateFilter = '';
+    let dateParams = [];
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [yStr, mStr] = month.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const lastDay = new Date(y, m, 0).getDate();
+      const dateFrom = `${month}-01`;
+      const dateTo = `${month}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+      dateFilter = ' AND p.created_at BETWEEN ? AND ?';
+      dateParams = [dateFrom, dateTo];
+    }
+
     // 営業ユーザー一覧（無効ユーザーでも担当中があれば表示するため全取得）
     const [salesUsers] = await pool.execute(
       "SELECT id, name, is_active FROM users WHERE role = 'sales' ORDER BY is_active DESC, name ASC"
@@ -852,8 +867,9 @@ const getAssignmentOverview = async (req, res, next) => {
        FROM projects p
        WHERE p.is_prospect = 0
          AND p.status NOT IN (${placeholders})
+         ${dateFilter}
        GROUP BY p.sales_user_id, p.status`,
-      EXCLUDE_STATUSES
+      [...EXCLUDE_STATUSES, ...dateParams]
     );
 
     // ユーザーIDごとに status -> count のマップを構築
@@ -881,7 +897,7 @@ const getAssignmentOverview = async (req, res, next) => {
       })
       .filter(s => s.isActive || s.total > 0);
 
-    // 未割当案件一覧（失注・バラシ除外）
+    // 未割当案件一覧（失注・バラシ除外、月フィルター適用）
     const [unassigned] = await pool.query(
       `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
               p.interview_date, p.memo,
@@ -893,14 +909,16 @@ const getAssignmentOverview = async (req, res, next) => {
        WHERE p.is_prospect = 0
          AND p.sales_user_id IS NULL
          AND p.status NOT IN (${placeholders})
+         ${dateFilter}
        ORDER BY p.created_at DESC`,
-      EXCLUDE_STATUSES
+      [...EXCLUDE_STATUSES, ...dateParams]
     );
 
     const unassignedCounts = userStatusMap.get('unassigned') || {};
     const unassignedTotal = Object.values(unassignedCounts).reduce((s, n) => s + n, 0);
 
     return ApiResponse.success(res, {
+      month: month || null,
       sales: salesSummary,
       unassigned: {
         total: unassignedTotal,

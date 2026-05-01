@@ -65,6 +65,20 @@ export default function ProjectAssignmentPage() {
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState({}); // { projectId: true }
   const [search, setSearch] = useState('');
+  const nowMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(nowMonth); // 'all' or YYYY-MM
+
+  // 月候補（2024-01〜翌年12月、降順）
+  const monthOptions = (() => {
+    const arr = [];
+    const nextYear = new Date().getFullYear() + 1;
+    for (let y = nextYear; y >= 2024; y--) {
+      for (let m = 12; m >= 1; m--) {
+        arr.push(`${y}-${String(m).padStart(2, '0')}`);
+      }
+    }
+    return arr;
+  })();
 
   useEffect(() => {
     if (!user) return;
@@ -74,12 +88,13 @@ export default function ProjectAssignmentPage() {
     }
     fetchData();
     fetchSalesUsers();
-  }, [user]);
+  }, [user, month]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: res } = await api.get('/api/projects/assignment-overview');
+      const params = month && month !== 'all' ? { month } : {};
+      const { data: res } = await api.get('/api/projects/assignment-overview', { params });
       if (res.success) setData(res.data);
     } catch (err) {
       toast.error('取得に失敗しました');
@@ -152,15 +167,29 @@ export default function ProjectAssignmentPage() {
           <div>
             <h1 className="text-2xl font-bold">案件割り振り</h1>
             <p className="text-sm text-gray-500 mt-1">
-              失注・バラシは除外。営業を割り当てると案件管理に即時反映されます。
+              失注・バラシは除外。案件獲得日（作成日）ベースで月別表示。営業を割り当てると案件管理に即時反映されます。
             </p>
           </div>
-          <button
-            onClick={fetchData}
-            className="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50"
-          >
-            更新
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">対象月:</label>
+            <select
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="border rounded px-2 py-1 text-sm"
+            >
+              <option value="all">全期間</option>
+              {monthOptions.map(m => {
+                const [yy, mm] = m.split('-');
+                return <option key={m} value={m}>{yy}年{Number(mm)}月</option>;
+              })}
+            </select>
+            <button
+              onClick={fetchData}
+              className="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50"
+            >
+              更新
+            </button>
+          </div>
         </div>
 
         {loading ? (
