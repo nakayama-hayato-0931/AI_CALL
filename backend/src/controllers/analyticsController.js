@@ -1309,10 +1309,14 @@ const getSalesPerformanceByIndustry = async (req, res, next) => {
       base === 'interview' ? 'p.interview_date BETWEEN ? AND ?'
       : 'DATE(p.created_at) BETWEEN ? AND ?';
 
-    // 案件・面接・内定の業種別集計
+    // 業種カテゴリ式（companies.industry_categoryが空の場合は industry から判定）
+    // companies.industry_categoryが既に大枠分類（製造/小売/建設/...）になっているのでそれを使用
+    const CATEGORY_EXPR = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+
+    // 案件・面接・内定の業種別集計（大枠カテゴリ単位）
     const [projRows] = await pool.query(
       `SELECT
-        COALESCE(c.industry, '(未設定)') AS industry,
+        ${CATEGORY_EXPR} AS industry,
         CAST(SUM(CASE WHEN ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as project_count,
         CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
         CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${mainDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
@@ -1320,14 +1324,14 @@ const getSalesPerformanceByIndustry = async (req, res, next) => {
       FROM projects p
       LEFT JOIN companies c ON p.company_id = c.id
       WHERE p.is_prospect = 0
-      GROUP BY COALESCE(c.industry, '(未設定)')`,
+      GROUP BY ${CATEGORY_EXPR}`,
       [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
     );
 
-    // 業種別の内定者数・売上
+    // 業種別の内定者数・売上（大枠カテゴリ単位）
     const [hireRows] = await pool.query(
       `SELECT
-        COALESCE(c.industry, '(未設定)') AS industry,
+        ${CATEGORY_EXPR} AS industry,
         CAST(SUM(CASE WHEN ph.course != '転職' THEN 1 ELSE 0 END) AS SIGNED) as total_hires,
         COALESCE(SUM(ph.initial_payment), 0) as initial_payment,
         COALESCE(SUM(ph.expected_revenue), 0) as expected_revenue
@@ -1337,7 +1341,7 @@ const getSalesPerformanceByIndustry = async (req, res, next) => {
       WHERE p.is_prospect = 0
         AND ph.is_cancelled = 0
         AND ${mainDateFilter}
-      GROUP BY COALESCE(c.industry, '(未設定)')`,
+      GROUP BY ${CATEGORY_EXPR}`,
       [dateFrom, dateTo]
     );
 
