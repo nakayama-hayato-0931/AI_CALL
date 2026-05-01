@@ -898,7 +898,7 @@ const getAssignmentOverview = async (req, res, next) => {
       })
       .filter(s => s.isActive || s.total > 0);
 
-    // 未割当案件一覧（失注・バラシ除外、面接日未設定も含めて全件表示）
+    // 未割当案件一覧（失注・バラシ除外、移行前案件除外、面接日未設定も含めて全件表示）
     // mail_replied / phone_confirmed が両方空 = 連絡待ち
     const [unassigned] = await pool.query(
       `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
@@ -911,6 +911,7 @@ const getAssignmentOverview = async (req, res, next) => {
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users ou ON p.owner_user_id = ou.id
        WHERE p.is_prospect = 0
+         AND p.is_legacy = 0
          AND p.sales_user_id IS NULL
          AND p.status NOT IN (${placeholders})
        ORDER BY p.created_at DESC`,
