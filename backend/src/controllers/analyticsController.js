@@ -1124,25 +1124,35 @@ const getSalesPerformance = async (req, res, next) => {
     let dateFrom = '2000-01-01', dateTo = '2099-12-31';
     if (date_from) dateFrom = date_from;
     if (date_to) dateTo = date_to;
-    const useNaiteiDate = date_base !== 'created'; // デフォルトは内定日ベース
+    // date_base: 'naitei'（内定日）/ 'created'（案件獲得日）/ 'interview'（面接日）
+    const base = date_base === 'created' ? 'created' : date_base === 'interview' ? 'interview' : 'naitei';
 
     // 営業ユーザー一覧
     const [salesUsers] = await pool.query(
       "SELECT id, name FROM users WHERE role = 'sales' AND is_active = 1 ORDER BY name"
     );
 
-    // 営業別集計クエリ（内定日ベース: naitei_date、面接/バラシは created_at ベース）
-    // 集計基準: 内定日ベース or 案件獲得日ベース
-    const naiteiDateFilter = useNaiteiDate ? 'p.naitei_date BETWEEN ? AND ?' : 'DATE(p.created_at) BETWEEN ? AND ?';
-    const createdDateFilter = 'DATE(p.created_at) BETWEEN ? AND ?';
+    // 集計基準別フィルタ
+    // - mainDateFilter: 内定企業数・hires集計用（"内定/案件獲得/面接"の月を基準）
+    // - interviewMetricFilter: 面接実施数・面接者数・バラシ用（面接日が指定月にある案件で集計）
+    const mainDateFilter =
+      base === 'naitei' ? 'p.naitei_date BETWEEN ? AND ?'
+      : base === 'interview' ? 'p.interview_date BETWEEN ? AND ?'
+      : 'DATE(p.created_at) BETWEEN ? AND ?';
+    // 面接系の指標は「実施月＝面接日が指定月」が直感的なので
+    // - interview基準時: interview_date
+    // - naitei/created基準時: 従来通り created_at
+    const interviewMetricFilter =
+      base === 'interview' ? 'p.interview_date BETWEEN ? AND ?'
+      : 'DATE(p.created_at) BETWEEN ? AND ?';
 
     const [rows] = await pool.query(
       `SELECT
         p.sales_user_id,
-        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${naiteiDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
-        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${createdDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
-        COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${createdDateFilter} THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
-        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND ${createdDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
+        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${mainDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
+        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+        COALESCE(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${interviewMetricFilter} THEN p.interview_attendees ELSE 0 END), 0) as total_attendees,
+        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
       FROM projects p
       WHERE p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
@@ -1165,7 +1175,7 @@ const getSalesPerformance = async (req, res, next) => {
       WHERE p.is_prospect = 0
         AND p.sales_user_id IS NOT NULL
         AND ph.is_cancelled = 0
-        AND ${naiteiDateFilter}
+        AND ${mainDateFilter}
       GROUP BY p.sales_user_id`,
       [dateFrom, dateTo]
     );
@@ -1230,18 +1240,25 @@ const getSalesPerformance = async (req, res, next) => {
  */
 const getSalesDetail = async (req, res, next) => {
   try {
-    const { sales_user_id, type, date_from, date_to } = req.query;
+    const { sales_user_id, type, date_from, date_to, date_base } = req.query;
     let dateFrom = date_from || '2000-01-01', dateTo = date_to || '2099-12-31';
+    const base = date_base === 'created' ? 'created' : date_base === 'interview' ? 'interview' : 'naitei';
     let statusFilter = '';
     let dateCol = 'DATE(p.created_at)';
 
     if (type === 'naitei') {
       statusFilter = "AND p.status = 'NAITEI'";
-      dateCol = 'p.naitei_date';
+      // 内定明細の日付軸: base が naitei→naitei_date / interview→interview_date / created→created_at
+      dateCol = base === 'interview' ? 'p.interview_date'
+              : base === 'created' ? 'DATE(p.created_at)'
+              : 'p.naitei_date';
     } else if (type === 'interview') {
       statusFilter = "AND p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')";
+      // 面接系明細: interview基準なら interview_date 軸
+      if (base === 'interview') dateCol = 'p.interview_date';
     } else if (type === 'barashi') {
       statusFilter = "AND p.status = 'BARASHI'";
+      if (base === 'interview') dateCol = 'p.interview_date';
     }
 
     let userFilter = '';
@@ -1273,4 +1290,99 @@ const getSalesDetail = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail };
+/**
+ * GET /api/analytics/sales-performance-by-industry
+ * 業種別の内定率・売上集計
+ * date_base: naitei | created | interview
+ */
+const getSalesPerformanceByIndustry = async (req, res, next) => {
+  try {
+    const { date_from, date_to, date_base } = req.query;
+    let dateFrom = date_from || '2000-01-01', dateTo = date_to || '2099-12-31';
+    const base = date_base === 'created' ? 'created' : date_base === 'interview' ? 'interview' : 'naitei';
+
+    const mainDateFilter =
+      base === 'naitei' ? 'p.naitei_date BETWEEN ? AND ?'
+      : base === 'interview' ? 'p.interview_date BETWEEN ? AND ?'
+      : 'DATE(p.created_at) BETWEEN ? AND ?';
+    const interviewMetricFilter =
+      base === 'interview' ? 'p.interview_date BETWEEN ? AND ?'
+      : 'DATE(p.created_at) BETWEEN ? AND ?';
+
+    // 案件・面接・内定の業種別集計
+    const [projRows] = await pool.query(
+      `SELECT
+        COALESCE(c.industry, '(未設定)') AS industry,
+        CAST(SUM(CASE WHEN ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as project_count,
+        CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') AND ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+        CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${mainDateFilter} THEN 1 ELSE 0 END) AS SIGNED) as naitei_companies,
+        CAST(SUM(CASE WHEN p.status = 'BARASHI' AND ${interviewMetricFilter} THEN 1 ELSE 0 END) AS SIGNED) as barashi_count
+      FROM projects p
+      LEFT JOIN companies c ON p.company_id = c.id
+      WHERE p.is_prospect = 0
+      GROUP BY COALESCE(c.industry, '(未設定)')`,
+      [dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo, dateFrom, dateTo]
+    );
+
+    // 業種別の内定者数・売上
+    const [hireRows] = await pool.query(
+      `SELECT
+        COALESCE(c.industry, '(未設定)') AS industry,
+        CAST(SUM(CASE WHEN ph.course != '転職' THEN 1 ELSE 0 END) AS SIGNED) as total_hires,
+        COALESCE(SUM(ph.initial_payment), 0) as initial_payment,
+        COALESCE(SUM(ph.expected_revenue), 0) as expected_revenue
+      FROM project_hires ph
+      JOIN projects p ON ph.project_id = p.id
+      LEFT JOIN companies c ON p.company_id = c.id
+      WHERE p.is_prospect = 0
+        AND ph.is_cancelled = 0
+        AND ${mainDateFilter}
+      GROUP BY COALESCE(c.industry, '(未設定)')`,
+      [dateFrom, dateTo]
+    );
+
+    const hireMap = new Map();
+    hireRows.forEach(r => hireMap.set(r.industry, r));
+
+    const industries = projRows
+      .map(r => {
+        const interview = Number(r.interview_count) || 0;
+        const project = Number(r.project_count) || 0;
+        const naitei = Number(r.naitei_companies) || 0;
+        const hire = hireMap.get(r.industry) || {};
+        return {
+          industry: r.industry,
+          projectCount: project,
+          interviewCount: interview,
+          naiteiCompanies: naitei,
+          barashiCount: Number(r.barashi_count) || 0,
+          totalHires: Number(hire.total_hires) || 0,
+          initialPayment: Number(hire.initial_payment) || 0,
+          expectedRevenue: Number(hire.expected_revenue) || 0,
+          naiteiRateInterview: interview > 0 ? ((naitei / interview) * 100).toFixed(1) : '0',
+          naiteiRateProject: project > 0 ? ((naitei / project) * 100).toFixed(1) : '0',
+        };
+      })
+      .filter(r => r.projectCount > 0 || r.interviewCount > 0 || r.naiteiCompanies > 0)
+      .sort((a, b) => b.naiteiCompanies - a.naiteiCompanies || b.interviewCount - a.interviewCount);
+
+    const team = industries.reduce((acc, r) => {
+      acc.projectCount += r.projectCount;
+      acc.interviewCount += r.interviewCount;
+      acc.naiteiCompanies += r.naiteiCompanies;
+      acc.barashiCount += r.barashiCount;
+      acc.totalHires += r.totalHires;
+      acc.initialPayment += r.initialPayment;
+      acc.expectedRevenue += r.expectedRevenue;
+      return acc;
+    }, { projectCount: 0, interviewCount: 0, naiteiCompanies: 0, barashiCount: 0, totalHires: 0, initialPayment: 0, expectedRevenue: 0 });
+    team.naiteiRateInterview = team.interviewCount > 0 ? ((team.naiteiCompanies / team.interviewCount) * 100).toFixed(1) : '0';
+    team.naiteiRateProject = team.projectCount > 0 ? ((team.naiteiCompanies / team.projectCount) * 100).toFixed(1) : '0';
+
+    return ApiResponse.success(res, { team, industries, dateFrom, dateTo });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry };

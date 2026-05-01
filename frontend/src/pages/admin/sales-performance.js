@@ -24,41 +24,47 @@ export default function SalesPerformancePage() {
   const [selectedWeekDate, setSelectedWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [dateBase, setDateBase] = useState('naitei'); // 'naitei' or 'created'
+  const [dateBase, setDateBase] = useState('naitei'); // 'naitei' | 'created' | 'interview'
+  const [viewMode, setViewMode] = useState('sales'); // 'sales' | 'industry'
+  const [industryData, setIndustryData] = useState(null);
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant', 'sales'].includes(user.role)) return;
     fetchData();
-  }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo, dateBase]);
+  }, [user, periodMode, selectedMonth, selectedWeekDate, customFrom, customTo, dateBase, viewMode]);
+
+  const computeRange = () => {
+    if (periodMode === 'monthly') {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      return [`${selectedMonth}-01`, `${selectedMonth}-${String(lastDay).padStart(2, '0')}`];
+    }
+    if (periodMode === 'weekly') {
+      const d = new Date(selectedWeekDate);
+      const day = d.getDay();
+      const mon = new Date(d);
+      mon.setDate(d.getDate() - ((day + 6) % 7));
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      return [mon.toISOString().slice(0, 10), sun.toISOString().slice(0, 10)];
+    }
+    if (periodMode === 'cumulative') return ['2000-01-01', '2099-12-31'];
+    return [customFrom, customTo];
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      let dateFrom, dateTo;
-      if (periodMode === 'monthly') {
-        const [y, m] = selectedMonth.split('-').map(Number);
-        const lastDay = new Date(y, m, 0).getDate();
-        dateFrom = `${selectedMonth}-01`;
-        dateTo = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
-      } else if (periodMode === 'weekly') {
-        const d = new Date(selectedWeekDate);
-        const day = d.getDay();
-        const mon = new Date(d);
-        mon.setDate(d.getDate() - ((day + 6) % 7));
-        const sun = new Date(mon);
-        sun.setDate(mon.getDate() + 6);
-        dateFrom = mon.toISOString().slice(0, 10);
-        dateTo = sun.toISOString().slice(0, 10);
-      } else if (periodMode === 'cumulative') {
-        dateFrom = '2000-01-01';
-        dateTo = '2099-12-31';
-      } else {
-        dateFrom = customFrom;
-        dateTo = customTo;
-        if (!dateFrom || !dateTo) { setLoading(false); return; }
-      }
+      const [dateFrom, dateTo] = computeRange();
+      if (!dateFrom || !dateTo) { setLoading(false); return; }
+      // 営業別データは常に取得（合計表示などで使用）
       const { data: res } = await api.get(`/api/analytics/sales-performance?date_from=${dateFrom}&date_to=${dateTo}&date_base=${dateBase}`);
       if (res.success) setData(res.data);
+
+      if (viewMode === 'industry') {
+        const { data: indRes } = await api.get(`/api/analytics/sales-performance-by-industry?date_from=${dateFrom}&date_to=${dateTo}&date_base=${dateBase}`);
+        if (indRes.success) setIndustryData(indRes.data);
+      }
     } catch (err) {
       toast.error('データの取得に失敗しました');
     } finally {
@@ -147,16 +153,90 @@ export default function SalesPerformancePage() {
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                 dateBase === 'created' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}>案件獲得日ベース</button>
+            <button onClick={() => setDateBase('interview')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                dateBase === 'interview' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>面接日ベース</button>
           </div>
         </div>
-        {data && (
-          <p className="text-[10px] text-gray-400 mt-2 text-right">{data.dateFrom} 〜 {data.dateTo}（{dateBase === 'naitei' ? '内定日' : '案件獲得日'}ベース）</p>
-        )}
+        <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <button onClick={() => setViewMode('sales')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'sales' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>営業別</button>
+            <button onClick={() => setViewMode('industry')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'industry' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>業種別内定率</button>
+          </div>
+          {data && (
+            <p className="text-[10px] text-gray-400 text-right">
+              {data.dateFrom} 〜 {data.dateTo}（
+              {dateBase === 'naitei' ? '内定日' : dateBase === 'interview' ? '面接日' : '案件獲得日'}ベース
+              {viewMode === 'industry' ? ' / 業種別' : ''}
+              ）
+            </p>
+          )}
+        </div>
       </div>
 
       {/* テーブル */}
       {loading ? (
         <div className="card p-8 text-center text-gray-400">読み込み中...</div>
+      ) : viewMode === 'industry' ? (
+        !industryData || industryData.industries.length === 0 ? (
+          <div className="card p-8 text-center text-gray-400">業種データがありません</div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 px-3 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[180px]">業種</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">案件数</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">面接数</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">内定企業数</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap bg-emerald-50/60 text-emerald-700">内定率(対面接)</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap bg-emerald-50/60 text-emerald-700">内定率(対案件)</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">バラシ</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-600 whitespace-nowrap">合計内定数</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap bg-blue-50/50">初回売上</th>
+                    <th className="text-right py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap bg-blue-50/50">見込売上</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-blue-50/40 border-b-2 border-blue-200">
+                    <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">合計</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700">{industryData.team.projectCount}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700">{industryData.team.interviewCount}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700">{industryData.team.naiteiCompanies}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700 bg-emerald-50/60">{industryData.team.naiteiRateInterview}%</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700 bg-emerald-50/60">{industryData.team.naiteiRateProject}%</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-red-600">{industryData.team.barashiCount}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700">{industryData.team.totalHires}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700 bg-blue-50/60">{fmtYen(industryData.team.initialPayment)}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-blue-700 bg-blue-50/60">{fmtYen(industryData.team.expectedRevenue)}</td>
+                  </tr>
+                  {industryData.industries.map((row, i) => (
+                    <tr key={row.industry || i} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                      <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>{row.industry || '(未設定)'}</td>
+                      <td className="py-2 px-3 text-right">{row.projectCount}</td>
+                      <td className="py-2 px-3 text-right">{row.interviewCount}</td>
+                      <td className="py-2 px-3 text-right font-semibold">{row.naiteiCompanies}</td>
+                      <td className="py-2 px-3 text-right font-semibold bg-emerald-50/40 text-emerald-700">{row.naiteiRateInterview}%</td>
+                      <td className="py-2 px-3 text-right font-semibold bg-emerald-50/40 text-emerald-700">{row.naiteiRateProject}%</td>
+                      <td className="py-2 px-3 text-right text-red-500">{row.barashiCount}</td>
+                      <td className="py-2 px-3 text-right">{row.totalHires}</td>
+                      <td className="py-2 px-3 text-right font-semibold bg-blue-50/30">{fmtYen(row.initialPayment)}</td>
+                      <td className="py-2 px-3 text-right font-semibold bg-blue-50/30">{fmtYen(row.expectedRevenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
       ) : !data || data.sales.length === 0 ? (
         <div className="card p-8 text-center text-gray-400">営業ユーザーがいません</div>
       ) : (
