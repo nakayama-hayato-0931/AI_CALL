@@ -212,21 +212,21 @@ export default function ProjectAssignmentPage() {
             {/* 営業別サマリ */}
             <div className="bg-white rounded-lg shadow mb-6 overflow-hidden">
               <div className="px-4 py-3 border-b bg-gray-50">
-                <h2 className="font-bold text-sm">営業別案件状況</h2>
+                <h2 className="font-bold text-base">営業別案件状況</h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-xs">
+                <table className="min-w-full text-base">
+                  <thead className="bg-gray-50 text-sm">
                     <tr>
-                      <th className="px-3 py-2 text-left sticky left-0 bg-gray-50">営業</th>
-                      <th className="px-3 py-2 text-center bg-blue-50">合計</th>
+                      <th className="px-4 py-3 text-left sticky left-0 bg-gray-50">営業</th>
+                      <th className="px-4 py-3 text-center bg-blue-50">合計</th>
                       {STATUS_COLUMNS.flatMap(col => {
                         if (col.expandable && expandedColumns[col.key]) {
                           return [
                             <th
                               key={col.key}
                               onClick={() => setExpandedColumns(p => ({ ...p, [col.key]: false }))}
-                              className="px-3 py-2 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 select-none"
+                              className="px-4 py-3 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 select-none"
                               colSpan={col.breakdown.length}
                               title="クリックして折りたたむ"
                             >
@@ -238,7 +238,7 @@ export default function ProjectAssignmentPage() {
                           <th
                             key={col.key}
                             onClick={col.expandable ? () => setExpandedColumns(p => ({ ...p, [col.key]: true })) : undefined}
-                            className={`px-3 py-2 text-center whitespace-nowrap ${col.expandable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                            className={`px-4 py-3 text-center whitespace-nowrap ${col.expandable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
                             title={col.expandable ? 'クリックして内訳を表示' : undefined}
                           >
                             {col.label}
@@ -249,7 +249,7 @@ export default function ProjectAssignmentPage() {
                     </tr>
                     {/* 展開中の内訳サブヘッダ行 */}
                     {STATUS_COLUMNS.some(c => c.expandable && expandedColumns[c.key]) && (
-                      <tr className="bg-gray-100 text-[11px]">
+                      <tr className="bg-gray-100 text-sm">
                         <th className="px-3 py-1 text-left sticky left-0 bg-gray-100"></th>
                         <th className="px-3 py-1"></th>
                         {STATUS_COLUMNS.flatMap(col => {
@@ -275,14 +275,14 @@ export default function ProjectAssignmentPage() {
                         const totalBg = isUnassigned ? 'bg-amber-100' : 'bg-blue-50';
                         return (
                           <tr key={rowKey} className={`border-t hover:bg-gray-50 ${rowBg} ${isUnassigned ? 'font-semibold' : ''}`}>
-                            <td className={`px-3 py-2 font-medium sticky left-0 ${labelBg}`}>{label}</td>
-                            <td className={`px-3 py-2 text-center font-bold ${totalBg}`}>{displayedTotal}</td>
+                            <td className={`px-4 py-3 font-medium sticky left-0 ${labelBg}`}>{label}</td>
+                            <td className={`px-4 py-3 text-center font-bold ${totalBg}`}>{displayedTotal}</td>
                             {STATUS_COLUMNS.flatMap(col => {
                               if (col.expandable && expandedColumns[col.key]) {
                                 return col.breakdown.map((b, idx) => {
                                   const v = sumByDbKeys(counts, b.dbKeys);
                                   return (
-                                    <td key={`${col.key}-${idx}`} className="px-3 py-2 text-center">
+                                    <td key={`${col.key}-${idx}`} className="px-4 py-3 text-center">
                                       {v ? (
                                         <span className={`inline-block px-2 py-0.5 rounded ${b.color}`}>{v}</span>
                                       ) : (
@@ -294,7 +294,7 @@ export default function ProjectAssignmentPage() {
                               }
                               const v = sumByDbKeys(counts, col.dbKeys);
                               return [(
-                                <td key={col.key} className="px-3 py-2 text-center">
+                                <td key={col.key} className="px-4 py-3 text-center">
                                   {v ? (
                                     <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>{v}</span>
                                   ) : (
@@ -321,14 +321,14 @@ export default function ProjectAssignmentPage() {
                         const displayedTotal = sumDisplayed(totalCounts);
                         return (
                           <tr key="grand-total" className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
-                            <td className="px-3 py-2 sticky left-0 bg-blue-50/70">合計</td>
-                            <td className="px-3 py-2 text-center bg-blue-100">{displayedTotal}</td>
+                            <td className="px-4 py-3 sticky left-0 bg-blue-50/70">合計</td>
+                            <td className="px-4 py-3 text-center bg-blue-100">{displayedTotal}</td>
                             {STATUS_COLUMNS.flatMap(col => {
                               if (col.expandable && expandedColumns[col.key]) {
                                 return col.breakdown.map((b, idx) => {
                                   const v = sumByDbKeys(totalCounts, b.dbKeys);
                                   return (
-                                    <td key={`tot-${col.key}-${idx}`} className="px-3 py-2 text-center">
+                                    <td key={`tot-${col.key}-${idx}`} className="px-4 py-3 text-center">
                                       {v ? <span className={`inline-block px-2 py-0.5 rounded ${b.color}`}>{v}</span> : <span className="text-gray-300">-</span>}
                                     </td>
                                   );
@@ -336,7 +336,7 @@ export default function ProjectAssignmentPage() {
                               }
                               const v = sumByDbKeys(totalCounts, col.dbKeys);
                               return [(
-                                <td key={`tot-${col.key}`} className="px-3 py-2 text-center">
+                                <td key={`tot-${col.key}`} className="px-4 py-3 text-center">
                                   {v ? <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>{v}</span> : <span className="text-gray-300">-</span>}
                                 </td>
                               )];
@@ -353,7 +353,7 @@ export default function ProjectAssignmentPage() {
                               s.userId,
                               <>
                                 {s.name}
-                                {!s.isActive && <span className="ml-1 text-xs text-gray-400">(無効)</span>}
+                                {!s.isActive && <span className="ml-1 text-sm text-gray-400">(無効)</span>}
                               </>,
                               s.statusCounts,
                               false
@@ -374,8 +374,8 @@ export default function ProjectAssignmentPage() {
             {/* 未割当案件一覧 */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-wrap gap-2">
-                <h2 className="font-bold text-sm">
-                  未割当案件 <span className="ml-2 text-xs text-gray-500">{filteredProjects.length} / {data.unassigned.total}件</span>
+                <h2 className="font-bold text-base">
+                  未割当案件 <span className="ml-2 text-sm text-gray-500">{filteredProjects.length} / {data.unassigned.total}件</span>
                 </h2>
                 <input
                   type="text"
@@ -386,18 +386,18 @@ export default function ProjectAssignmentPage() {
                 />
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-xs">
+                <table className="min-w-full text-base">
+                  <thead className="bg-gray-50 text-sm">
                     <tr>
-                      <th className="px-3 py-2 text-left">求人番号</th>
-                      <th className="px-3 py-2 text-left">企業名</th>
-                      <th className="px-3 py-2 text-left">担当OP</th>
-                      <th className="px-3 py-2 text-left">ステータス</th>
-                      <th className="px-3 py-2 text-left">連絡状況</th>
-                      <th className="px-3 py-2 text-left">案件獲得日</th>
-                      <th className="px-3 py-2 text-left">面接日</th>
-                      <th className="px-3 py-2 text-left">メモ</th>
-                      <th className="px-3 py-2 text-left">営業を割り当て</th>
+                      <th className="px-4 py-3 text-left">求人番号</th>
+                      <th className="px-4 py-3 text-left">企業名</th>
+                      <th className="px-4 py-3 text-left">担当OP</th>
+                      <th className="px-4 py-3 text-left">ステータス</th>
+                      <th className="px-4 py-3 text-left">連絡状況</th>
+                      <th className="px-4 py-3 text-left">案件獲得日</th>
+                      <th className="px-4 py-3 text-left">面接日</th>
+                      <th className="px-4 py-3 text-left">メモ</th>
+                      <th className="px-4 py-3 text-left">営業を割り当て</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -407,8 +407,8 @@ export default function ProjectAssignmentPage() {
                       const isPending = !!p.is_pending_contact || (!p.mail_replied && !p.phone_confirmed);
                       return (
                       <tr key={p.id} className="border-t hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-500">{p.job_number || '-'}</td>
-                        <td className="px-3 py-2 font-medium">
+                        <td className="px-4 py-3 text-sm text-gray-500">{p.job_number || '-'}</td>
+                        <td className="px-4 py-3 font-medium">
                           <a
                             href={`/admin/projects?focus=${p.id}`}
                             className="text-blue-600 hover:underline"
@@ -418,13 +418,13 @@ export default function ProjectAssignmentPage() {
                             {p.company_name || '-'}
                           </a>
                         </td>
-                        <td className="px-3 py-2 text-xs">{p.owner_name || '-'}</td>
-                        <td className="px-3 py-2">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs ${STATUS_COLOR[p.status] || 'bg-gray-100 text-gray-600'}`}>
+                        <td className="px-4 py-3 text-sm">{p.owner_name || '-'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-0.5 rounded text-sm ${STATUS_COLOR[p.status] || 'bg-gray-100 text-gray-600'}`}>
                             {STATUS_LABELS[p.status] || p.status}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-xs">
+                        <td className="px-4 py-3 text-sm">
                           {isPending ? (
                             <span className="inline-block px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-medium">連絡待ち</span>
                           ) : (
@@ -434,10 +434,10 @@ export default function ProjectAssignmentPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-xs">{formatDate(p.created_at)}</td>
-                        <td className="px-3 py-2 text-xs">{formatDate(p.interview_date)}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500 max-w-xs truncate">{p.memo || '-'}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3 text-sm">{formatDate(p.created_at)}</td>
+                        <td className="px-4 py-3 text-sm">{formatDate(p.interview_date)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{p.memo || '-'}</td>
+                        <td className="px-4 py-3">
                           <select
                             disabled={!!assigning[p.id]}
                             defaultValue=""
@@ -453,7 +453,7 @@ export default function ProjectAssignmentPage() {
                             ))}
                           </select>
                           {assigning[p.id] && (
-                            <span className="ml-2 text-xs text-gray-400">割り当て中...</span>
+                            <span className="ml-2 text-sm text-gray-400">割り当て中...</span>
                           )}
                         </td>
                       </tr>
