@@ -67,6 +67,7 @@ export default function ProjectAssignmentPage() {
   const [search, setSearch] = useState('');
   const nowMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(nowMonth); // 'all' or YYYY-MM
+  const [expandedColumns, setExpandedColumns] = useState({}); // { columnKey: true }
 
   // 月候補（2024-01〜翌年12月、降順）
   const monthOptions = (() => {
@@ -144,13 +145,21 @@ export default function ProjectAssignmentPage() {
     );
   }) || [];
 
-  // 営業画面で表示するステータス（固定列）
-  // 各表示列に対応するDBステータス値（複数キーを合算する場合あり）
+  // 営業画面で表示するステータス列（固定）
+  // 「面接実施」は 結果待ち/内定/不合格 の合算で、クリックで内訳展開
   const STATUS_COLUMNS = [
     { key: 'MENSETSU_KAKUTEI', label: '面接日確定', dbKeys: ['MENSETSU_KAKUTEI', 'INTERVIEW_SET'] },
-    { key: 'WAITING_RESULT', label: '結果待ち', dbKeys: ['WAITING_RESULT', 'KEKKA_MACHI'] },
-    { key: 'NAITEI', label: '内定', dbKeys: ['NAITEI'] },
-    { key: 'FUGOKAKU', label: '不合格', dbKeys: ['FUGOKAKU'] },
+    {
+      key: 'INTERVIEW_DONE_GROUP',
+      label: '面接実施',
+      dbKeys: ['WAITING_RESULT', 'KEKKA_MACHI', 'NAITEI', 'FUGOKAKU'],
+      expandable: true,
+      breakdown: [
+        { label: '結果待ち', dbKeys: ['WAITING_RESULT', 'KEKKA_MACHI'], color: 'bg-amber-50 text-amber-700' },
+        { label: '内定', dbKeys: ['NAITEI'], color: 'bg-emerald-50 text-emerald-700' },
+        { label: '不合格', dbKeys: ['FUGOKAKU'], color: 'bg-red-50 text-red-700' },
+      ],
+    },
     { key: 'BOSHUCHU', label: '募集中', dbKeys: ['BOSHUCHU'] },
   ];
 
@@ -168,7 +177,8 @@ export default function ProjectAssignmentPage() {
           <div>
             <h1 className="text-2xl font-bold">案件割り振り</h1>
             <p className="text-sm text-gray-500 mt-1">
-              失注・バラシは除外。案件獲得日（作成日）ベースで月別表示。営業を割り当てると案件管理に即時反映されます。
+              失注・バラシは除外。集計は<strong>面接日ベース</strong>で月切替。
+              未割当案件一覧は面接日未定のものも含めて全件表示。営業を割り当てると案件管理に即時反映されます。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -210,61 +220,112 @@ export default function ProjectAssignmentPage() {
                     <tr>
                       <th className="px-3 py-2 text-left sticky left-0 bg-gray-50">営業</th>
                       <th className="px-3 py-2 text-center bg-blue-50">合計</th>
-                      {STATUS_COLUMNS.map(col => (
-                        <th key={col.key} className="px-3 py-2 text-center whitespace-nowrap">
-                          {col.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.sales.map(s => {
-                      const displayedTotal = sumDisplayed(s.statusCounts);
-                      return (
-                        <tr key={s.userId} className="border-t hover:bg-gray-50">
-                          <td className="px-3 py-2 font-medium sticky left-0 bg-white">
-                            {s.name}
-                            {!s.isActive && <span className="ml-1 text-xs text-gray-400">(無効)</span>}
-                          </td>
-                          <td className="px-3 py-2 text-center font-bold bg-blue-50">{displayedTotal}</td>
-                          {STATUS_COLUMNS.map(col => {
-                            const v = sumByDbKeys(s.statusCounts, col.dbKeys);
-                            return (
-                              <td key={col.key} className="px-3 py-2 text-center">
-                                {v ? (
-                                  <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>
-                                    {v}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-300">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                    <tr className="border-t bg-amber-50 font-semibold">
-                      <td className="px-3 py-2 sticky left-0 bg-amber-50">未割当</td>
-                      <td className="px-3 py-2 text-center bg-amber-100">{sumDisplayed(data.unassigned.statusCounts)}</td>
-                      {STATUS_COLUMNS.map(col => {
-                        const v = sumByDbKeys(data.unassigned.statusCounts, col.dbKeys);
-                        return (
-                          <td key={col.key} className="px-3 py-2 text-center">
-                            {v ? (
-                              <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>
-                                {v}
-                              </span>
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
-                          </td>
-                        );
+                      {STATUS_COLUMNS.flatMap(col => {
+                        if (col.expandable && expandedColumns[col.key]) {
+                          return [
+                            <th
+                              key={col.key}
+                              onClick={() => setExpandedColumns(p => ({ ...p, [col.key]: false }))}
+                              className="px-3 py-2 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 select-none"
+                              colSpan={col.breakdown.length}
+                              title="クリックして折りたたむ"
+                            >
+                              {col.label} <span className="text-blue-600">▼</span>
+                            </th>,
+                          ];
+                        }
+                        return [
+                          <th
+                            key={col.key}
+                            onClick={col.expandable ? () => setExpandedColumns(p => ({ ...p, [col.key]: true })) : undefined}
+                            className={`px-3 py-2 text-center whitespace-nowrap ${col.expandable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                            title={col.expandable ? 'クリックして内訳を表示' : undefined}
+                          >
+                            {col.label}
+                            {col.expandable && <span className="text-gray-400 ml-1">▶</span>}
+                          </th>,
+                        ];
                       })}
                     </tr>
-                    {data.sales.length === 0 && (
-                      <tr><td colSpan={STATUS_COLUMNS.length + 2} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
+                    {/* 展開中の内訳サブヘッダ行 */}
+                    {STATUS_COLUMNS.some(c => c.expandable && expandedColumns[c.key]) && (
+                      <tr className="bg-gray-100 text-[11px]">
+                        <th className="px-3 py-1 text-left sticky left-0 bg-gray-100"></th>
+                        <th className="px-3 py-1"></th>
+                        {STATUS_COLUMNS.flatMap(col => {
+                          if (col.expandable && expandedColumns[col.key]) {
+                            return col.breakdown.map((b, idx) => (
+                              <th key={`${col.key}-${idx}`} className="px-3 py-1 text-center whitespace-nowrap text-gray-600">
+                                {b.label}
+                              </th>
+                            ));
+                          }
+                          return [<th key={col.key}></th>];
+                        })}
+                      </tr>
                     )}
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      // 統一行レンダラ
+                      const renderRow = (rowKey, label, counts, isUnassigned) => {
+                        const displayedTotal = sumDisplayed(counts);
+                        const rowBg = isUnassigned ? 'bg-amber-50' : 'bg-white';
+                        const labelBg = isUnassigned ? 'bg-amber-50' : 'bg-white';
+                        const totalBg = isUnassigned ? 'bg-amber-100' : 'bg-blue-50';
+                        return (
+                          <tr key={rowKey} className={`border-t hover:bg-gray-50 ${rowBg} ${isUnassigned ? 'font-semibold' : ''}`}>
+                            <td className={`px-3 py-2 font-medium sticky left-0 ${labelBg}`}>{label}</td>
+                            <td className={`px-3 py-2 text-center font-bold ${totalBg}`}>{displayedTotal}</td>
+                            {STATUS_COLUMNS.flatMap(col => {
+                              if (col.expandable && expandedColumns[col.key]) {
+                                return col.breakdown.map((b, idx) => {
+                                  const v = sumByDbKeys(counts, b.dbKeys);
+                                  return (
+                                    <td key={`${col.key}-${idx}`} className="px-3 py-2 text-center">
+                                      {v ? (
+                                        <span className={`inline-block px-2 py-0.5 rounded ${b.color}`}>{v}</span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                });
+                              }
+                              const v = sumByDbKeys(counts, col.dbKeys);
+                              return [(
+                                <td key={col.key} className="px-3 py-2 text-center">
+                                  {v ? (
+                                    <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>{v}</span>
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                              )];
+                            })}
+                          </tr>
+                        );
+                      };
+                      return (
+                        <>
+                          {data.sales.map(s =>
+                            renderRow(
+                              s.userId,
+                              <>
+                                {s.name}
+                                {!s.isActive && <span className="ml-1 text-xs text-gray-400">(無効)</span>}
+                              </>,
+                              s.statusCounts,
+                              false
+                            )
+                          )}
+                          {renderRow('unassigned', '未割当', data.unassigned.statusCounts, true)}
+                          {data.sales.length === 0 && (
+                            <tr><td colSpan={99} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
+                          )}
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -292,6 +353,7 @@ export default function ProjectAssignmentPage() {
                       <th className="px-3 py-2 text-left">企業名</th>
                       <th className="px-3 py-2 text-left">担当OP</th>
                       <th className="px-3 py-2 text-left">ステータス</th>
+                      <th className="px-3 py-2 text-left">連絡状況</th>
                       <th className="px-3 py-2 text-left">案件獲得日</th>
                       <th className="px-3 py-2 text-left">面接日</th>
                       <th className="px-3 py-2 text-left">メモ</th>
@@ -300,8 +362,10 @@ export default function ProjectAssignmentPage() {
                   </thead>
                   <tbody>
                     {filteredProjects.length === 0 ? (
-                      <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">未割当案件はありません</td></tr>
-                    ) : filteredProjects.map(p => (
+                      <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">未割当案件はありません</td></tr>
+                    ) : filteredProjects.map(p => {
+                      const isPending = !!p.is_pending_contact || (!p.mail_replied && !p.phone_confirmed);
+                      return (
                       <tr key={p.id} className="border-t hover:bg-gray-50">
                         <td className="px-3 py-2 text-xs text-gray-500">{p.job_number || '-'}</td>
                         <td className="px-3 py-2 font-medium">
@@ -319,6 +383,16 @@ export default function ProjectAssignmentPage() {
                           <span className={`inline-block px-2 py-0.5 rounded text-xs ${STATUS_COLOR[p.status] || 'bg-gray-100 text-gray-600'}`}>
                             {STATUS_LABELS[p.status] || p.status}
                           </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {isPending ? (
+                            <span className="inline-block px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-medium">連絡待ち</span>
+                          ) : (
+                            <span className="text-gray-600">
+                              {p.mail_replied && <span className="inline-block px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 mr-1">メール返信</span>}
+                              {p.phone_confirmed && <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700">電話確認</span>}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs">{formatDate(p.created_at)}</td>
                         <td className="px-3 py-2 text-xs">{formatDate(p.interview_date)}</td>
@@ -343,7 +417,8 @@ export default function ProjectAssignmentPage() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

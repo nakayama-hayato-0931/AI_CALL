@@ -842,18 +842,19 @@ const getAssignmentOverview = async (req, res, next) => {
     const placeholders = EXCLUDE_STATUSES.map(() => '?').join(',');
 
     // 月フィルター（YYYY-MM、'all'または未指定で全期間）
+    // 集計は面接日(interview_date)ベース
     const month = (req.query.month || '').slice(0, 7);
-    let dateFilter = '';
-    let dateParams = [];
+    let interviewDateFilter = '';
+    let interviewDateParams = [];
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       const [yStr, mStr] = month.split('-');
       const y = parseInt(yStr, 10);
       const m = parseInt(mStr, 10);
       const lastDay = new Date(y, m, 0).getDate();
       const dateFrom = `${month}-01`;
-      const dateTo = `${month}-${String(lastDay).padStart(2, '0')} 23:59:59`;
-      dateFilter = ' AND p.created_at BETWEEN ? AND ?';
-      dateParams = [dateFrom, dateTo];
+      const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+      interviewDateFilter = ' AND p.interview_date BETWEEN ? AND ?';
+      interviewDateParams = [dateFrom, dateTo];
     }
 
     // 営業ユーザー一覧（無効ユーザーでも担当中があれば表示するため全取得）
@@ -861,15 +862,15 @@ const getAssignmentOverview = async (req, res, next) => {
       "SELECT id, name, is_active FROM users WHERE role = 'sales' ORDER BY is_active DESC, name ASC"
     );
 
-    // 営業別ステータス集計（失注・バラシ除外）
+    // 営業別ステータス集計（失注・バラシ除外、面接日ベース）
     const [stat] = await pool.query(
       `SELECT p.sales_user_id, p.status, COUNT(*) AS cnt
        FROM projects p
        WHERE p.is_prospect = 0
          AND p.status NOT IN (${placeholders})
-         ${dateFilter}
+         ${interviewDateFilter}
        GROUP BY p.sales_user_id, p.status`,
-      [...EXCLUDE_STATUSES, ...dateParams]
+      [...EXCLUDE_STATUSES, ...interviewDateParams]
     );
 
     // ユーザーIDごとに status -> count のマップを構築
@@ -897,10 +898,13 @@ const getAssignmentOverview = async (req, res, next) => {
       })
       .filter(s => s.isActive || s.total > 0);
 
-    // 未割当案件一覧（失注・バラシ除外、月フィルター適用）
+    // 未割当案件一覧（失注・バラシ除外、面接日未設定も含めて全件表示）
+    // mail_replied / phone_confirmed が両方空 = 連絡待ち
     const [unassigned] = await pool.query(
       `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
               p.interview_date, p.memo,
+              p.mail_replied, p.phone_confirmed,
+              (p.mail_replied IS NULL AND p.phone_confirmed IS NULL) AS is_pending_contact,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
               ou.name AS owner_name
        FROM projects p
@@ -909,9 +913,8 @@ const getAssignmentOverview = async (req, res, next) => {
        WHERE p.is_prospect = 0
          AND p.sales_user_id IS NULL
          AND p.status NOT IN (${placeholders})
-         ${dateFilter}
        ORDER BY p.created_at DESC`,
-      [...EXCLUDE_STATUSES, ...dateParams]
+      EXCLUDE_STATUSES
     );
 
     const unassignedCounts = userStatusMap.get('unassigned') || {};
