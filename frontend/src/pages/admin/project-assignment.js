@@ -170,6 +170,13 @@ export default function ProjectAssignmentPage() {
   const sumDisplayed = (counts) =>
     STATUS_COLUMNS.reduce((acc, col) => acc + sumByDbKeys(counts, col.dbKeys), 0);
 
+  // 未割当のstatusCountsは下の一覧と一致させるため、一覧のprojectsから直接集計
+  // （バックエンドのunassignedは月フィルター無視で全件、一覧と同じ集合）
+  const unassignedCountsFromList = (data?.unassigned?.projects || []).reduce((acc, p) => {
+    if (p.status) acc[p.status] = (acc[p.status] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <Layout>
       <div className="p-6">
@@ -314,7 +321,7 @@ export default function ProjectAssignmentPage() {
                         }
                       };
                       data.sales.forEach(s => accumulate(s.statusCounts));
-                      accumulate(data.unassigned.statusCounts);
+                      accumulate(unassignedCountsFromList);
 
                       // 合計行（先頭固定）
                       const renderTotalRow = () => {
@@ -359,7 +366,7 @@ export default function ProjectAssignmentPage() {
                               false
                             )
                           )}
-                          {renderRow('unassigned', '未割当', data.unassigned.statusCounts, true)}
+                          {renderRow('unassigned', '未割当', unassignedCountsFromList, true)}
                           {data.sales.length === 0 && (
                             <tr><td colSpan={99} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
                           )}
