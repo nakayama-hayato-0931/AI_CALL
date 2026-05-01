@@ -172,10 +172,16 @@ export default function ProjectAssignmentPage() {
 
   // 未割当のstatusCountsは下の一覧と一致させるため、一覧のprojectsから直接集計
   // （バックエンドのunassignedは月フィルター無視で全件、一覧と同じ集合）
-  const unassignedCountsFromList = (data?.unassigned?.projects || []).reduce((acc, p) => {
+  const unassignedProjects = data?.unassigned?.projects || [];
+  const unassignedCountsFromList = unassignedProjects.reduce((acc, p) => {
     if (p.status) acc[p.status] = (acc[p.status] || 0) + 1;
     return acc;
   }, {});
+  // 未割当行用のオーバーライド:
+  // - 合計 = 一覧の全件数
+  // - 面接日確定列 = interview_date が入力されている件数（ステータス問わず）
+  const unassignedTotalOverride = unassignedProjects.length;
+  const unassignedInterviewSetOverride = unassignedProjects.filter(p => !!p.interview_date).length;
 
   return (
     <Layout>
@@ -275,11 +281,21 @@ export default function ProjectAssignmentPage() {
                   <tbody>
                     {(() => {
                       // 統一行レンダラ
-                      const renderRow = (rowKey, label, counts, isUnassigned) => {
-                        const displayedTotal = sumDisplayed(counts);
+                      // overrides: { totalOverride?, columnValueOverride: (col) => number|null }
+                      const renderRow = (rowKey, label, counts, isUnassigned, overrides = {}) => {
+                        const displayedTotal = overrides.totalOverride != null
+                          ? overrides.totalOverride
+                          : sumDisplayed(counts);
                         const rowBg = isUnassigned ? 'bg-amber-50' : 'bg-white';
                         const labelBg = isUnassigned ? 'bg-amber-50' : 'bg-white';
                         const totalBg = isUnassigned ? 'bg-amber-100' : 'bg-blue-50';
+                        const valueFor = (col) => {
+                          if (overrides.columnValueOverride) {
+                            const ov = overrides.columnValueOverride(col);
+                            if (ov != null) return ov;
+                          }
+                          return sumByDbKeys(counts, col.dbKeys);
+                        };
                         return (
                           <tr key={rowKey} className={`border-t hover:bg-gray-50 ${rowBg} ${isUnassigned ? 'font-semibold' : ''}`}>
                             <td className={`px-4 py-3 font-medium sticky left-0 ${labelBg}`}>{label}</td>
@@ -299,7 +315,7 @@ export default function ProjectAssignmentPage() {
                                   );
                                 });
                               }
-                              const v = sumByDbKeys(counts, col.dbKeys);
+                              const v = valueFor(col);
                               return [(
                                 <td key={col.key} className="px-4 py-3 text-center">
                                   {v ? (
@@ -314,26 +330,40 @@ export default function ProjectAssignmentPage() {
                         );
                       };
                       // チーム合計（全営業+未割当）
-                      const totalCounts = {};
+                      const salesTotalCounts = {};
                       const accumulate = (counts) => {
                         for (const [k, v] of Object.entries(counts || {})) {
-                          totalCounts[k] = (totalCounts[k] || 0) + Number(v || 0);
+                          salesTotalCounts[k] = (salesTotalCounts[k] || 0) + Number(v || 0);
                         }
                       };
                       data.sales.forEach(s => accumulate(s.statusCounts));
-                      accumulate(unassignedCountsFromList);
+
+                      // 合計値の計算（営業 + 未割当オーバーライド）
+                      const grandTotalCount = data.sales.reduce((acc, s) => acc + sumDisplayed(s.statusCounts), 0) + unassignedTotalOverride;
+                      const grandColumnValue = (col) => {
+                        let v = 0;
+                        if (col.expandable && expandedColumns[col.key]) return null;
+                        // 営業集計
+                        v += sumByDbKeys(salesTotalCounts, col.dbKeys);
+                        // 未割当の上書き反映
+                        if (col.key === 'MENSETSU_KAKUTEI') {
+                          v += unassignedInterviewSetOverride;
+                        } else {
+                          v += sumByDbKeys(unassignedCountsFromList, col.dbKeys);
+                        }
+                        return v;
+                      };
 
                       // 合計行（先頭固定）
                       const renderTotalRow = () => {
-                        const displayedTotal = sumDisplayed(totalCounts);
                         return (
                           <tr key="grand-total" className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
                             <td className="px-4 py-3 sticky left-0 bg-blue-50/70">合計</td>
-                            <td className="px-4 py-3 text-center bg-blue-100">{displayedTotal}</td>
+                            <td className="px-4 py-3 text-center bg-blue-100">{grandTotalCount}</td>
                             {STATUS_COLUMNS.flatMap(col => {
                               if (col.expandable && expandedColumns[col.key]) {
                                 return col.breakdown.map((b, idx) => {
-                                  const v = sumByDbKeys(totalCounts, b.dbKeys);
+                                  const v = sumByDbKeys(salesTotalCounts, b.dbKeys) + sumByDbKeys(unassignedCountsFromList, b.dbKeys);
                                   return (
                                     <td key={`tot-${col.key}-${idx}`} className="px-4 py-3 text-center">
                                       {v ? <span className={`inline-block px-2 py-0.5 rounded ${b.color}`}>{v}</span> : <span className="text-gray-300">-</span>}
@@ -341,7 +371,7 @@ export default function ProjectAssignmentPage() {
                                   );
                                 });
                               }
-                              const v = sumByDbKeys(totalCounts, col.dbKeys);
+                              const v = grandColumnValue(col) || 0;
                               return [(
                                 <td key={`tot-${col.key}`} className="px-4 py-3 text-center">
                                   {v ? <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>{v}</span> : <span className="text-gray-300">-</span>}
@@ -366,7 +396,11 @@ export default function ProjectAssignmentPage() {
                               false
                             )
                           )}
-                          {renderRow('unassigned', '未割当', unassignedCountsFromList, true)}
+                          {renderRow('unassigned', '未割当', unassignedCountsFromList, true, {
+                            totalOverride: unassignedTotalOverride,
+                            columnValueOverride: (col) =>
+                              col.key === 'MENSETSU_KAKUTEI' ? unassignedInterviewSetOverride : null,
+                          })}
                           {data.sales.length === 0 && (
                             <tr><td colSpan={99} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
                           )}
