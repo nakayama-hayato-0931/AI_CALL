@@ -144,21 +144,22 @@ export default function ProjectAssignmentPage() {
     );
   }) || [];
 
-  // 全営業のstatusCountsから登場するステータスキーを集める
-  const usedStatuses = new Set();
-  if (data) {
-    for (const s of data.sales) Object.keys(s.statusCounts).forEach(k => usedStatuses.add(k));
-    Object.keys(data.unassigned.statusCounts || {}).forEach(k => usedStatuses.add(k));
-  }
-  // 表示順
-  const STATUS_ORDER = [
-    'NEW', 'MAIL_SENT', 'SHORUI_CHU', 'MENSETSU_KAKUTEI', 'INTERVIEW_SET',
-    'INTERVIEW_DONE', 'WAITING_RESULT', 'KEKKA_MACHI', 'NAITEI',
-    'NAITEI_TORIKESHI', 'FUGOKAKU', 'SHORUI_OCHI', 'HORYU', 'MODOSHI',
-    'MODORI', 'BOSHUCHU', 'KISON_NASHI', 'HIRED',
+  // 営業画面で表示するステータス（固定列）
+  // 各表示列に対応するDBステータス値（複数キーを合算する場合あり）
+  const STATUS_COLUMNS = [
+    { key: 'MENSETSU_KAKUTEI', label: '面接日確定', dbKeys: ['MENSETSU_KAKUTEI', 'INTERVIEW_SET'] },
+    { key: 'WAITING_RESULT', label: '結果待ち', dbKeys: ['WAITING_RESULT', 'KEKKA_MACHI'] },
+    { key: 'NAITEI', label: '内定', dbKeys: ['NAITEI'] },
+    { key: 'FUGOKAKU', label: '不合格', dbKeys: ['FUGOKAKU'] },
+    { key: 'BOSHUCHU', label: '募集中', dbKeys: ['BOSHUCHU'] },
   ];
-  const statusList = STATUS_ORDER.filter(s => usedStatuses.has(s))
-    .concat([...usedStatuses].filter(s => !STATUS_ORDER.includes(s)));
+
+  // statusCountsの合算ヘルパ
+  const sumByDbKeys = (counts, dbKeys) =>
+    dbKeys.reduce((acc, k) => acc + (Number(counts?.[k]) || 0), 0);
+  // 表示列だけの合計
+  const sumDisplayed = (counts) =>
+    STATUS_COLUMNS.reduce((acc, col) => acc + sumByDbKeys(counts, col.dbKeys), 0);
 
   return (
     <Layout>
@@ -209,51 +210,60 @@ export default function ProjectAssignmentPage() {
                     <tr>
                       <th className="px-3 py-2 text-left sticky left-0 bg-gray-50">営業</th>
                       <th className="px-3 py-2 text-center bg-blue-50">合計</th>
-                      {statusList.map(s => (
-                        <th key={s} className="px-3 py-2 text-center whitespace-nowrap">
-                          {STATUS_LABELS[s] || s}
+                      {STATUS_COLUMNS.map(col => (
+                        <th key={col.key} className="px-3 py-2 text-center whitespace-nowrap">
+                          {col.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {data.sales.map(s => (
-                      <tr key={s.userId} className="border-t hover:bg-gray-50">
-                        <td className="px-3 py-2 font-medium sticky left-0 bg-white">
-                          {s.name}
-                          {!s.isActive && <span className="ml-1 text-xs text-gray-400">(無効)</span>}
-                        </td>
-                        <td className="px-3 py-2 text-center font-bold bg-blue-50">{s.total}</td>
-                        {statusList.map(st => (
-                          <td key={st} className="px-3 py-2 text-center">
-                            {s.statusCounts[st] ? (
-                              <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[st] || 'bg-gray-100 text-gray-600'}`}>
-                                {s.statusCounts[st]}
+                    {data.sales.map(s => {
+                      const displayedTotal = sumDisplayed(s.statusCounts);
+                      return (
+                        <tr key={s.userId} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium sticky left-0 bg-white">
+                            {s.name}
+                            {!s.isActive && <span className="ml-1 text-xs text-gray-400">(無効)</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center font-bold bg-blue-50">{displayedTotal}</td>
+                          {STATUS_COLUMNS.map(col => {
+                            const v = sumByDbKeys(s.statusCounts, col.dbKeys);
+                            return (
+                              <td key={col.key} className="px-3 py-2 text-center">
+                                {v ? (
+                                  <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>
+                                    {v}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-300">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t bg-amber-50 font-semibold">
+                      <td className="px-3 py-2 sticky left-0 bg-amber-50">未割当</td>
+                      <td className="px-3 py-2 text-center bg-amber-100">{sumDisplayed(data.unassigned.statusCounts)}</td>
+                      {STATUS_COLUMNS.map(col => {
+                        const v = sumByDbKeys(data.unassigned.statusCounts, col.dbKeys);
+                        return (
+                          <td key={col.key} className="px-3 py-2 text-center">
+                            {v ? (
+                              <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>
+                                {v}
                               </span>
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
                           </td>
-                        ))}
-                      </tr>
-                    ))}
-                    <tr className="border-t bg-amber-50 font-semibold">
-                      <td className="px-3 py-2 sticky left-0 bg-amber-50">未割当</td>
-                      <td className="px-3 py-2 text-center bg-amber-100">{data.unassigned.total}</td>
-                      {statusList.map(st => (
-                        <td key={st} className="px-3 py-2 text-center">
-                          {data.unassigned.statusCounts[st] ? (
-                            <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[st] || 'bg-gray-100 text-gray-600'}`}>
-                              {data.unassigned.statusCounts[st]}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
-                        </td>
-                      ))}
+                        );
+                      })}
                     </tr>
                     {data.sales.length === 0 && (
-                      <tr><td colSpan={statusList.length + 2} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
+                      <tr><td colSpan={STATUS_COLUMNS.length + 2} className="px-3 py-6 text-center text-gray-400">営業ユーザーがいません</td></tr>
                     )}
                   </tbody>
                 </table>
