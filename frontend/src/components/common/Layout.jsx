@@ -118,6 +118,7 @@ const getNavSections = (role, adminView) => {
         label: '管理',
         items: [
           { href: '/admin/projects', label: '案件管理', icon: 'project' },
+          { href: '/admin/project-assignment', label: '案件割り振り', icon: 'project' },
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
           { href: '/admin/special-list-progress', label: '特別リスト進捗', icon: 'status' },
@@ -144,6 +145,7 @@ const getNavSections = (role, adminView) => {
           { href: '/logs', label: 'AI評価', icon: 'ai' },
           { href: '/call-results', label: '架電結果', icon: 'log' },
           { href: '/sales/projects', label: '案件管理', icon: 'project' },
+          { href: '/admin/project-assignment', label: '案件割り振り', icon: 'project' },
           { href: '/admin/sales-performance', label: '営業売上一覧', icon: 'performance' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
         ],

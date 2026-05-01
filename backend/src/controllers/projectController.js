@@ -831,4 +831,109 @@ const createProjectManual = async (req, res, next) => {
   }
 };
 
-module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject, createProjectManual };
+/**
+ * GET /api/projects/assignment-overview
+ * 営業別案件割り振り状況 + 未割当案件
+ * 失注(LOST)/バラシ(BARASHI)は除外
+ */
+const getAssignmentOverview = async (req, res, next) => {
+  try {
+    const EXCLUDE_STATUSES = ['LOST', 'BARASHI'];
+    const placeholders = EXCLUDE_STATUSES.map(() => '?').join(',');
+
+    // 営業ユーザー一覧（無効ユーザーでも担当中があれば表示するため全取得）
+    const [salesUsers] = await pool.execute(
+      "SELECT id, name, is_active FROM users WHERE role = 'sales' ORDER BY is_active DESC, name ASC"
+    );
+
+    // 営業別ステータス集計（失注・バラシ除外）
+    const [stat] = await pool.query(
+      `SELECT p.sales_user_id, p.status, COUNT(*) AS cnt
+       FROM projects p
+       WHERE p.is_prospect = 0
+         AND p.status NOT IN (${placeholders})
+       GROUP BY p.sales_user_id, p.status`,
+      EXCLUDE_STATUSES
+    );
+
+    // ユーザーIDごとに status -> count のマップを構築
+    const userStatusMap = new Map(); // userId or 'unassigned' -> { status: count }
+    let totalActive = 0;
+    for (const r of stat) {
+      const key = r.sales_user_id == null ? 'unassigned' : r.sales_user_id;
+      if (!userStatusMap.has(key)) userStatusMap.set(key, {});
+      userStatusMap.get(key)[r.status] = Number(r.cnt);
+      totalActive += Number(r.cnt);
+    }
+
+    // 営業ごとの集計（無効ユーザーで担当0なら除外）
+    const salesSummary = salesUsers
+      .map(u => {
+        const counts = userStatusMap.get(u.id) || {};
+        const total = Object.values(counts).reduce((s, n) => s + n, 0);
+        return {
+          userId: u.id,
+          name: u.name,
+          isActive: !!u.is_active,
+          total,
+          statusCounts: counts,
+        };
+      })
+      .filter(s => s.isActive || s.total > 0);
+
+    // 未割当案件一覧（失注・バラシ除外）
+    const [unassigned] = await pool.query(
+      `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
+              p.interview_date, p.memo,
+              COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+              ou.name AS owner_name
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       LEFT JOIN users ou ON p.owner_user_id = ou.id
+       WHERE p.is_prospect = 0
+         AND p.sales_user_id IS NULL
+         AND p.status NOT IN (${placeholders})
+       ORDER BY p.created_at DESC`,
+      EXCLUDE_STATUSES
+    );
+
+    const unassignedCounts = userStatusMap.get('unassigned') || {};
+    const unassignedTotal = Object.values(unassignedCounts).reduce((s, n) => s + n, 0);
+
+    return ApiResponse.success(res, {
+      sales: salesSummary,
+      unassigned: {
+        total: unassignedTotal,
+        statusCounts: unassignedCounts,
+        projects: unassigned,
+      },
+      grandTotal: totalActive,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/projects/:id/assign
+ * 営業割り当て専用エンドポイント
+ */
+const assignSalesToProject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { sales_user_id } = req.body;
+    // null許容（未割当に戻す）
+    if (sales_user_id != null && Number.isNaN(Number(sales_user_id))) {
+      return ApiResponse.badRequest(res, 'sales_user_id が不正です');
+    }
+    await pool.execute(
+      'UPDATE projects SET sales_user_id = ? WHERE id = ?',
+      [sales_user_id || null, id]
+    );
+    return ApiResponse.success(res, null, '営業を割り当てました');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProjects, getProjectById, updateProject, deleteProject, getCallLogs, getSalesUsers, getProjectHires, saveProjectHires, importLegacyProjects, promoteProject, createProjectManual, getAssignmentOverview, assignSalesToProject };
