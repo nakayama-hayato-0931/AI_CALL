@@ -306,8 +306,48 @@ export default function ProjectAssignmentPage() {
                           </tr>
                         );
                       };
+                      // チーム合計（全営業+未割当）
+                      const totalCounts = {};
+                      const accumulate = (counts) => {
+                        for (const [k, v] of Object.entries(counts || {})) {
+                          totalCounts[k] = (totalCounts[k] || 0) + Number(v || 0);
+                        }
+                      };
+                      data.sales.forEach(s => accumulate(s.statusCounts));
+                      accumulate(data.unassigned.statusCounts);
+
+                      // 合計行（先頭固定）
+                      const renderTotalRow = () => {
+                        const displayedTotal = sumDisplayed(totalCounts);
+                        return (
+                          <tr key="grand-total" className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
+                            <td className="px-3 py-2 sticky left-0 bg-blue-50/70">合計</td>
+                            <td className="px-3 py-2 text-center bg-blue-100">{displayedTotal}</td>
+                            {STATUS_COLUMNS.flatMap(col => {
+                              if (col.expandable && expandedColumns[col.key]) {
+                                return col.breakdown.map((b, idx) => {
+                                  const v = sumByDbKeys(totalCounts, b.dbKeys);
+                                  return (
+                                    <td key={`tot-${col.key}-${idx}`} className="px-3 py-2 text-center">
+                                      {v ? <span className={`inline-block px-2 py-0.5 rounded ${b.color}`}>{v}</span> : <span className="text-gray-300">-</span>}
+                                    </td>
+                                  );
+                                });
+                              }
+                              const v = sumByDbKeys(totalCounts, col.dbKeys);
+                              return [(
+                                <td key={`tot-${col.key}`} className="px-3 py-2 text-center">
+                                  {v ? <span className={`inline-block px-2 py-0.5 rounded ${STATUS_COLOR[col.key] || 'bg-gray-100 text-gray-600'}`}>{v}</span> : <span className="text-gray-300">-</span>}
+                                </td>
+                              )];
+                            })}
+                          </tr>
+                        );
+                      };
+
                       return (
                         <>
+                          {renderTotalRow()}
                           {data.sales.map(s =>
                             renderRow(
                               s.userId,
