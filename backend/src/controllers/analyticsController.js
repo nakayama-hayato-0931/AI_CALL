@@ -1389,4 +1389,73 @@ const getSalesPerformanceByIndustry = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry };
+/**
+ * GET /api/analytics/waiting-contact-detail
+ * 連絡待ち（mail_replied/phone_confirmed が両方空）案件の明細
+ * 面接日の有無で2グループに分けて返す
+ * 2026-04-01以降のみ対象
+ */
+const getWaitingContactDetail = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id } = req.query;
+    const SYSTEM_START = '2026-04-01';
+    let dateFrom = date_from || SYSTEM_START;
+    if (dateFrom < SYSTEM_START) dateFrom = SYSTEM_START;
+    const dateTo = date_to || new Date().toISOString().slice(0, 10);
+
+    const params = [dateFrom, dateTo];
+    let userFilter = '';
+    if (user_id) {
+      userFilter = 'AND p.owner_user_id = ?';
+      params.push(user_id);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT p.id, p.job_number, p.status, p.created_at, p.interview_date, p.memo,
+              COALESCE(co.company_name, p.legacy_company_name) AS company_name,
+              ou.name AS owner_name,
+              su.name AS sales_name
+       FROM projects p
+       LEFT JOIN companies co ON p.company_id = co.id
+       LEFT JOIN users ou ON p.owner_user_id = ou.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND COALESCE(p.mail_replied, 0) = 0
+         AND COALESCE(p.phone_confirmed, 0) = 0
+         AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU'))
+         AND DATE(p.created_at) BETWEEN ? AND ?
+         ${userFilter}
+       ORDER BY p.interview_date IS NULL, p.interview_date ASC, p.created_at DESC`,
+      params
+    );
+
+    const withInterview = [];
+    const withoutInterview = [];
+    for (const r of rows) {
+      const item = {
+        projectId: r.id,
+        jobNumber: r.job_number,
+        companyName: r.company_name,
+        ownerName: r.owner_name,
+        salesName: r.sales_name,
+        status: r.status,
+        createdAt: r.created_at,
+        interviewDate: r.interview_date,
+        memo: r.memo,
+      };
+      if (r.interview_date) withInterview.push(item);
+      else withoutInterview.push(item);
+    }
+
+    return ApiResponse.success(res, {
+      dateFrom, dateTo,
+      withInterview,
+      withoutInterview,
+      total: rows.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail };

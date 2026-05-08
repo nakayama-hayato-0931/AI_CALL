@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry } = require('../controllers/analyticsController');
+const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail } = require('../controllers/analyticsController');
 const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 const pool = require('../../config/database');
 
@@ -37,6 +37,7 @@ router.use(requireManager);
 
 router.get('/cpa', getCpaMetrics);
 router.get('/quality', getQualityMetrics);
+router.get('/waiting-contact-detail', getWaitingContactDetail);
 router.get('/cpa-all', getCpaAll);
 router.get('/quality-all', getQualityAll);
 router.get('/operators', getOperators);

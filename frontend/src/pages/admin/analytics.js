@@ -84,6 +84,7 @@ export default function AnalyticsPage() {
   const [compareMonths, setCompareMonths] = useState(6); // 過去Nヶ月分
   const [operatorsList, setOperatorsList] = useState([]);
   const [kpiModal, setKpiModal] = useState(null); // { date, userId, field, value }
+  const [waitingModal, setWaitingModal] = useState(null); // { title, userId, dateFrom, dateTo, data, loading }
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
   const [loading, setLoading] = useState(true);
@@ -315,7 +316,7 @@ export default function AnalyticsPage() {
   const qualColumns = [
     { key: 'total', label: '案件数' },
     { key: 'lost', label: '失注', pctKey: 'lostPct' },
-    { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct' },
+    { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: true },
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct' },
@@ -387,6 +388,28 @@ export default function AnalyticsPage() {
     </div>
   );
 
+  // 連絡待ち明細を開く
+  const openWaitingDetail = async (data, userId, name) => {
+    if (!data) return;
+    const dateFrom = data.dateFrom || '2026-04-01';
+    const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
+    setWaitingModal({
+      title: `${name}の連絡待ち明細`, userId, dateFrom, dateTo,
+      data: null, loading: true,
+    });
+    try {
+      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      if (userId) params.append('user_id', userId);
+      const { data: res } = await api.get(`/api/analytics/waiting-contact-detail?${params}`);
+      if (res.success) {
+        setWaitingModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
+      }
+    } catch (err) {
+      toast.error('明細の取得に失敗しました');
+      setWaitingModal(null);
+    }
+  };
+
   // 案件質テーブル描画（再利用）
   const renderQualTable = (data, title, subtitle) => (
     <div className="card overflow-hidden">
@@ -410,14 +433,24 @@ export default function AnalyticsPage() {
             {/* 全体行 */}
             <tr className="bg-blue-50/40 border-b-2 border-blue-200">
               <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
-              {qualColumns.map(col => (
-                <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
-                  <span>{fmt(data.team[col.key])}</span>
-                  {col.pctKey && (
-                    <span className="ml-1 text-[10px] text-blue-400">({fmtPct(data.team[col.pctKey])})</span>
-                  )}
-                </td>
-              ))}
+              {qualColumns.map(col => {
+                const v = data.team[col.key];
+                const canClick = col.clickable && Number(v) > 0;
+                return (
+                  <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
+                    {canClick ? (
+                      <button onClick={() => openWaitingDetail(data, null, '全体')} className="hover:underline cursor-pointer">
+                        {fmt(v)}
+                      </button>
+                    ) : (
+                      <span>{fmt(v)}</span>
+                    )}
+                    {col.pctKey && (
+                      <span className="ml-1 text-[10px] text-blue-400">({fmtPct(data.team[col.pctKey])})</span>
+                    )}
+                  </td>
+                );
+              })}
             </tr>
             {/* 各オペレーター行 */}
             {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
@@ -427,14 +460,24 @@ export default function AnalyticsPage() {
                 <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${rowBg}`}>
                   {op.name}{op.role === 'intern' && <span className="ml-1 text-[9px] text-purple-600 font-bold">[インターン]</span>}
                 </td>
-                {qualColumns.map(col => (
-                  <td key={col.key} className="py-2 px-3 text-right text-gray-800">
-                    <span>{fmt(op[col.key])}</span>
-                    {col.pctKey && (
-                      <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
-                    )}
-                  </td>
-                ))}
+                {qualColumns.map(col => {
+                  const v = op[col.key];
+                  const canClick = col.clickable && Number(v) > 0;
+                  return (
+                    <td key={col.key} className="py-2 px-3 text-right text-gray-800">
+                      {canClick ? (
+                        <button onClick={() => openWaitingDetail(data, op.userId, op.name)} className="text-blue-600 hover:underline cursor-pointer">
+                          {fmt(v)}
+                        </button>
+                      ) : (
+                        <span>{fmt(v)}</span>
+                      )}
+                      {col.pctKey && (
+                        <span className="ml-1 text-[10px] text-gray-400">({fmtPct(op[col.pctKey])})</span>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
               );
             })}
@@ -803,6 +846,110 @@ export default function AnalyticsPage() {
                 className="flex-1 btn-primary"
               >保存</button>
               <button onClick={() => setKpiModal(null)} className="flex-1 btn-secondary">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 連絡待ち明細モーダル */}
+      {waitingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setWaitingModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] mx-4 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{waitingModal.title}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{waitingModal.dateFrom} 〜 {waitingModal.dateTo}（2026/4以降の案件のみ）</p>
+              </div>
+              <button onClick={() => setWaitingModal(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <div className="overflow-auto p-5 space-y-5 flex-1">
+              {waitingModal.loading ? (
+                <p className="text-center py-8 text-gray-400 text-sm">読み込み中...</p>
+              ) : !waitingModal.data ? (
+                <p className="text-center py-8 text-gray-400 text-sm">データなし</p>
+              ) : (
+                <>
+                  {/* 面接日が決まっている */}
+                  <section>
+                    <h3 className="font-bold text-sm text-amber-700 mb-2 flex items-center gap-2">
+                      <span className="inline-block px-2 py-0.5 rounded bg-amber-100">面接日確定済み</span>
+                      <span className="text-gray-700">{waitingModal.data.withInterview.length}件</span>
+                    </h3>
+                    {waitingModal.data.withInterview.length === 0 ? (
+                      <p className="text-xs text-gray-400 px-2">該当なし</p>
+                    ) : (
+                      <table className="w-full text-xs border">
+                        <thead className="bg-amber-50">
+                          <tr>
+                            <th className="text-left px-2 py-1.5">企業名</th>
+                            <th className="text-left px-2 py-1.5">求人番号</th>
+                            <th className="text-left px-2 py-1.5">担当OP</th>
+                            <th className="text-left px-2 py-1.5">担当営業</th>
+                            <th className="text-left px-2 py-1.5">案件獲得日</th>
+                            <th className="text-left px-2 py-1.5">面接日</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {waitingModal.data.withInterview.map(p => (
+                            <tr key={p.projectId} className="border-t hover:bg-gray-50">
+                              <td className="px-2 py-1">
+                                <a href={`/admin/projects?focus=${p.projectId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  {p.companyName || '-'}
+                                </a>
+                              </td>
+                              <td className="px-2 py-1">{p.jobNumber || '-'}</td>
+                              <td className="px-2 py-1">{p.ownerName || '-'}</td>
+                              <td className="px-2 py-1">{p.salesName || '-'}</td>
+                              <td className="px-2 py-1">{p.createdAt ? new Date(p.createdAt).toLocaleDateString('ja-JP') : '-'}</td>
+                              <td className="px-2 py-1 font-semibold text-amber-700">{p.interviewDate ? new Date(p.interviewDate).toLocaleDateString('ja-JP') : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+
+                  {/* 面接日未確定 */}
+                  <section>
+                    <h3 className="font-bold text-sm text-rose-700 mb-2 flex items-center gap-2">
+                      <span className="inline-block px-2 py-0.5 rounded bg-rose-100">面接日未確定</span>
+                      <span className="text-gray-700">{waitingModal.data.withoutInterview.length}件</span>
+                    </h3>
+                    {waitingModal.data.withoutInterview.length === 0 ? (
+                      <p className="text-xs text-gray-400 px-2">該当なし</p>
+                    ) : (
+                      <table className="w-full text-xs border">
+                        <thead className="bg-rose-50">
+                          <tr>
+                            <th className="text-left px-2 py-1.5">企業名</th>
+                            <th className="text-left px-2 py-1.5">求人番号</th>
+                            <th className="text-left px-2 py-1.5">担当OP</th>
+                            <th className="text-left px-2 py-1.5">担当営業</th>
+                            <th className="text-left px-2 py-1.5">案件獲得日</th>
+                            <th className="text-left px-2 py-1.5">メモ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {waitingModal.data.withoutInterview.map(p => (
+                            <tr key={p.projectId} className="border-t hover:bg-gray-50">
+                              <td className="px-2 py-1">
+                                <a href={`/admin/projects?focus=${p.projectId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  {p.companyName || '-'}
+                                </a>
+                              </td>
+                              <td className="px-2 py-1">{p.jobNumber || '-'}</td>
+                              <td className="px-2 py-1">{p.ownerName || '-'}</td>
+                              <td className="px-2 py-1">{p.salesName || '-'}</td>
+                              <td className="px-2 py-1">{p.createdAt ? new Date(p.createdAt).toLocaleDateString('ja-JP') : '-'}</td>
+                              <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate">{p.memo || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+                </>
+              )}
             </div>
           </div>
         </div>
