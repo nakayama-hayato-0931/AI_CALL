@@ -567,22 +567,33 @@ export default function AnalyticsPage() {
                       </td>
                       {cols.map(col => {
                         const v = r[col.key];
-                        const canClick = col.clickable && Number(v) > 0 && d?.dateFrom;
+                        const dateFromForClick = d?.dateFrom || (row.ym ? `${row.ym}-01` : null);
+                        const dateToForClick = d?.dateTo || (row.ym ? (() => {
+                          const [yy, mm] = row.ym.split('-').map(Number);
+                          const last = new Date(yy, mm, 0).getDate();
+                          return `${row.ym}-${String(last).padStart(2, '0')}`;
+                        })() : null);
+                        const canClick = col.clickable && Number(v) > 0 && dateFromForClick;
                         const userIdForClick = compareScope === 'team' ? null : Number(compareUserId);
                         const userNameForClick = compareScope === 'team'
                           ? '全体'
                           : (operatorsList.find(o => o.id === Number(compareUserId))?.name || '個人');
+                        const handleCellClick = (e) => {
+                          e.stopPropagation();
+                          openWaitingDetail(
+                            { dateFrom: dateFromForClick, dateTo: dateToForClick },
+                            userIdForClick,
+                            `${userNameForClick} - ${row.label}`
+                          );
+                        };
                         return (
                           <td
                             key={col.key}
-                            className={`py-3 px-4 text-right ${row.isMonth ? 'text-purple-900 font-bold' : 'text-gray-800'} ${col.highlight ? 'font-bold text-blue-700' : ''}`}
-                            onClick={canClick ? (e) => { e.stopPropagation(); openWaitingDetail({ dateFrom: d.dateFrom, dateTo: d.dateTo }, userIdForClick, `${userNameForClick} - ${row.label}`); } : undefined}
+                            className={`py-3 px-4 text-right ${canClick ? '!text-blue-700 underline decoration-dotted underline-offset-4 cursor-pointer hover:bg-blue-50' : (row.isMonth ? 'text-purple-900 font-bold' : 'text-gray-800')} ${col.highlight ? 'font-bold' : ''}`}
+                            onClick={canClick ? handleCellClick : undefined}
+                            title={canClick ? '内訳を表示' : undefined}
                           >
-                            {canClick ? (
-                              <button className="text-blue-600 hover:underline cursor-pointer">{formatCell(v, col.format)}</button>
-                            ) : (
-                              formatCell(v, col.format)
-                            )}
+                            {formatCell(v, col.format)}
                           </td>
                         );
                       })}
