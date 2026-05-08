@@ -360,6 +360,7 @@ const getNextCallTarget = async (req, res, next) => {
     }
 
     // 1. リコール期限
+    // リコールはユーザーが明示的に指定したものなので、業種地域・モード絞込をバイパス
     const [recallRows] = await pool.execute(
       `SELECT rt.id as recall_task_id, c.*,
               (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) as last_memo,
@@ -368,11 +369,9 @@ const getNextCallTarget = async (req, res, next) => {
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
-         ${irFilter}
-         ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT 1`,
-      [userId, now, ...modeFilterParams]
+      [userId, now]
     );
     if (recallRows.length > 0) {
       return ApiResponse.success(res, { target: recallRows[0], reason: 'recall_due' });
@@ -596,6 +595,8 @@ const getCallList = async (req, res, next) => {
     }
 
     // 1. リコール期限（自分のリコールのみ）
+    // リコールはユーザーが明示的に指定したものなので、1時間以内除外フィルタ・
+    // 業種地域フィルタ・モード絞込はバイパスして必ずピックアップする
     const [recallRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'recall_due' as reason, rt.recall_at
@@ -604,12 +605,9 @@ const getCallList = async (req, res, next) => {
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
          ${lockFilterSQL}
-         ${recentCallFilterSQL}
-         ${irFilter}
-         ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
-      [userId, now, userId, userId, ...modeFilterParams, LIST_SIZE]
+      [userId, now, userId, LIST_SIZE]
     );
     targets.push(...recallRows);
     excludeIds = targets.map(t => t.id);
