@@ -552,11 +552,27 @@ export default function AnalyticsPage() {
                           <span className="pl-5 text-gray-600">{row.label}</span>
                         )}
                       </td>
-                      {cols.map(col => (
-                        <td key={col.key} className={`py-3 px-4 text-right ${row.isMonth ? 'text-purple-900 font-bold' : 'text-gray-800'} ${col.highlight ? 'font-bold text-blue-700' : ''}`}>
-                          {formatCell(r[col.key], col.format)}
-                        </td>
-                      ))}
+                      {cols.map(col => {
+                        const v = r[col.key];
+                        const canClick = col.clickable && Number(v) > 0 && d?.dateFrom;
+                        const userIdForClick = compareScope === 'team' ? null : Number(compareUserId);
+                        const userNameForClick = compareScope === 'team'
+                          ? '全体'
+                          : (operatorsList.find(o => o.id === Number(compareUserId))?.name || '個人');
+                        return (
+                          <td
+                            key={col.key}
+                            className={`py-3 px-4 text-right ${row.isMonth ? 'text-purple-900 font-bold' : 'text-gray-800'} ${col.highlight ? 'font-bold text-blue-700' : ''}`}
+                            onClick={canClick ? (e) => { e.stopPropagation(); openWaitingDetail({ dateFrom: d.dateFrom, dateTo: d.dateTo }, userIdForClick, `${userNameForClick} - ${row.label}`); } : undefined}
+                          >
+                            {canClick ? (
+                              <button className="text-blue-600 hover:underline cursor-pointer">{formatCell(v, col.format)}</button>
+                            ) : (
+                              formatCell(v, col.format)
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                     {/* 案件質の場合: 割合の行 */}
                     {tab === 'quality' && (
