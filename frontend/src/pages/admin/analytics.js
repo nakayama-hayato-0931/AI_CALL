@@ -331,6 +331,15 @@ export default function AnalyticsPage() {
     return fmt(value);
   };
 
+  // 全列の値が0/null/undefinedならtrue（空オペレーターを非表示にするため）
+  const isAllZero = (op, columns) => {
+    for (const col of columns) {
+      const v = op?.[col.key];
+      if (v != null && Number(v) !== 0) return false;
+    }
+    return true;
+  };
+
   // CPA テーブル描画（再利用）
   const renderCpaTable = (data, title, subtitle) => (
     <div className="card overflow-hidden">
@@ -363,8 +372,10 @@ export default function AnalyticsPage() {
                 </td>
               ))}
             </tr>
-            {/* 各オペレーター行 */}
-            {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
+            {/* 各オペレーター行（全0は非表示） */}
+            {[...data.operators]
+              .filter(op => !isAllZero(op, cpaColumns))
+              .sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
               const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
               return (
               <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
@@ -452,8 +463,10 @@ export default function AnalyticsPage() {
                 );
               })}
             </tr>
-            {/* 各オペレーター行 */}
-            {[...data.operators].sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
+            {/* 各オペレーター行（全0は非表示） */}
+            {[...data.operators]
+              .filter(op => !isAllZero(op, qualColumns))
+              .sort((a, b) => (a.role === 'intern') - (b.role === 'intern')).map((op, i) => {
               const rowBg = op.role === 'intern' ? 'bg-purple-50/60' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30');
               return (
               <tr key={op.userId} className={`border-b border-gray-50 ${rowBg}`}>
