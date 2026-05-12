@@ -250,7 +250,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
   try {
     const { period = 'daily', date, call_type } = req.query;
     let dateFrom, dateTo;
-    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+    if ((period === 'cumulative' || period === 'custom') && req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
       dateTo = req.query.date_to;
     } else {

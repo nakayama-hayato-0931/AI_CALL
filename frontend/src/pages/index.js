@@ -19,6 +19,7 @@ const PERIODS = [
   { value: 'weekly', label: '週別' },
   { value: 'monthly', label: '月別' },
   { value: 'cumulative', label: '累計' },
+  { value: 'custom', label: '任意' },
 ];
 
 const KPI_CONFIG = [
@@ -118,9 +119,16 @@ export default function DashboardPage() {
   // KPI期間・スコープ切替
   const [kpiPeriod, setKpiPeriod] = useState('daily');
   const [kpiDate, setKpiDate] = useState(new Date().toISOString().slice(0, 10));
-  // 累計の任意期間
+  // 累計の任意期間（および「任意」モード用）
   const [cumFrom, setCumFrom] = useState('2026-03-01');
   const [cumTo, setCumTo] = useState(new Date().toISOString().slice(0, 10));
+  // 「任意」モード用カスタム期間
+  const [customFrom, setCustomFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customTo, setCustomTo] = useState(new Date().toISOString().slice(0, 10));
   const isManagerRole = ['admin', 'manager', 'consultant'].includes(user?.role);
   // 架電種別: 管理者はlocalStorage(adminView)、営業は固定sales
   const [adminView, setAdminView] = useState(() => {
@@ -326,6 +334,8 @@ export default function DashboardPage() {
       }
       case 'cumulative':
         return { date_from: '2000-01-01', date_to: '2099-12-31' };
+      case 'custom':
+        return { date_from: customFrom, date_to: customTo };
       default:
         return {};
     }
@@ -362,12 +372,13 @@ export default function DashboardPage() {
     fetchStats();
     fetchChartData();
     if (isManager) fetchPerfData();
-  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo]);
+  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo, customFrom, customTo]);
 
   const fetchStats = async () => {
     try {
       const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate, call_type: callType };
       if (kpiPeriod === 'cumulative') { params.date_from = cumFrom; params.date_to = cumTo; }
+      if (kpiPeriod === 'custom') { params.date_from = customFrom; params.date_to = customTo; }
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -390,6 +401,7 @@ export default function DashboardPage() {
     try {
       const params = { period: kpiPeriod, scope: kpiScope, date: kpiDate };
       if (kpiPeriod === 'cumulative') { params.date_from = cumFrom; params.date_to = cumTo; }
+      if (kpiPeriod === 'custom') { params.date_from = customFrom; params.date_to = customTo; }
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
@@ -408,8 +420,10 @@ export default function DashboardPage() {
 
   const fetchPerfData = async () => {
     try {
-      const cumQs = kpiPeriod === 'cumulative' ? `&date_from=${cumFrom}&date_to=${cumTo}` : '';
-      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}${cumQs}`);
+      const rangeQs =
+        kpiPeriod === 'cumulative' ? `&date_from=${cumFrom}&date_to=${cumTo}` :
+        kpiPeriod === 'custom' ? `&date_from=${customFrom}&date_to=${customTo}` : '';
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}${rangeQs}`);
       if (res.success) setPerfData(res.data);
     } catch (err) {
       console.error('オペレーター実績取得失敗:', err);
@@ -530,6 +544,15 @@ export default function DashboardPage() {
                 className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
               <span className="text-xs text-gray-400">〜</span>
               <input type="date" value={cumTo} onChange={e => setCumTo(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+            </div>
+          )}
+          {kpiPeriod === 'custom' && (
+            <div className="flex items-center gap-1">
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
+              <span className="text-xs text-gray-400">〜</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
                 className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" />
             </div>
           )}

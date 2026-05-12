@@ -159,7 +159,7 @@ const getDailyStats = async (req, res, next) => {
 
     // 日付範囲計算（cumulativeで任意期間指定可能）
     let dateFrom, dateTo;
-    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+    if ((period === 'cumulative' || period === 'custom') && req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
       dateTo = req.query.date_to;
     } else {
@@ -335,7 +335,7 @@ const getHourlyCalls = async (req, res, next) => {
     const targetUserId = req.query.target_user_id;
 
     let dateFrom, dateTo;
-    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+    if ((period === 'cumulative' || period === 'custom') && req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
       dateTo = req.query.date_to;
     } else {
@@ -394,7 +394,7 @@ const getIndustryConversion = async (req, res, next) => {
     const targetUserId = req.query.target_user_id;
 
     let dateFrom, dateTo;
-    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+    if ((period === 'cumulative' || period === 'custom') && req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
       dateTo = req.query.date_to;
     } else {
@@ -467,7 +467,7 @@ const getHourlyIndustryConnections = async (req, res, next) => {
     const targetUserId = req.query.target_user_id;
 
     let dateFrom, dateTo;
-    if (period === 'cumulative' && req.query.date_from && req.query.date_to) {
+    if ((period === 'cumulative' || period === 'custom') && req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
       dateTo = req.query.date_to;
     } else {
