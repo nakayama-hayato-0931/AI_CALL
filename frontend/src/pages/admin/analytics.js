@@ -85,6 +85,7 @@ export default function AnalyticsPage() {
   const [operatorsList, setOperatorsList] = useState([]);
   const [kpiModal, setKpiModal] = useState(null); // { date, userId, field, value }
   const [waitingModal, setWaitingModal] = useState(null); // { title, userId, dateFrom, dateTo, data, loading }
+  const [industryModal, setIndustryModal] = useState(null); // { title, status, userId, dateFrom, dateTo, data, loading }
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
   const [loading, setLoading] = useState(true);
@@ -304,7 +305,7 @@ export default function AnalyticsPage() {
     { key: 'interviewCount', label: '面接数' },
     { key: 'interviewCpa', label: '面接CPA', format: 'yen' },
     { key: 'interviewRate', label: '面接実施率', format: 'pct' },
-    { key: 'naiteiCount', label: '内定' },
+    { key: 'naiteiCount', label: '内定', clickable: 'industry:NAITEI' },
     { key: 'fugokakuCount', label: '不合格' },
     { key: 'barashiLostCount', label: 'バラシ/失注' },
     { key: 'initialPayment', label: '初回入金', format: 'yen', highlight: true },
@@ -313,13 +314,14 @@ export default function AnalyticsPage() {
   ];
 
   // 案件質指標の列定義
+  // clickable: 'waiting' = 連絡待ち / 'industry:STATUS' = 業種別内訳モーダル
   const qualColumns = [
     { key: 'total', label: '案件数' },
-    { key: 'lost', label: '失注', pctKey: 'lostPct' },
-    { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: true },
+    { key: 'lost', label: '失注', pctKey: 'lostPct', clickable: 'industry:LOST' },
+    { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: 'waiting' },
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct' },
-    { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct' },
+    { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
     { key: 'onlineInterview', label: 'オンライン面接', pctKey: 'onlineInterviewPct' },
     { key: 'noScreening', label: '書類選考無し', pctKey: 'noScreeningPct' },
     { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct' },
@@ -363,14 +365,24 @@ export default function AnalyticsPage() {
             {/* 全体行 */}
             <tr className="bg-blue-50/40 border-b-2 border-blue-200">
               <td className="py-2.5 px-3 font-bold text-blue-700 sticky left-0 z-10 bg-blue-50/40">全体</td>
-              {cpaColumns.map(col => (
-                <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
-                  {formatCell(data.team[col.key], col.format)}
-                  {col.key === 'cost' && data.team.workHours > 0 && (
-                    <span className="text-[10px] text-blue-400 font-normal ml-1">{data.team.workHours}h</span>
-                  )}
-                </td>
-              ))}
+              {cpaColumns.map(col => {
+                const v = data.team[col.key];
+                const canClick = col.clickable && Number(v) > 0;
+                return (
+                  <td key={col.key} className={`py-2.5 px-3 text-right font-bold text-blue-700 ${col.highlight ? 'bg-blue-50/60' : ''}`}>
+                    {canClick ? (
+                      <button onClick={() => dispatchCellClick(col, data, null, '全体')} className="hover:underline cursor-pointer">
+                        {formatCell(v, col.format)}
+                      </button>
+                    ) : (
+                      <span>{formatCell(v, col.format)}</span>
+                    )}
+                    {col.key === 'cost' && data.team.workHours > 0 && (
+                      <span className="text-[10px] text-blue-400 font-normal ml-1">{data.team.workHours}h</span>
+                    )}
+                  </td>
+                );
+              })}
             </tr>
             {/* 各オペレーター行（全0は非表示） */}
             {[...data.operators]
@@ -382,14 +394,24 @@ export default function AnalyticsPage() {
                 <td className={`py-2 px-3 font-medium text-gray-800 sticky left-0 z-10 ${rowBg}`}>
                   {op.name}{op.role === 'intern' && <span className="ml-1 text-[9px] text-purple-600 font-bold">[インターン]</span>}
                 </td>
-                {cpaColumns.map(col => (
-                  <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
-                    {formatCell(op[col.key], col.format)}
-                    {col.key === 'cost' && op.workHours > 0 && (
-                      <span className="text-[10px] text-gray-400 ml-1">{op.workHours}h</span>
-                    )}
-                  </td>
-                ))}
+                {cpaColumns.map(col => {
+                  const v = op[col.key];
+                  const canClick = col.clickable && Number(v) > 0;
+                  return (
+                    <td key={col.key} className={`py-2 px-3 text-right text-gray-800 ${col.highlight ? 'font-semibold' : ''}`}>
+                      {canClick ? (
+                        <button onClick={() => dispatchCellClick(col, data, op.userId, op.name)} className="text-blue-600 hover:underline cursor-pointer">
+                          {formatCell(v, col.format)}
+                        </button>
+                      ) : (
+                        <span>{formatCell(v, col.format)}</span>
+                      )}
+                      {col.key === 'cost' && op.workHours > 0 && (
+                        <span className="text-[10px] text-gray-400 ml-1">{op.workHours}h</span>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
               );
             })}
@@ -398,6 +420,41 @@ export default function AnalyticsPage() {
       </div>
     </div>
   );
+
+  // ディスパッチ: col.clickable に応じて適切なモーダルを開く
+  const dispatchCellClick = (col, data, userId, name) => {
+    if (!col.clickable) return;
+    if (col.clickable === 'waiting') {
+      openWaitingDetail(data, userId, name);
+    } else if (col.clickable.startsWith('industry:')) {
+      const status = col.clickable.split(':')[1];
+      openIndustryDetail(data, userId, name, status);
+    }
+  };
+
+  // 業種別内訳モーダル
+  const openIndustryDetail = async (data, userId, name, status) => {
+    if (!data) return;
+    const dateFrom = data.dateFrom || (status === 'NAITEI' ? '2026-01-01' : '2026-04-01');
+    const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
+    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定' };
+    setIndustryModal({
+      title: `${name} - ${labelMap[status] || status} 業種別内訳`,
+      status, userId, dateFrom, dateTo,
+      data: null, loading: true,
+    });
+    try {
+      const params = new URLSearchParams({ status, date_from: dateFrom, date_to: dateTo });
+      if (userId) params.append('user_id', userId);
+      const { data: res } = await api.get(`/api/analytics/quality-industry-detail?${params}`);
+      if (res.success) {
+        setIndustryModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
+      }
+    } catch (err) {
+      toast.error('明細の取得に失敗しました');
+      setIndustryModal(null);
+    }
+  };
 
   // 連絡待ち明細を開く
   const openWaitingDetail = async (data, userId, name) => {
@@ -450,7 +507,7 @@ export default function AnalyticsPage() {
                 return (
                   <td key={col.key} className="py-2.5 px-3 text-right font-bold text-blue-700">
                     {canClick ? (
-                      <button onClick={() => openWaitingDetail(data, null, '全体')} className="hover:underline cursor-pointer">
+                      <button onClick={() => dispatchCellClick(col, data, null, '全体')} className="hover:underline cursor-pointer">
                         {fmt(v)}
                       </button>
                     ) : (
@@ -479,7 +536,7 @@ export default function AnalyticsPage() {
                   return (
                     <td key={col.key} className="py-2 px-3 text-right text-gray-800">
                       {canClick ? (
-                        <button onClick={() => openWaitingDetail(data, op.userId, op.name)} className="text-blue-600 hover:underline cursor-pointer">
+                        <button onClick={() => dispatchCellClick(col, data, op.userId, op.name)} className="text-blue-600 hover:underline cursor-pointer">
                           {fmt(v)}
                         </button>
                       ) : (
@@ -580,7 +637,8 @@ export default function AnalyticsPage() {
                           : (operatorsList.find(o => o.id === Number(compareUserId))?.name || '個人');
                         const handleCellClick = (e) => {
                           e.stopPropagation();
-                          openWaitingDetail(
+                          dispatchCellClick(
+                            col,
                             { dateFrom: dateFromForClick, dateTo: dateToForClick },
                             userIdForClick,
                             `${userNameForClick} - ${row.label}`
@@ -987,6 +1045,91 @@ export default function AnalyticsPage() {
                         </tbody>
                       </table>
                     )}
+                  </section>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 業種別内訳モーダル（失注/バラシ/内定） */}
+      {industryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIndustryModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] mx-4 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{industryModal.title}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{industryModal.dateFrom} 〜 {industryModal.dateTo}</p>
+              </div>
+              <button onClick={() => setIndustryModal(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <div className="overflow-auto p-5 space-y-5 flex-1">
+              {industryModal.loading ? (
+                <p className="text-center py-8 text-gray-400 text-sm">読み込み中...</p>
+              ) : !industryModal.data || industryModal.data.total === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-sm">該当案件はありません</p>
+              ) : (
+                <>
+                  {/* 業種別件数（サマリ） */}
+                  <section>
+                    <h3 className="font-bold text-sm text-gray-700 mb-2">業種別内訳（合計 {industryModal.data.total}件）</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {industryModal.data.industries.map(ind => {
+                        const pct = industryModal.data.total > 0 ? Math.round(ind.count / industryModal.data.total * 1000) / 10 : 0;
+                        return (
+                          <div key={ind.industry} className="flex items-center justify-between border rounded px-3 py-2 bg-gray-50">
+                            <span className="text-sm font-medium">{ind.industry}</span>
+                            <span className="text-sm text-blue-700 font-bold">
+                              {ind.count}件 <span className="text-xs text-gray-500 font-normal">({pct}%)</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* 案件明細 */}
+                  <section>
+                    <h3 className="font-bold text-sm text-gray-700 mb-2">案件明細</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="text-left px-2 py-1.5">求人番号</th>
+                            <th className="text-left px-2 py-1.5">企業名</th>
+                            <th className="text-left px-2 py-1.5">業種</th>
+                            <th className="text-left px-2 py-1.5">担当OP</th>
+                            <th className="text-left px-2 py-1.5">担当営業</th>
+                            <th className="text-left px-2 py-1.5">案件獲得日</th>
+                            {industryModal.status === 'NAITEI' && (
+                              <th className="text-left px-2 py-1.5">内定日</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {industryModal.data.projects.map(p => (
+                            <tr key={p.id} className="border-t hover:bg-gray-50">
+                              <td className="px-2 py-1">{p.job_number || '-'}</td>
+                              <td className="px-2 py-1">
+                                <a href={`/admin/projects?focus=${p.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  {p.company_name || '-'}
+                                </a>
+                              </td>
+                              <td className="px-2 py-1">{p.industry || '-'}</td>
+                              <td className="px-2 py-1">{p.owner_name || '-'}</td>
+                              <td className="px-2 py-1">{p.sales_name || '-'}</td>
+                              <td className="px-2 py-1">{p.created_at ? new Date(p.created_at).toLocaleDateString('ja-JP') : '-'}</td>
+                              {industryModal.status === 'NAITEI' && (
+                                <td className="px-2 py-1 font-semibold text-emerald-700">
+                                  {p.naitei_date ? new Date(p.naitei_date).toLocaleDateString('ja-JP') : '-'}
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 </>
               )}

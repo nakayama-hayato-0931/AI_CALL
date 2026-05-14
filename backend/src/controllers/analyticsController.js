@@ -1458,4 +1458,211 @@ const getWaitingContactDetail = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail };
+/**
+ * GET /api/analytics/industry-monthly-analysis?months=6
+ * 業種別×月別の指標
+ *  - projectCount: 案件数
+ *  - callCount: コール数（calls JOIN companies）
+ *  - naiteiCount: 内定数（status=NAITEI、naitei_date基準）
+ *  - interviewDoneCount: 面接実施数（status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')）
+ *  - lostCount, barashiCount
+ * 返却した数値からフロントで率を算出
+ */
+const getIndustryMonthlyAnalysis = async (req, res, next) => {
+  try {
+    const months = Math.min(24, Math.max(1, parseInt(req.query.months, 10) || 6));
+    const now = new Date();
+    const monthList = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      monthList.push({
+        ym,
+        dateFrom: `${ym}-01`,
+        dateTo: `${ym}-${String(lastDay).padStart(2, '0')}`,
+      });
+    }
+
+    const CATEGORY_EXPR = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+
+    // 業種別月別データを1回のクエリで取得
+    // projects: created_at（案件獲得日）月でグループ化
+    const [projAll] = await pool.query(
+      `SELECT
+         DATE_FORMAT(p.created_at, '%Y-%m') AS ym,
+         ${CATEGORY_EXPR} AS industry,
+         COUNT(*) AS project_count,
+         CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) AS naitei_count,
+         CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') THEN 1 ELSE 0 END) AS SIGNED) AS interview_done_count,
+         CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) AS lost_count,
+         CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) AS barashi_count
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       WHERE p.is_prospect = 0 AND p.is_legacy = 0
+         AND DATE(p.created_at) BETWEEN ? AND ?
+       GROUP BY ym, industry`,
+      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
+    );
+
+    // コール数 (有効な架電のみ。SKIP除外)
+    const [callAll] = await pool.query(
+      `SELECT
+         DATE_FORMAT(cl.call_started_at, '%Y-%m') AS ym,
+         ${CATEGORY_EXPR} AS industry,
+         COUNT(*) AS call_count
+       FROM calls cl
+       LEFT JOIN companies c ON cl.company_id = c.id
+       WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
+         AND DATE(cl.call_started_at) BETWEEN ? AND ?
+       GROUP BY ym, industry`,
+      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
+    );
+
+    // 業種一覧（プロジェクト発生した業種すべて）
+    const industrySet = new Set();
+    for (const r of projAll) industrySet.add(r.industry);
+    for (const r of callAll) industrySet.add(r.industry);
+
+    // ymごとに { industry: { ... } } マップを構築
+    const dataKey = (ym, industry) => `${ym}|${industry}`;
+    const projMap = new Map();
+    for (const r of projAll) {
+      projMap.set(dataKey(r.ym, r.industry), r);
+    }
+    const callMap = new Map();
+    for (const r of callAll) {
+      callMap.set(dataKey(r.ym, r.industry), r);
+    }
+
+    // 業種ごとに月別配列を作成
+    const CATEGORY_ORDER = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス','その他'];
+    const industries = [...industrySet].sort((a, b) => {
+      const ia = CATEGORY_ORDER.indexOf(a);
+      const ib = CATEGORY_ORDER.indexOf(b);
+      const sa = ia === -1 ? 999 : ia;
+      const sb = ib === -1 ? 999 : ib;
+      return sa - sb;
+    }).map(industry => {
+      const monthlyData = monthList.map(m => {
+        const p = projMap.get(dataKey(m.ym, industry)) || {};
+        const c = callMap.get(dataKey(m.ym, industry)) || {};
+        const projectCount = Number(p.project_count) || 0;
+        const naiteiCount = Number(p.naitei_count) || 0;
+        const interviewDone = Number(p.interview_done_count) || 0;
+        const lostCount = Number(p.lost_count) || 0;
+        const barashiCount = Number(p.barashi_count) || 0;
+        const callCount = Number(c.call_count) || 0;
+        return {
+          ym: m.ym,
+          projectCount,
+          callCount,
+          naiteiCount,
+          interviewDoneCount: interviewDone,
+          lostCount,
+          barashiCount,
+          // 各種率（%、小数1桁）
+          projectRate: callCount > 0 ? Math.round(projectCount / callCount * 1000) / 10 : 0,
+          naiteiPerProject: projectCount > 0 ? Math.round(naiteiCount / projectCount * 1000) / 10 : 0,
+          interviewPerProject: projectCount > 0 ? Math.round(interviewDone / projectCount * 1000) / 10 : 0,
+          naiteiPerInterview: interviewDone > 0 ? Math.round(naiteiCount / interviewDone * 1000) / 10 : 0,
+          lostPerProject: projectCount > 0 ? Math.round(lostCount / projectCount * 1000) / 10 : 0,
+          barashiPerProject: projectCount > 0 ? Math.round(barashiCount / projectCount * 1000) / 10 : 0,
+        };
+      });
+      // 業種総計
+      const total = monthlyData.reduce((acc, m) => {
+        acc.projectCount += m.projectCount;
+        acc.callCount += m.callCount;
+        acc.naiteiCount += m.naiteiCount;
+        acc.interviewDoneCount += m.interviewDoneCount;
+        acc.lostCount += m.lostCount;
+        acc.barashiCount += m.barashiCount;
+        return acc;
+      }, { projectCount: 0, callCount: 0, naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 });
+      total.projectRate = total.callCount > 0 ? Math.round(total.projectCount / total.callCount * 1000) / 10 : 0;
+      total.naiteiPerProject = total.projectCount > 0 ? Math.round(total.naiteiCount / total.projectCount * 1000) / 10 : 0;
+      total.interviewPerProject = total.projectCount > 0 ? Math.round(total.interviewDoneCount / total.projectCount * 1000) / 10 : 0;
+      total.naiteiPerInterview = total.interviewDoneCount > 0 ? Math.round(total.naiteiCount / total.interviewDoneCount * 1000) / 10 : 0;
+      total.lostPerProject = total.projectCount > 0 ? Math.round(total.lostCount / total.projectCount * 1000) / 10 : 0;
+      total.barashiPerProject = total.projectCount > 0 ? Math.round(total.barashiCount / total.projectCount * 1000) / 10 : 0;
+      return { industry, monthlyData, total };
+    });
+
+    return ApiResponse.success(res, {
+      months: monthList.map(m => m.ym),
+      industries,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/analytics/quality-industry-detail
+ * 案件質の特定ステータス（LOST/BARASHI/NAITEI）について、業種別件数を返す
+ * ?status=LOST|BARASHI|NAITEI&date_from=&date_to=&user_id=
+ */
+const getQualityIndustryDetail = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id, status } = req.query;
+    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI'];
+    if (!allowedStatuses.includes(status)) {
+      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI のいずれか');
+    }
+    const dateFrom = date_from || '2026-04-01';
+    const dateTo = date_to || new Date().toISOString().slice(0, 10);
+    const params = [dateFrom, dateTo];
+    let userFilter = '';
+    if (user_id) {
+      userFilter = 'AND p.owner_user_id = ?';
+      params.push(user_id);
+    }
+    // NAITEI は naitei_date 基準、それ以外は created_at
+    const dateCol = status === 'NAITEI' ? 'p.naitei_date' : 'DATE(p.created_at)';
+
+    const CATEGORY_EXPR = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+    const [rows] = await pool.query(
+      `SELECT ${CATEGORY_EXPR} AS industry, COUNT(*) AS cnt
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND p.status = ?
+         AND ${dateCol} BETWEEN ? AND ?
+         ${userFilter}
+       GROUP BY industry
+       ORDER BY cnt DESC`,
+      [status, ...params]
+    );
+
+    // 明細も取得
+    const detailParams = [status, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
+    const [detailRows] = await pool.query(
+      `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
+              ${CATEGORY_EXPR} AS industry,
+              COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+              ou.name AS owner_name, su.name AS sales_name
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       LEFT JOIN users ou ON p.owner_user_id = ou.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND p.status = ?
+         AND ${dateCol} BETWEEN ? AND ?
+         ${userFilter}
+       ORDER BY ${dateCol} DESC`,
+      detailParams
+    );
+
+    const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
+    return ApiResponse.success(res, {
+      status, dateFrom, dateTo, total,
+      industries: rows.map(r => ({ industry: r.industry, count: Number(r.cnt) })),
+      projects: detailRows,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail };
