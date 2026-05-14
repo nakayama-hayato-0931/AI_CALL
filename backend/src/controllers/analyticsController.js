@@ -1624,16 +1624,16 @@ const getQualityIndustryDetail = async (req, res, next) => {
     // NAITEI は naitei_date 基準、それ以外は created_at
     const dateCol = status === 'NAITEI' ? 'p.naitei_date' : 'DATE(p.created_at)';
 
-    const CATEGORY_EXPR = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+    const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
     const [rows] = await pool.query(
-      `SELECT ${CATEGORY_EXPR} AS industry, COUNT(*) AS cnt
+      `SELECT ${CAT} AS industry_cat, COUNT(*) AS cnt
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
-       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+       WHERE p.is_prospect = 0
          AND p.status = ?
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
-       GROUP BY industry
+       GROUP BY ${CAT}
        ORDER BY cnt DESC`,
       [status, ...params]
     );
@@ -1642,14 +1642,14 @@ const getQualityIndustryDetail = async (req, res, next) => {
     const detailParams = [status, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
     const [detailRows] = await pool.query(
       `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
-              ${CATEGORY_EXPR} AS industry,
+              ${CAT} AS industry_cat,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
               ou.name AS owner_name, su.name AS sales_name
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users ou ON p.owner_user_id = ou.id
        LEFT JOIN users su ON p.sales_user_id = su.id
-       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+       WHERE p.is_prospect = 0
          AND p.status = ?
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
@@ -1660,8 +1660,8 @@ const getQualityIndustryDetail = async (req, res, next) => {
     const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
     return ApiResponse.success(res, {
       status, dateFrom, dateTo, total,
-      industries: rows.map(r => ({ industry: r.industry, count: Number(r.cnt) })),
-      projects: detailRows,
+      industries: rows.map(r => ({ industry: r.industry_cat, count: Number(r.cnt) })),
+      projects: detailRows.map(r => ({ ...r, industry: r.industry_cat })),
     });
   } catch (err) {
     logger.error(`[getQualityIndustryDetail] ${err.message}`);
