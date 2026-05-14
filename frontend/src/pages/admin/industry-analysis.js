@@ -10,12 +10,12 @@ import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const METRICS = [
-  { key: 'projectRate', label: '案件化率', num: 'projectCount', den: 'callCount', desc: '案件数 / コール数' },
-  { key: 'naiteiPerProject', label: '内定率（案件比）', num: 'naiteiCount', den: 'projectCount', desc: '内定数 / 案件数' },
-  { key: 'interviewPerProject', label: '面接実施率（案件比）', num: 'interviewDoneCount', den: 'projectCount', desc: '面接実施数 / 案件数' },
-  { key: 'naiteiPerInterview', label: '内定率（面接比）', num: 'naiteiCount', den: 'interviewDoneCount', desc: '内定数 / 面接実施数' },
-  { key: 'lostPerProject', label: '失注率（案件比）', num: 'lostCount', den: 'projectCount', desc: '失注数 / 案件数' },
-  { key: 'barashiPerProject', label: 'バラシ率（案件比）', num: 'barashiCount', den: 'projectCount', desc: 'バラシ数 / 案件数' },
+  { key: 'projectRate', label: '案件化率', num: 'projectCount', den: 'callCount', desc: '案件数 / コール数', drilldownType: 'project' },
+  { key: 'naiteiPerProject', label: '内定率（案件比）', num: 'naiteiCount', den: 'projectCount', desc: '内定数 / 案件数', drilldownType: 'naitei' },
+  { key: 'interviewPerProject', label: '面接実施率（案件比）', num: 'interviewDoneCount', den: 'projectCount', desc: '面接実施数 / 案件数', drilldownType: 'interview' },
+  { key: 'naiteiPerInterview', label: '内定率（面接比）', num: 'naiteiCount', den: 'interviewDoneCount', desc: '内定数 / 面接実施数', drilldownType: 'naitei' },
+  { key: 'lostPerProject', label: '失注率（案件比）', num: 'lostCount', den: 'projectCount', desc: '失注数 / 案件数', drilldownType: 'lost' },
+  { key: 'barashiPerProject', label: 'バラシ率（案件比）', num: 'barashiCount', den: 'projectCount', desc: 'バラシ数 / 案件数', drilldownType: 'barashi' },
 ];
 
 const COUNT_METRICS = [
@@ -63,6 +63,26 @@ export default function IndustryAnalysisPage() {
   const [months, setMonths] = useState(6);
   const [selectedMetric, setSelectedMetric] = useState('projectRate');
   const [viewMode, setViewMode] = useState('rate'); // 'rate' | 'count'
+  const [drillModal, setDrillModal] = useState(null); // { industry, month, type, label, loading, data }
+
+  const openDrilldown = async (industry, month, metric) => {
+    const drilldownType = metric.drilldownType;
+    setDrillModal({
+      industry, month, type: drilldownType,
+      label: `${industry} - ${fmtMonth(month)} ${metric.label}`,
+      loading: true, data: null,
+    });
+    try {
+      const params = new URLSearchParams({ industry, month, type: drilldownType });
+      const { data: res } = await api.get(`/api/analytics/industry-period-detail?${params}`);
+      if (res.success) {
+        setDrillModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
+      }
+    } catch (err) {
+      toast.error('内訳の取得に失敗しました');
+      setDrillModal(null);
+    }
+  };
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
@@ -173,15 +193,22 @@ export default function IndustryAnalysisPage() {
                       {ind.monthlyData.map(m => {
                         const v = m[selectedMetric];
                         const denominator = m[currentMetric.den];
+                        const numerator = m[currentMetric.num];
+                        const canClick = denominator > 0 && numerator > 0;
                         return (
                           <td key={m.ym} className="px-4 py-3 text-center">
                             {denominator > 0 ? (
-                              <span
-                                className={`inline-block px-2 py-0.5 rounded font-semibold ${colorForMetric(selectedMetric, v)}`}
-                                title={`${m[currentMetric.num]} / ${denominator}`}
-                              >
-                                {v}%
-                              </span>
+                              canClick ? (
+                                <button
+                                  onClick={() => openDrilldown(ind.industry, m.ym, currentMetric)}
+                                  className={`inline-block px-2 py-0.5 rounded font-semibold cursor-pointer hover:ring-2 hover:ring-blue-300 ${colorForMetric(selectedMetric, v)}`}
+                                  title={`${numerator} / ${denominator} — クリックで明細表示`}
+                                >
+                                  {v}%
+                                </button>
+                              ) : (
+                                <span className={`inline-block px-2 py-0.5 rounded font-semibold ${colorForMetric(selectedMetric, v)}`}>{v}%</span>
+                              )
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
@@ -244,6 +271,91 @@ export default function IndustryAnalysisPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 明細モーダル */}
+        {drillModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDrillModal(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] mx-4 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">{drillModal.label}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {drillModal.type === 'call' ? 'コール明細' : '案件明細'}
+                    {drillModal.data && ` ・ ${drillModal.data.count}件`}
+                  </p>
+                </div>
+                <button onClick={() => setDrillModal(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              </div>
+              <div className="overflow-auto p-4 flex-1">
+                {drillModal.loading ? (
+                  <p className="text-center py-8 text-gray-400 text-sm">読み込み中...</p>
+                ) : !drillModal.data || drillModal.data.count === 0 ? (
+                  <p className="text-center py-8 text-gray-400 text-sm">該当データはありません</p>
+                ) : drillModal.type === 'call' ? (
+                  <table className="w-full text-xs border">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="text-left px-2 py-1.5">日時</th>
+                        <th className="text-left px-2 py-1.5">担当者</th>
+                        <th className="text-left px-2 py-1.5">企業名</th>
+                        <th className="text-left px-2 py-1.5">業種</th>
+                        <th className="text-left px-2 py-1.5">結果</th>
+                        <th className="text-left px-2 py-1.5">メモ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drillModal.data.calls.map(cl => (
+                        <tr key={cl.id} className="border-t hover:bg-gray-50">
+                          <td className="px-2 py-1">{new Date(cl.call_started_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-2 py-1">{cl.operator_name || '-'}</td>
+                          <td className="px-2 py-1">{cl.company_name || '-'}</td>
+                          <td className="px-2 py-1 text-gray-500">{cl.industry || '-'}</td>
+                          <td className="px-2 py-1">{cl.result_code || '-'}</td>
+                          <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate">{cl.memo || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="w-full text-xs border">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="text-left px-2 py-1.5">求人番号</th>
+                        <th className="text-left px-2 py-1.5">企業名</th>
+                        <th className="text-left px-2 py-1.5">業種</th>
+                        <th className="text-left px-2 py-1.5">ステータス</th>
+                        <th className="text-left px-2 py-1.5">担当OP</th>
+                        <th className="text-left px-2 py-1.5">担当営業</th>
+                        <th className="text-left px-2 py-1.5">案件獲得日</th>
+                        <th className="text-left px-2 py-1.5">面接日</th>
+                        <th className="text-left px-2 py-1.5">内定日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drillModal.data.projects.map(p => (
+                        <tr key={p.id} className="border-t hover:bg-gray-50">
+                          <td className="px-2 py-1">{p.job_number || '-'}</td>
+                          <td className="px-2 py-1">
+                            <a href={`/admin/projects?focus=${p.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              {p.company_name || '-'}
+                            </a>
+                          </td>
+                          <td className="px-2 py-1 text-gray-500">{p.industry || '-'}</td>
+                          <td className="px-2 py-1">{p.status || '-'}</td>
+                          <td className="px-2 py-1">{p.owner_name || '-'}</td>
+                          <td className="px-2 py-1">{p.sales_name || '-'}</td>
+                          <td className="px-2 py-1">{p.created_at ? new Date(p.created_at).toLocaleDateString('ja-JP') : '-'}</td>
+                          <td className="px-2 py-1">{p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}</td>
+                          <td className="px-2 py-1">{p.naitei_date ? new Date(p.naitei_date).toLocaleDateString('ja-JP') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

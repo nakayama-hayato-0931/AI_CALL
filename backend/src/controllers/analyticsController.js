@@ -1669,4 +1669,92 @@ const getQualityIndustryDetail = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail };
+/**
+ * GET /api/analytics/industry-period-detail
+ * 業種カテゴリ × 期間 × 指標タイプ で対象案件/コールの明細を返す
+ * ?industry=飲食&month=2026-04&type=project|naitei|interview|lost|barashi|call
+ */
+const getIndustryPeriodDetail = async (req, res, next) => {
+  try {
+    const { industry, month, type } = req.query;
+    if (!industry || !month || !type) {
+      return ApiResponse.badRequest(res, 'industry, month, type が必要です');
+    }
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return ApiResponse.badRequest(res, 'month の形式が不正です');
+    }
+    const [yStr, mStr] = month.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    const lastDay = new Date(y, m, 0).getDate();
+    const dateFrom = `${month}-01`;
+    const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+    const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+    // 業種マッチ条件（'その他' は industry_category が NULL/空 のものを含める）
+    const industryWhere = `${CAT} = ?`;
+
+    if (type === 'call') {
+      // コール明細
+      const [rows] = await pool.query(
+        `SELECT cl.id, cl.call_started_at, cl.result_code, cl.memo,
+                u.name AS operator_name,
+                co.company_name, co.phone_number, co.industry, ${CAT} AS industry_cat
+         FROM calls cl
+         LEFT JOIN companies co ON cl.company_id = co.id
+         LEFT JOIN users u ON cl.user_id = u.id
+         LEFT JOIN companies c ON cl.company_id = c.id
+         WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
+           AND DATE(cl.call_started_at) BETWEEN ? AND ?
+           AND ${industryWhere}
+         ORDER BY cl.call_started_at DESC
+         LIMIT 500`,
+        [dateFrom, dateTo, industry]
+      );
+      return ApiResponse.success(res, { type, industry, month, count: rows.length, calls: rows });
+    }
+
+    // type → status filter
+    const typeStatusMap = {
+      project: null, // 全案件
+      naitei: ['NAITEI'],
+      interview: ['NAITEI', 'FUGOKAKU', 'KEKKA_MACHI', 'NAITEI_TORIKESHI'],
+      lost: ['LOST'],
+      barashi: ['BARASHI'],
+    };
+    if (!(type in typeStatusMap)) {
+      return ApiResponse.badRequest(res, 'type が不正です');
+    }
+    const statuses = typeStatusMap[type];
+    const params = [dateFrom, dateTo, industry];
+    let statusFilter = '';
+    if (statuses && statuses.length > 0) {
+      statusFilter = `AND p.status IN (${statuses.map(() => '?').join(',')})`;
+      params.push(...statuses);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date, p.interview_date,
+              COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+              c.industry, ${CAT} AS industry_cat,
+              ou.name AS owner_name, su.name AS sales_name
+       FROM projects p
+       LEFT JOIN companies c ON p.company_id = c.id
+       LEFT JOIN users ou ON p.owner_user_id = ou.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.is_prospect = 0
+         AND DATE(p.created_at) BETWEEN ? AND ?
+         AND ${industryWhere}
+         ${statusFilter}
+       ORDER BY p.created_at DESC
+       LIMIT 500`,
+      params
+    );
+    return ApiResponse.success(res, { type, industry, month, count: rows.length, projects: rows });
+  } catch (err) {
+    logger.error(`[getIndustryPeriodDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail };
