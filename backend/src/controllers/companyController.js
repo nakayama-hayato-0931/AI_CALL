@@ -540,11 +540,11 @@ const getCallList = async (req, res, next) => {
       } catch (e) { /* ignore */ }
     }
 
-    // 自動ピックアップ対象都道府県（auto モードのみ）
+    // 自動ピックアップ対象都道府県（auto / industry モードに適用）
     // 明示的に有効/無効が指定された都道府県のみ制限。未設定の場合は無制限。
     let prefectureFilter = '';
     const prefectureParams = [];
-    if (mode === 'auto') {
+    if (mode === 'auto' || mode === 'industry') {
       try {
         const [prefRows] = await pool.execute(
           "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
