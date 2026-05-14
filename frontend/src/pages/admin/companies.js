@@ -74,6 +74,10 @@ export default function AdminCompanies() {
   const [aiSelectedIndustries, setAiSelectedIndustries] = useState(INDUSTRIES.reduce((acc, ind) => ({ ...acc, [ind]: true }), {}));
   // 自動ピックアップ対象業種（サーバー保存）
   const [autoPickupLoaded, setAutoPickupLoaded] = useState(false);
+  // 自動ピックアップ対象都道府県（サーバー保存。未設定なら全許可）
+  // map: { 都道府県: true/false }。すべてのキーが未定義なら無制限。
+  const [autoPickupPrefs, setAutoPickupPrefs] = useState({});
+  const [autoPickupPrefsLoaded, setAutoPickupPrefsLoaded] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
   const [dbStats, setDbStats] = useState(null);
 
@@ -118,6 +122,20 @@ export default function AdminCompanies() {
           setAutoPickupLoaded(true);
         }
       }).catch(() => {});
+      // 自動ピックアップ対象都道府県マップ取得
+      api.get('/api/admin/auto-pickup-prefectures').then(res => {
+        if (res.data.success) {
+          const saved = res.data.data.prefectures || {};
+          // 保存済みのみ採用（未設定なら全許可とみなすため空のままにする選択肢もあるが、
+          // UIではデフォルト全部true表示にする）
+          const merged = ALL_PREFS.reduce((acc, p) => ({
+            ...acc,
+            [p]: saved[p] !== undefined ? saved[p] : true,
+          }), {});
+          setAutoPickupPrefs(merged);
+          setAutoPickupPrefsLoaded(true);
+        }
+      }).catch(() => {});
     }
   }, [user, activeTab]);
 
@@ -128,6 +146,34 @@ export default function AdminCompanies() {
     } catch (err) {
       toast.error('自動対象業種の保存に失敗しました');
     }
+  };
+
+  // 都道府県チェック変更時にサーバー保存
+  const updateAutoPickupPrefs = async (newMap) => {
+    try {
+      await api.put('/api/admin/auto-pickup-prefectures', { prefectures: newMap });
+    } catch (err) {
+      toast.error('自動対象都道府県の保存に失敗しました');
+    }
+  };
+  const togglePrefecture = (pref) => {
+    const newMap = { ...autoPickupPrefs, [pref]: !autoPickupPrefs[pref] };
+    setAutoPickupPrefs(newMap);
+    updateAutoPickupPrefs(newMap);
+  };
+  const toggleRegion = (groupName) => {
+    const group = REGION_GROUPS.find(g => g.name === groupName);
+    if (!group) return;
+    const allOn = group.prefs.every(p => autoPickupPrefs[p]);
+    const newMap = { ...autoPickupPrefs };
+    group.prefs.forEach(p => { newMap[p] = !allOn; });
+    setAutoPickupPrefs(newMap);
+    updateAutoPickupPrefs(newMap);
+  };
+  const togglePrefAll = (on) => {
+    const newMap = ALL_PREFS.reduce((acc, p) => ({ ...acc, [p]: on }), {});
+    setAutoPickupPrefs(newMap);
+    updateAutoPickupPrefs(newMap);
   };
 
   // === 架電リスト 関数 ===
@@ -849,6 +895,63 @@ export default function AdminCompanies() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            {/* 自動ピックアップ対象 都道府県 */}
+            <div className="card overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-700">自動ピックアップ対象 都道府県</h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    チェックを外した都道府県の企業は自動モードでピックアップされなくなります。
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => togglePrefAll(true)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+                  <button onClick={() => togglePrefAll(false)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+                </div>
+              </div>
+              <div className="p-4 space-y-3">
+                {REGION_GROUPS.map(group => {
+                  const groupEnabledCount = group.prefs.filter(p => autoPickupPrefs[p]).length;
+                  const allOn = groupEnabledCount === group.prefs.length;
+                  const someOn = groupEnabledCount > 0 && groupEnabledCount < group.prefs.length;
+                  return (
+                    <div key={group.name} className="border border-gray-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allOn}
+                            ref={el => { if (el) el.indeterminate = someOn; }}
+                            onChange={() => toggleRegion(group.name)}
+                            className="w-4 h-4 accent-blue-600 cursor-pointer"
+                          />
+                          {group.name}
+                          <span className="text-[11px] font-normal text-gray-400">
+                            ({groupEnabledCount}/{group.prefs.length})
+                          </span>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pl-6">
+                        {group.prefs.map(p => (
+                          <label key={p} className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                            autoPickupPrefs[p] ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={!!autoPickupPrefs[p]}
+                              onChange={() => togglePrefecture(p)}
+                              className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
+                            />
+                            {p}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

@@ -19,6 +19,8 @@ const {
   bulkDeleteCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
+  getAutoPickupPrefectures,
+  setAutoPickupPrefectures,
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
   getIncentiveData,
@@ -66,6 +68,8 @@ router.get('/companies/industry-stats', requireManager, getCompaniesIndustryStat
 router.post('/companies/bulk-delete', requireEditor, bulkDeleteCompanies);
 router.get('/auto-pickup-industries', requireManager, getAutoPickupIndustries);
 router.put('/auto-pickup-industries', requireEditor, setAutoPickupIndustries);
+router.get('/auto-pickup-prefectures', requireManager, getAutoPickupPrefectures);
+router.put('/auto-pickup-prefectures', requireEditor, setAutoPickupPrefectures);
 router.post('/cleanup-database', requireEditor, cleanupDatabase);
 router.put('/time-rules/:id', requireEditor, updateTimeRule);
 router.delete('/time-rules/:id', requireEditor, deleteTimeRule);

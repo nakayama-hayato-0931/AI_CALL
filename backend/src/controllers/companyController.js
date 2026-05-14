@@ -540,6 +540,34 @@ const getCallList = async (req, res, next) => {
       } catch (e) { /* ignore */ }
     }
 
+    // 自動ピックアップ対象都道府県（auto モードのみ）
+    // 明示的に有効/無効が指定された都道府県のみ制限。未設定の場合は無制限。
+    let prefectureFilter = '';
+    const prefectureParams = [];
+    if (mode === 'auto') {
+      try {
+        const [prefRows] = await pool.execute(
+          "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+        );
+        if (prefRows.length > 0) {
+          const prefMap = JSON.parse(prefRows[0].setting_value || '{}');
+          const enabledPrefs = Object.entries(prefMap).filter(([k, v]) => v === true).map(([k]) => k);
+          const hasAnyExplicit = Object.keys(prefMap).length > 0;
+          // 何か明示設定がある場合のみフィルタを適用（全trueなら無条件全許可と同義になる）
+          if (hasAnyExplicit && enabledPrefs.length > 0) {
+            // c.region と一致 もしくは address 先頭が一致する企業のみ許可
+            const phs = enabledPrefs.map(() => '?').join(',');
+            const likeConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
+            prefectureFilter = `AND (c.region IN (${phs}) OR ${likeConds})`;
+            prefectureParams.push(...enabledPrefs, ...enabledPrefs);
+          } else if (hasAnyExplicit && enabledPrefs.length === 0) {
+            // 全都道府県のチェックを外している = 何もピックアップしない
+            prefectureFilter = 'AND 1 = 0';
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     let targets = [];
     // excludeクエリパラメータ: 直前に完了した企業IDを除外
     const excludeParam = req.query.exclude;
@@ -634,11 +662,12 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
+         ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining2]
+      [userId, currentTime, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining2]
     );
     targets.push(...goldenRows);
     excludeIds = targets.map(t => t.id);
@@ -662,11 +691,12 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
+         ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining3]
     );
     targets.push(...untouchedRows);
     excludeIds = targets.map(t => t.id);
@@ -692,11 +722,12 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
+         ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining4]
+      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining4]
     );
     targets.push(...retryRows);
     excludeIds = targets.map(t => t.id);
@@ -723,11 +754,12 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
+         ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...excludeIds, remaining5]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining5]
     );
     targets.push(...ngRetryRows);
 

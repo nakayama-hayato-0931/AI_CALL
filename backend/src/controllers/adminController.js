@@ -1240,6 +1240,8 @@ module.exports = {
   bulkDeleteCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
+  getAutoPickupPrefectures,
+  setAutoPickupPrefectures,
   getIncentiveData,
 };
 
@@ -1440,6 +1442,47 @@ async function setAutoPickupIndustries(req, res, next) {
     );
     logger.info(`自動ピックアップ業種更新: ${JSON.stringify(industries)}`);
     return ApiResponse.success(res, { industries });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * GET /api/admin/auto-pickup-prefectures
+ * 自動ピックアップ対象都道府県マップ（system_settings）を返す
+ */
+async function getAutoPickupPrefectures(req, res, next) {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+    );
+    let map = {};
+    if (rows.length > 0) {
+      try { map = JSON.parse(rows[0].setting_value); } catch (e) {}
+    }
+    return ApiResponse.success(res, { prefectures: map });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * PUT /api/admin/auto-pickup-prefectures
+ * body: { prefectures: { 東京都: true, 大阪府: false, ... } }
+ */
+async function setAutoPickupPrefectures(req, res, next) {
+  try {
+    const { prefectures } = req.body || {};
+    if (!prefectures || typeof prefectures !== 'object') {
+      return ApiResponse.badRequest(res, 'prefectures オブジェクトが必要です');
+    }
+    await pool.execute(
+      `INSERT INTO system_settings (setting_key, setting_value) VALUES ('auto_pickup_prefectures', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [JSON.stringify(prefectures)]
+    );
+    logger.info(`自動ピックアップ都道府県更新: ${JSON.stringify(prefectures)}`);
+    return ApiResponse.success(res, { prefectures });
   } catch (err) {
     return ApiResponse.error(res, err.message, 500);
   }
