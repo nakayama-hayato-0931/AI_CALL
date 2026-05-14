@@ -1484,14 +1484,16 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       });
     }
 
-    const CATEGORY_EXPR = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+    // 業種カテゴリ式（companies.industry_category）
+    // GROUP BY内でも使えるように同じ式を二回書く
+    const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
 
     // 業種別月別データを1回のクエリで取得
     // projects: created_at（案件獲得日）月でグループ化
     const [projAll] = await pool.query(
       `SELECT
          DATE_FORMAT(p.created_at, '%Y-%m') AS ym,
-         ${CATEGORY_EXPR} AS industry,
+         ${CAT} AS industry_cat,
          COUNT(*) AS project_count,
          CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) AS naitei_count,
          CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') THEN 1 ELSE 0 END) AS SIGNED) AS interview_done_count,
@@ -1499,9 +1501,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) AS barashi_count
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
-       WHERE p.is_prospect = 0 AND p.is_legacy = 0
+       WHERE p.is_prospect = 0
          AND DATE(p.created_at) BETWEEN ? AND ?
-       GROUP BY ym, industry`,
+       GROUP BY DATE_FORMAT(p.created_at, '%Y-%m'), ${CAT}`,
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
@@ -1509,30 +1511,30 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     const [callAll] = await pool.query(
       `SELECT
          DATE_FORMAT(cl.call_started_at, '%Y-%m') AS ym,
-         ${CATEGORY_EXPR} AS industry,
+         ${CAT} AS industry_cat,
          COUNT(*) AS call_count
        FROM calls cl
        LEFT JOIN companies c ON cl.company_id = c.id
        WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
          AND DATE(cl.call_started_at) BETWEEN ? AND ?
-       GROUP BY ym, industry`,
+       GROUP BY DATE_FORMAT(cl.call_started_at, '%Y-%m'), ${CAT}`,
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
     // 業種一覧（プロジェクト発生した業種すべて）
     const industrySet = new Set();
-    for (const r of projAll) industrySet.add(r.industry);
-    for (const r of callAll) industrySet.add(r.industry);
+    for (const r of projAll) industrySet.add(r.industry_cat);
+    for (const r of callAll) industrySet.add(r.industry_cat);
 
     // ymごとに { industry: { ... } } マップを構築
     const dataKey = (ym, industry) => `${ym}|${industry}`;
     const projMap = new Map();
     for (const r of projAll) {
-      projMap.set(dataKey(r.ym, r.industry), r);
+      projMap.set(dataKey(r.ym, r.industry_cat), r);
     }
     const callMap = new Map();
     for (const r of callAll) {
-      callMap.set(dataKey(r.ym, r.industry), r);
+      callMap.set(dataKey(r.ym, r.industry_cat), r);
     }
 
     // 業種ごとに月別配列を作成
@@ -1594,7 +1596,8 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       industries,
     });
   } catch (err) {
-    next(err);
+    logger.error(`[getIndustryMonthlyAnalysis] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
   }
 };
 
@@ -1661,7 +1664,8 @@ const getQualityIndustryDetail = async (req, res, next) => {
       projects: detailRows,
     });
   } catch (err) {
-    next(err);
+    logger.error(`[getQualityIndustryDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
   }
 };
 
