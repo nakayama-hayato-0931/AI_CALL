@@ -1484,9 +1484,26 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       });
     }
 
-    // 業種カテゴリ式（companies.industry_category）
-    // GROUP BY内でも使えるように同じ式を二回書く
-    const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
+    // 業種カテゴリ式: industry_category が NULL/空の場合は industry テキストから直接判定
+    // 表示対象（飲食/製造/小売/建設/宿泊）に該当しないものは 'その他' として返す
+    // companyController.js の CATEGORY_SQL_EXPR と同じキーワード判定
+    const CAT = `(
+      CASE
+        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
+        WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
+             OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
+             OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'
+             OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%'
+             OR c.industry LIKE '%菓子%' THEN '飲食'
+        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
+        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
+             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
+        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
+             OR c.industry LIKE '%リフォーム%' THEN '建設'
+        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        ELSE 'その他'
+      END
+    )`;
 
     // 業種別月別データを1回のクエリで取得
     // projects: created_at（案件獲得日）月でグループ化
@@ -1704,20 +1721,27 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     const dateFrom = `${month}-01`;
     const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
 
-    const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
-    // 業種マッチ条件: 表示対象（飲食/製造/小売/建設/宿泊）以外はすべて「その他」
-    const SHOW_CATEGORIES = ['飲食', '製造', '小売', '建設', '宿泊'];
-    let industryWhere;
-    let industryParams;
-    if (industry === 'その他') {
-      // 表示対象に含まれない = それ以外すべて（NULL/空/その他含む）
-      const phs = SHOW_CATEGORIES.map(() => '?').join(',');
-      industryWhere = `(c.industry_category IS NULL OR c.industry_category = '' OR c.industry_category NOT IN (${phs}))`;
-      industryParams = [...SHOW_CATEGORIES];
-    } else {
-      industryWhere = `${CAT} = ?`;
-      industryParams = [industry];
-    }
+    // CATEGORY_SQL: industry_category 優先、不整合時は industry テキストから判定（業種別分析と同じロジック）
+    const CAT = `(
+      CASE
+        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
+        WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
+             OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
+             OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'
+             OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%'
+             OR c.industry LIKE '%菓子%' THEN '飲食'
+        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
+        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
+             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
+        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
+             OR c.industry LIKE '%リフォーム%' THEN '建設'
+        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        ELSE 'その他'
+      END
+    )`;
+    // 業種マッチ: 表示5カテゴリのいずれか
+    const industryWhere = `${CAT} = ?`;
+    const industryParams = [industry];
 
     if (type === 'call') {
       // コール明細
