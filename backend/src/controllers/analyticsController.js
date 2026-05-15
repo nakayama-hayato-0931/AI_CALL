@@ -198,7 +198,11 @@ const getQualityMetrics = async (req, res, next) => {
          COUNT(*) as total,
          CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
          CAST(SUM(CASE WHEN COALESCE(p.mail_replied, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-         CAST(SUM(CASE WHEN p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
+         CAST(SUM(CASE WHEN p.status = 'SHORUI_CHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
+         CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
+                AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
+                AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI'))
+              THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
          CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
          CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
@@ -219,6 +223,8 @@ const getQualityMetrics = async (req, res, next) => {
       lostPct: pct(Number(rows[0].lost) || 0),
       waitingContact: Number(rows[0].waiting_contact) || 0,
       waitingContactPct: pct(Number(rows[0].waiting_contact) || 0),
+      screeningInProgress: Number(rows[0].screening_in_progress) || 0,
+      screeningInProgressPct: pct(Number(rows[0].screening_in_progress) || 0),
       interviewSet: Number(rows[0].interview_set) || 0,
       interviewSetPct: pct(Number(rows[0].interview_set) || 0),
       interviewDone: Number(rows[0].interview_done) || 0,
@@ -796,7 +802,7 @@ const getQualityAll = async (req, res, next) => {
     // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得
     const SYSTEM_DATA_START = '2026-04-01';
     const qSystemFrom = dateFrom >= SYSTEM_DATA_START ? dateFrom : (dateTo >= SYSTEM_DATA_START ? SYSTEM_DATA_START : null);
-    const fields = ['total','lost','waiting_contact','interview_set','interview_done','barashi','online_interview','no_screening','screening_failed'];
+    const fields = ['total','lost','waiting_contact','screening_in_progress','interview_set','interview_done','barashi','online_interview','no_screening','screening_failed'];
 
     let rows = [];
     if (qSystemFrom) {
@@ -805,7 +811,11 @@ const getQualityAll = async (req, res, next) => {
           COUNT(*) as total,
           CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
           CAST(SUM(CASE WHEN COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
+          CAST(SUM(CASE WHEN p.status = 'SHORUI_CHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
+          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
+                AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
+                AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI'))
+              THEN 1 ELSE 0 END) AS SIGNED) as interview_set,
           CAST(SUM(CASE WHEN p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') THEN 1 ELSE 0 END) AS SIGNED) as interview_done,
           CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) as barashi,
           CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
@@ -826,7 +836,8 @@ const getQualityAll = async (req, res, next) => {
           project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?` },
           q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?` },
           q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND DATE(p.created_at) = ?` },
-          q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND DATE(p.created_at) = ?` },
+          q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'SHORUI_CHU' AND DATE(p.created_at) = ?` },
+          q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')) AND DATE(p.created_at) = ?` },
           q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?` },
           q_barashi: { rowKey: 'barashi', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'BARASHI' AND DATE(p.created_at) = ?` },
           q_online_interview: { rowKey: 'online_interview', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_type = 'online' AND DATE(p.created_at) = ?` },
@@ -847,7 +858,7 @@ const getQualityAll = async (req, res, next) => {
           const delta = Number(adj.value) - actual;
           let row = qMap.get(uid);
           if (!row) {
-            row = { user_id: uid, total: 0, lost: 0, waiting_contact: 0, interview_set: 0, interview_done: 0, barashi: 0, online_interview: 0, no_screening: 0, screening_failed: 0 };
+            row = { user_id: uid, total: 0, lost: 0, waiting_contact: 0, screening_in_progress: 0, interview_set: 0, interview_done: 0, barashi: 0, online_interview: 0, no_screening: 0, screening_failed: 0 };
             qMap.set(uid, row);
             rows.push(row);
           }
@@ -863,6 +874,7 @@ const getQualityAll = async (req, res, next) => {
       return {
         total: t, lost: n('lost'), lostPct: p(n('lost')),
         waitingContact: n('waiting_contact'), waitingContactPct: p(n('waiting_contact')),
+        screeningInProgress: n('screening_in_progress'), screeningInProgressPct: p(n('screening_in_progress')),
         interviewSet: n('interview_set'), interviewSetPct: p(n('interview_set')),
         interviewDone: n('interview_done'), interviewDonePct: p(n('interview_done')),
         barashi: n('barashi'), barashiPct: p(n('barashi')),
@@ -1471,6 +1483,7 @@ const getWaitingContactDetail = async (req, res, next) => {
 const getIndustryMonthlyAnalysis = async (req, res, next) => {
   try {
     const months = Math.min(24, Math.max(1, parseInt(req.query.months, 10) || 6));
+    const groupBy = req.query.group_by === 'region' ? 'region' : 'industry';
     const now = new Date();
     const monthList = [];
     for (let i = months - 1; i >= 0; i--) {
@@ -1484,10 +1497,10 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       });
     }
 
-    // 業種カテゴリ式: industry_category が NULL/空の場合は industry テキストから直接判定
-    // 表示対象（飲食/製造/小売/建設/宿泊）に該当しないものは 'その他' として返す
-    // companyController.js の CATEGORY_SQL_EXPR と同じキーワード判定
-    const CAT = `(
+    // グループ式
+    // industry: industry_category 優先 + industry テキストからキーワード判定
+    // region: c.region（都道府県）。NULL/空は '(未設定)'
+    const INDUSTRY_CAT = `(
       CASE
         WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
         WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
@@ -1504,6 +1517,8 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
         ELSE 'その他'
       END
     )`;
+    const REGION_EXPR = `COALESCE(NULLIF(c.region, ''), '(未設定)')`;
+    const CAT = groupBy === 'region' ? REGION_EXPR : INDUSTRY_CAT;
 
     // 業種別月別データを1回のクエリで取得
     // projects: created_at（案件獲得日）月でグループ化
@@ -1538,12 +1553,21 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
-    // 表示業種: 飲食/製造/小売/建設/宿泊 + その他
+    // 業種モード: 飲食/製造/小売/建設/宿泊 + その他
+    // 地域モード: そのまま採用
     const SHOW_CATEGORIES = new Set(['飲食', '製造', '小売', '建設', '宿泊']);
-    const normalizeIndustry = (cat) => SHOW_CATEGORIES.has(cat) ? cat : 'その他';
+    const normalizeIndustry = groupBy === 'region'
+      ? (cat) => cat || '(未設定)'
+      : (cat) => SHOW_CATEGORIES.has(cat) ? cat : 'その他';
 
-    // 業種一覧（5カテゴリ + その他）。実データが0件でも常に6行表示
-    const industrySet = new Set(['飲食', '製造', '小売', '建設', '宿泊', 'その他']);
+    // 業種一覧
+    const industrySet = groupBy === 'region'
+      ? new Set() // 地域モードは実データから収集
+      : new Set(['飲食', '製造', '小売', '建設', '宿泊', 'その他']);
+    if (groupBy === 'region') {
+      for (const r of projAll) industrySet.add(normalizeIndustry(r.industry_cat));
+      for (const r of callAll) industrySet.add(normalizeIndustry(r.industry_cat));
+    }
 
     // ymごとに { industry: { ... } } マップを構築（その他には統合）
     const dataKey = (ym, industry) => `${ym}|${industry}`;
@@ -1575,7 +1599,19 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     }
 
     // 業種ごとに月別配列を作成
-    const CATEGORY_ORDER = ['飲食','製造','小売','建設','宿泊','その他'];
+    // 都道府県の表示順（北→南）
+    const REGION_ORDER = [
+      '北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県',
+      '茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県',
+      '新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県',
+      '三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県',
+      '鳥取県','島根県','岡山県','広島県','山口県',
+      '徳島県','香川県','愛媛県','高知県',
+      '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県',
+      '(未設定)',
+    ];
+    const INDUSTRY_ORDER = ['飲食','製造','小売','建設','宿泊','その他'];
+    const CATEGORY_ORDER = groupBy === 'region' ? REGION_ORDER : INDUSTRY_ORDER;
     const industries = [...industrySet].sort((a, b) => {
       const ia = CATEGORY_ORDER.indexOf(a);
       const ib = CATEGORY_ORDER.indexOf(b);
@@ -1629,6 +1665,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     });
 
     return ApiResponse.success(res, {
+      groupBy,
       months: monthList.map(m => m.ym),
       industries,
     });
@@ -1714,6 +1751,7 @@ const getQualityIndustryDetail = async (req, res, next) => {
 const getIndustryPeriodDetail = async (req, res, next) => {
   try {
     const { industry, month, type } = req.query;
+    const groupBy = req.query.group_by === 'region' ? 'region' : 'industry';
     if (!industry || !month || !type) {
       return ApiResponse.badRequest(res, 'industry, month, type が必要です');
     }
@@ -1728,7 +1766,7 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
 
     // CATEGORY_SQL: industry_category 優先、不整合時は industry テキストから判定（業種別分析と同じロジック）
-    const CAT = `(
+    const INDUSTRY_CAT = `(
       CASE
         WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
         WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
@@ -1745,7 +1783,8 @@ const getIndustryPeriodDetail = async (req, res, next) => {
         ELSE 'その他'
       END
     )`;
-    // 業種マッチ: 'その他' は5カテゴリ以外（CAT の CASE で 'その他' に落ちるもの）すべて
+    const REGION_EXPR = `COALESCE(NULLIF(c.region, ''), '(未設定)')`;
+    const CAT = groupBy === 'region' ? REGION_EXPR : INDUSTRY_CAT;
     const industryWhere = `${CAT} = ?`;
     const industryParams = [industry];
 

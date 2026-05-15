@@ -63,6 +63,7 @@ export default function IndustryAnalysisPage() {
   const [months, setMonths] = useState(6);
   const [selectedMetric, setSelectedMetric] = useState('projectRate');
   const [viewMode, setViewMode] = useState('rate'); // 'rate' | 'count'
+  const [groupBy, setGroupBy] = useState('industry'); // 'industry' | 'region'
   const [drillModal, setDrillModal] = useState(null); // { industry, month, type, label, loading, data }
 
   const openDrilldown = async (industry, month, metric) => {
@@ -73,7 +74,7 @@ export default function IndustryAnalysisPage() {
       loading: true, data: null,
     });
     try {
-      const params = new URLSearchParams({ industry, month, type: drilldownType });
+      const params = new URLSearchParams({ industry, month, type: drilldownType, group_by: groupBy });
       const { data: res } = await api.get(`/api/analytics/industry-period-detail?${params}`);
       if (res.success) {
         setDrillModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
@@ -90,15 +91,15 @@ export default function IndustryAnalysisPage() {
       return;
     }
     if (user) fetchData();
-  }, [user, months]);
+  }, [user, months, groupBy]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: res } = await api.get(`/api/analytics/industry-monthly-analysis?months=${months}`);
+      const { data: res } = await api.get(`/api/analytics/industry-monthly-analysis?months=${months}&group_by=${groupBy}`);
       if (res.success) setData(res.data);
     } catch (err) {
-      toast.error('業種別分析の取得に失敗しました');
+      toast.error('分析データの取得に失敗しました');
     } finally {
       setLoading(false);
     }
@@ -113,9 +114,9 @@ export default function IndustryAnalysisPage() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold">業種別分析</h1>
+            <h1 className="text-2xl font-bold">{groupBy === 'region' ? '地域別分析' : '業種別分析'}</h1>
             <p className="text-sm text-gray-500 mt-1">
-              業種カテゴリ × 月別の転換率比較。案件は獲得日（created_at）、内定は内定日（naitei_date）ベース。
+              {groupBy === 'region' ? '都道府県' : '業種カテゴリ'} × 月別の転換率比較。案件は獲得日（created_at）、内定は内定日（naitei_date）ベース。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -134,16 +135,28 @@ export default function IndustryAnalysisPage() {
           </div>
         </div>
 
-        {/* 表示モード: 率 / 件数 */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-3 w-fit">
-          <button
-            onClick={() => setViewMode('rate')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium ${viewMode === 'rate' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >率（％）</button>
-          <button
-            onClick={() => setViewMode('count')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium ${viewMode === 'count' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >件数</button>
+        {/* グループ切替 + 表示モード */}
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+            <button
+              onClick={() => setGroupBy('industry')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${groupBy === 'industry' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >業種別</button>
+            <button
+              onClick={() => setGroupBy('region')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${groupBy === 'region' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >地域別</button>
+          </div>
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+            <button
+              onClick={() => setViewMode('rate')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${viewMode === 'rate' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >率（％）</button>
+            <button
+              onClick={() => setViewMode('count')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${viewMode === 'count' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >件数</button>
+          </div>
         </div>
 
         {/* 指標切替（率モード時のみ） */}
@@ -179,7 +192,8 @@ export default function IndustryAnalysisPage() {
               <table className="min-w-full text-base">
                 <thead className="bg-gray-50 text-sm">
                   <tr>
-                    <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 z-10">業種</th>
+                    <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 z-10">{groupBy === 'region' ? '地域' : '業種'}</th>
+                    <th className="px-4 py-3 text-center bg-gray-100 whitespace-nowrap">案件数</th>
                     {data.months.map(ym => (
                       <th key={ym} className="px-4 py-3 text-center whitespace-nowrap">{fmtMonth(ym)}</th>
                     ))}
@@ -190,6 +204,7 @@ export default function IndustryAnalysisPage() {
                   {data.industries.map(ind => (
                     <tr key={ind.industry} className="border-t hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium sticky left-0 bg-white">{ind.industry}</td>
+                      <td className="px-4 py-3 text-center bg-gray-50/50 font-semibold">{ind.total.projectCount || '-'}</td>
                       {ind.monthlyData.map(m => {
                         const v = m[selectedMetric];
                         const denominator = m[currentMetric.den];
@@ -232,6 +247,9 @@ export default function IndustryAnalysisPage() {
                   {/* 合計行（全業種を合算した率） */}
                   <tr className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
                     <td className="px-4 py-3 sticky left-0 bg-blue-50/70">合計</td>
+                    <td className="px-4 py-3 text-center bg-blue-100">
+                      {data.industries.reduce((s, ind) => s + (Number(ind.total.projectCount) || 0), 0) || '-'}
+                    </td>
                     {data.months.map((ym, idx) => {
                       const sumNum = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.num]) || 0), 0);
                       const sumDen = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.den]) || 0), 0);

@@ -319,6 +319,7 @@ export default function AnalyticsPage() {
     { key: 'total', label: '案件数' },
     { key: 'lost', label: '失注', pctKey: 'lostPct', clickable: 'industry:LOST' },
     { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: 'waiting' },
+    { key: 'screeningInProgress', label: '書類選考中', pctKey: 'screeningInProgressPct' },
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
@@ -905,6 +906,7 @@ export default function AnalyticsPage() {
                   <optgroup label="案件質向上">
                     <option value="q_lost">失注</option>
                     <option value="q_waiting_contact">連絡待ち</option>
+                    <option value="q_screening_in_progress">書類選考中</option>
                     <option value="q_interview_set">面接日確定</option>
                     <option value="q_interview_done">面接実施</option>
                     <option value="q_barashi">バラシ</option>
