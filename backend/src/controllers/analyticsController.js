@@ -1499,21 +1499,23 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
 
     // グループ式
     // industry: industry_category 優先 + industry テキストからキーワード判定
+    // 注意: 「飲食料品小売業」のように2つのキーワードを含む業種があるため、
+    //       先に「小売」を判定して飲食を後にする（「料品小売」を飲食扱いしない）
     // region: c.region（都道府県）。NULL/空は '(未設定)'
     const INDUSTRY_CAT = `(
       CASE
         WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
-        WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
+        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
+             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
+        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
+        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
+             OR c.industry LIKE '%リフォーム%' THEN '建設'
+        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        WHEN c.industry LIKE '%飲食%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
              OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
              OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'
              OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%'
              OR c.industry LIKE '%菓子%' THEN '飲食'
-        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
-        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
-             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
-        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
-             OR c.industry LIKE '%リフォーム%' THEN '建設'
-        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
         ELSE 'その他'
       END
     )`;
@@ -1533,7 +1535,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) AS barashi_count
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
-       WHERE p.is_prospect = 0
+       WHERE p.is_prospect = 0 AND p.is_legacy = 0
          AND DATE(p.created_at) BETWEEN ? AND ?
        GROUP BY DATE_FORMAT(p.created_at, '%Y-%m'), ${CAT}`,
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
@@ -1769,17 +1771,17 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     const INDUSTRY_CAT = `(
       CASE
         WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
-        WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
+        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
+             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
+        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
+        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
+             OR c.industry LIKE '%リフォーム%' THEN '建設'
+        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        WHEN c.industry LIKE '%飲食%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
              OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
              OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'
              OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%'
              OR c.industry LIKE '%菓子%' THEN '飲食'
-        WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
-        WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
-             OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
-        WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
-             OR c.industry LIKE '%リフォーム%' THEN '建設'
-        WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
         ELSE 'その他'
       END
     )`;
@@ -1836,7 +1838,7 @@ const getIndustryPeriodDetail = async (req, res, next) => {
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users ou ON p.owner_user_id = ou.id
        LEFT JOIN users su ON p.sales_user_id = su.id
-       WHERE p.is_prospect = 0
+       WHERE p.is_prospect = 0 AND p.is_legacy = 0
          AND DATE(p.created_at) BETWEEN ? AND ?
          AND ${industryWhere}
          ${statusFilter}
