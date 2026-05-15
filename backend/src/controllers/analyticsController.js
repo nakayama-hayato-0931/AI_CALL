@@ -1521,9 +1521,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
-    // 取扱いの少ない業種は「その他」にまとめる
-    const CONSOLIDATE_TO_OTHER = new Set(['農業', '介護', '運輸', '不動産', '美容']);
-    const normalizeIndustry = (cat) => CONSOLIDATE_TO_OTHER.has(cat) ? 'その他' : (cat || 'その他');
+    // 表示する業種は 飲食/製造/小売/建設/宿泊 のみ。それ以外は「その他」にまとめる
+    const SHOW_CATEGORIES = new Set(['飲食', '製造', '小売', '建設', '宿泊']);
+    const normalizeIndustry = (cat) => SHOW_CATEGORIES.has(cat) ? cat : 'その他';
 
     // 業種一覧（プロジェクト発生した業種すべて、統合後）
     const industrySet = new Set();
@@ -1711,14 +1711,15 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
-    // 業種マッチ条件: 'その他' は 統合対象（農業/介護/運輸/不動産/美容）+ NULL/空/その他 をすべて含める
-    const CONSOLIDATE = ['農業', '介護', '運輸', '不動産', '美容', 'その他'];
+    // 業種マッチ条件: 表示対象（飲食/製造/小売/建設/宿泊）以外はすべて「その他」
+    const SHOW_CATEGORIES = ['飲食', '製造', '小売', '建設', '宿泊'];
     let industryWhere;
     let industryParams;
     if (industry === 'その他') {
-      const phs = CONSOLIDATE.map(() => '?').join(',');
-      industryWhere = `(c.industry_category IS NULL OR c.industry_category = '' OR c.industry_category IN (${phs}))`;
-      industryParams = [...CONSOLIDATE];
+      // 表示対象に含まれない = それ以外すべて（NULL/空/その他含む）
+      const phs = SHOW_CATEGORIES.map(() => '?').join(',');
+      industryWhere = `(c.industry_category IS NULL OR c.industry_category = '' OR c.industry_category NOT IN (${phs}))`;
+      industryParams = [...SHOW_CATEGORIES];
     } else {
       industryWhere = `${CAT} = ?`;
       industryParams = [industry];
