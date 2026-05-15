@@ -1521,20 +1521,40 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
-    // 業種一覧（プロジェクト発生した業種すべて）
-    const industrySet = new Set();
-    for (const r of projAll) industrySet.add(r.industry_cat);
-    for (const r of callAll) industrySet.add(r.industry_cat);
+    // 取扱いの少ない業種は「その他」にまとめる
+    const CONSOLIDATE_TO_OTHER = new Set(['農業', '介護', '運輸', '不動産', '美容']);
+    const normalizeIndustry = (cat) => CONSOLIDATE_TO_OTHER.has(cat) ? 'その他' : (cat || 'その他');
 
-    // ymごとに { industry: { ... } } マップを構築
+    // 業種一覧（プロジェクト発生した業種すべて、統合後）
+    const industrySet = new Set();
+    for (const r of projAll) industrySet.add(normalizeIndustry(r.industry_cat));
+    for (const r of callAll) industrySet.add(normalizeIndustry(r.industry_cat));
+
+    // ymごとに { industry: { ... } } マップを構築（統合後の業種で集約）
     const dataKey = (ym, industry) => `${ym}|${industry}`;
     const projMap = new Map();
     for (const r of projAll) {
-      projMap.set(dataKey(r.ym, r.industry_cat), r);
+      const k = dataKey(r.ym, normalizeIndustry(r.industry_cat));
+      const existing = projMap.get(k);
+      if (existing) {
+        existing.project_count = Number(existing.project_count) + Number(r.project_count || 0);
+        existing.naitei_count = Number(existing.naitei_count) + Number(r.naitei_count || 0);
+        existing.interview_done_count = Number(existing.interview_done_count) + Number(r.interview_done_count || 0);
+        existing.lost_count = Number(existing.lost_count) + Number(r.lost_count || 0);
+        existing.barashi_count = Number(existing.barashi_count) + Number(r.barashi_count || 0);
+      } else {
+        projMap.set(k, { ...r });
+      }
     }
     const callMap = new Map();
     for (const r of callAll) {
-      callMap.set(dataKey(r.ym, r.industry_cat), r);
+      const k = dataKey(r.ym, normalizeIndustry(r.industry_cat));
+      const existing = callMap.get(k);
+      if (existing) {
+        existing.call_count = Number(existing.call_count) + Number(r.call_count || 0);
+      } else {
+        callMap.set(k, { ...r });
+      }
     }
 
     // 業種ごとに月別配列を作成
@@ -1691,8 +1711,18 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
-    // 業種マッチ条件（'その他' は industry_category が NULL/空 のものを含める）
-    const industryWhere = `${CAT} = ?`;
+    // 業種マッチ条件: 'その他' は 統合対象（農業/介護/運輸/不動産/美容）+ NULL/空/その他 をすべて含める
+    const CONSOLIDATE = ['農業', '介護', '運輸', '不動産', '美容', 'その他'];
+    let industryWhere;
+    let industryParams;
+    if (industry === 'その他') {
+      const phs = CONSOLIDATE.map(() => '?').join(',');
+      industryWhere = `(c.industry_category IS NULL OR c.industry_category = '' OR c.industry_category IN (${phs}))`;
+      industryParams = [...CONSOLIDATE];
+    } else {
+      industryWhere = `${CAT} = ?`;
+      industryParams = [industry];
+    }
 
     if (type === 'call') {
       // コール明細
@@ -1709,7 +1739,7 @@ const getIndustryPeriodDetail = async (req, res, next) => {
            AND ${industryWhere}
          ORDER BY cl.call_started_at DESC
          LIMIT 500`,
-        [dateFrom, dateTo, industry]
+        [dateFrom, dateTo, ...industryParams]
       );
       return ApiResponse.success(res, { type, industry, month, count: rows.length, calls: rows });
     }
@@ -1726,7 +1756,7 @@ const getIndustryPeriodDetail = async (req, res, next) => {
       return ApiResponse.badRequest(res, 'type が不正です');
     }
     const statuses = typeStatusMap[type];
-    const params = [dateFrom, dateTo, industry];
+    const params = [dateFrom, dateTo, ...industryParams];
     let statusFilter = '';
     if (statuses && statuses.length > 0) {
       statusFilter = `AND p.status IN (${statuses.map(() => '?').join(',')})`;
