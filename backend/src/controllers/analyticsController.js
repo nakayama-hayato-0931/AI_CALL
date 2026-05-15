@@ -1521,44 +1521,38 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
     );
 
-    // 表示する業種は 飲食/製造/小売/建設/宿泊 のみ。それ以外は「その他」にまとめる
+    // 表示する業種は 飲食/製造/小売/建設/宿泊 のみ。それ以外は除外
     const SHOW_CATEGORIES = new Set(['飲食', '製造', '小売', '建設', '宿泊']);
-    const normalizeIndustry = (cat) => SHOW_CATEGORIES.has(cat) ? cat : 'その他';
+    const normalizeIndustry = (cat) => SHOW_CATEGORIES.has(cat) ? cat : null;
 
-    // 業種一覧（プロジェクト発生した業種すべて、統合後）
+    // 業種一覧（表示対象のみ）
     const industrySet = new Set();
-    for (const r of projAll) industrySet.add(normalizeIndustry(r.industry_cat));
-    for (const r of callAll) industrySet.add(normalizeIndustry(r.industry_cat));
+    for (const r of projAll) {
+      const norm = normalizeIndustry(r.industry_cat);
+      if (norm) industrySet.add(norm);
+    }
+    for (const r of callAll) {
+      const norm = normalizeIndustry(r.industry_cat);
+      if (norm) industrySet.add(norm);
+    }
 
-    // ymごとに { industry: { ... } } マップを構築（統合後の業種で集約）
+    // ymごとに { industry: { ... } } マップを構築（表示対象外は除外）
     const dataKey = (ym, industry) => `${ym}|${industry}`;
     const projMap = new Map();
     for (const r of projAll) {
-      const k = dataKey(r.ym, normalizeIndustry(r.industry_cat));
-      const existing = projMap.get(k);
-      if (existing) {
-        existing.project_count = Number(existing.project_count) + Number(r.project_count || 0);
-        existing.naitei_count = Number(existing.naitei_count) + Number(r.naitei_count || 0);
-        existing.interview_done_count = Number(existing.interview_done_count) + Number(r.interview_done_count || 0);
-        existing.lost_count = Number(existing.lost_count) + Number(r.lost_count || 0);
-        existing.barashi_count = Number(existing.barashi_count) + Number(r.barashi_count || 0);
-      } else {
-        projMap.set(k, { ...r });
-      }
+      const norm = normalizeIndustry(r.industry_cat);
+      if (!norm) continue;
+      projMap.set(dataKey(r.ym, norm), r);
     }
     const callMap = new Map();
     for (const r of callAll) {
-      const k = dataKey(r.ym, normalizeIndustry(r.industry_cat));
-      const existing = callMap.get(k);
-      if (existing) {
-        existing.call_count = Number(existing.call_count) + Number(r.call_count || 0);
-      } else {
-        callMap.set(k, { ...r });
-      }
+      const norm = normalizeIndustry(r.industry_cat);
+      if (!norm) continue;
+      callMap.set(dataKey(r.ym, norm), r);
     }
 
     // 業種ごとに月別配列を作成
-    const CATEGORY_ORDER = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス','その他'];
+    const CATEGORY_ORDER = ['飲食','製造','小売','建設','宿泊'];
     const industries = [...industrySet].sort((a, b) => {
       const ia = CATEGORY_ORDER.indexOf(a);
       const ib = CATEGORY_ORDER.indexOf(b);
