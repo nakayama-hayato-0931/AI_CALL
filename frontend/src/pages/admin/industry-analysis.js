@@ -10,6 +10,7 @@ import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const METRICS = [
+  { key: 'projectsAcquired', label: '獲得案件', countKey: 'projectCount', desc: '獲得案件数（クリックで案件明細）', kind: 'count', drilldownType: 'project' },
   { key: 'projectRate', label: '案件化率', num: 'projectCount', den: 'callCount', desc: '案件数 / コール数', drilldownType: 'project' },
   { key: 'naiteiPerProject', label: '内定率（案件比）', num: 'naiteiCount', den: 'projectCount', desc: '内定数 / 案件数', drilldownType: 'naitei' },
   { key: 'interviewPerProject', label: '面接実施率（案件比）', num: 'interviewDoneCount', den: 'projectCount', desc: '面接実施数 / 案件数', drilldownType: 'interview' },
@@ -168,8 +169,10 @@ export default function IndustryAnalysisPage() {
                 onClick={() => setSelectedMetric(m.key)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                   selectedMetric === m.key
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    ? (m.kind === 'count' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-blue-600 text-white shadow-sm')
+                    : (m.kind === 'count'
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200')
                 }`}
                 title={m.desc}
               >{m.label}</button>
@@ -193,7 +196,6 @@ export default function IndustryAnalysisPage() {
                 <thead className="bg-gray-50 text-sm">
                   <tr>
                     <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 z-10">{groupBy === 'region' ? '地域' : '業種'}</th>
-                    <th className="px-4 py-3 text-center bg-gray-100 whitespace-nowrap">案件数</th>
                     {data.months.map(ym => (
                       <th key={ym} className="px-4 py-3 text-center whitespace-nowrap">{fmtMonth(ym)}</th>
                     ))}
@@ -204,8 +206,27 @@ export default function IndustryAnalysisPage() {
                   {data.industries.map(ind => (
                     <tr key={ind.industry} className="border-t hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium sticky left-0 bg-white">{ind.industry}</td>
-                      <td className="px-4 py-3 text-center bg-gray-50/50 font-semibold">{ind.total.projectCount || '-'}</td>
                       {ind.monthlyData.map(m => {
+                        // 件数モード（獲得案件など）
+                        if (currentMetric.kind === 'count') {
+                          const cnt = Number(m[currentMetric.countKey]) || 0;
+                          return (
+                            <td key={m.ym} className="px-4 py-3 text-center">
+                              {cnt > 0 ? (
+                                <button
+                                  onClick={() => openDrilldown(ind.industry, m.ym, currentMetric)}
+                                  className="inline-block px-2 py-0.5 rounded font-semibold cursor-pointer text-blue-700 hover:bg-blue-50 underline decoration-dotted underline-offset-4"
+                                  title="クリックで案件明細"
+                                >
+                                  {cnt}件
+                                </button>
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
+                            </td>
+                          );
+                        }
+                        // 率モード
                         const v = m[selectedMetric];
                         const denominator = m[currentMetric.den];
                         const numerator = m[currentMetric.num];
@@ -231,7 +252,9 @@ export default function IndustryAnalysisPage() {
                         );
                       })}
                       <td className="px-4 py-3 text-center bg-blue-50/40 font-bold">
-                        {ind.total[currentMetric.den] > 0 ? (
+                        {currentMetric.kind === 'count' ? (
+                          (Number(ind.total[currentMetric.countKey]) || 0) > 0 ? `${ind.total[currentMetric.countKey]}件` : <span className="text-gray-300">-</span>
+                        ) : ind.total[currentMetric.den] > 0 ? (
                           <span
                             className={`inline-block px-2 py-0.5 rounded ${colorForMetric(selectedMetric, ind.total[selectedMetric])}`}
                             title={`${ind.total[currentMetric.num]} / ${ind.total[currentMetric.den]}`}
@@ -244,13 +267,18 @@ export default function IndustryAnalysisPage() {
                       </td>
                     </tr>
                   ))}
-                  {/* 合計行（全業種を合算した率） */}
+                  {/* 合計行 */}
                   <tr className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
                     <td className="px-4 py-3 sticky left-0 bg-blue-50/70">合計</td>
-                    <td className="px-4 py-3 text-center bg-blue-100">
-                      {data.industries.reduce((s, ind) => s + (Number(ind.total.projectCount) || 0), 0) || '-'}
-                    </td>
                     {data.months.map((ym, idx) => {
+                      if (currentMetric.kind === 'count') {
+                        const sum = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.countKey]) || 0), 0);
+                        return (
+                          <td key={ym} className="px-4 py-3 text-center">
+                            {sum > 0 ? `${sum}件` : <span className="text-blue-200">-</span>}
+                          </td>
+                        );
+                      }
                       const sumNum = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.num]) || 0), 0);
                       const sumDen = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.den]) || 0), 0);
                       const rate = sumDen > 0 ? Math.round(sumNum / sumDen * 1000) / 10 : 0;
@@ -268,6 +296,10 @@ export default function IndustryAnalysisPage() {
                     })}
                     <td className="px-4 py-3 text-center bg-blue-100">
                       {(() => {
+                        if (currentMetric.kind === 'count') {
+                          const sum = data.industries.reduce((s, ind) => s + (Number(ind.total[currentMetric.countKey]) || 0), 0);
+                          return sum > 0 ? `${sum}件` : <span className="text-blue-200">-</span>;
+                        }
                         const sumNum = data.industries.reduce((s, ind) => s + (Number(ind.total[currentMetric.num]) || 0), 0);
                         const sumDen = data.industries.reduce((s, ind) => s + (Number(ind.total[currentMetric.den]) || 0), 0);
                         const rate = sumDen > 0 ? Math.round(sumNum / sumDen * 1000) / 10 : 0;
