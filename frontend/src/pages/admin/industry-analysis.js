@@ -229,6 +229,40 @@ export default function IndustryAnalysisPage() {
                       </td>
                     </tr>
                   ))}
+                  {/* 合計行（全業種を合算した率） */}
+                  <tr className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
+                    <td className="px-4 py-3 sticky left-0 bg-blue-50/70">合計</td>
+                    {data.months.map((ym, idx) => {
+                      const sumNum = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.num]) || 0), 0);
+                      const sumDen = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[currentMetric.den]) || 0), 0);
+                      const rate = sumDen > 0 ? Math.round(sumNum / sumDen * 1000) / 10 : 0;
+                      return (
+                        <td key={ym} className="px-4 py-3 text-center">
+                          {sumDen > 0 ? (
+                            <span className={`inline-block px-2 py-0.5 rounded ${colorForMetric(selectedMetric, rate)}`} title={`${sumNum} / ${sumDen}`}>
+                              {rate}%
+                            </span>
+                          ) : (
+                            <span className="text-blue-200">-</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-3 text-center bg-blue-100">
+                      {(() => {
+                        const sumNum = data.industries.reduce((s, ind) => s + (Number(ind.total[currentMetric.num]) || 0), 0);
+                        const sumDen = data.industries.reduce((s, ind) => s + (Number(ind.total[currentMetric.den]) || 0), 0);
+                        const rate = sumDen > 0 ? Math.round(sumNum / sumDen * 1000) / 10 : 0;
+                        return sumDen > 0 ? (
+                          <span className={`inline-block px-2 py-0.5 rounded ${colorForMetric(selectedMetric, rate)}`} title={`${sumNum} / ${sumDen}`}>
+                            {rate}%
+                          </span>
+                        ) : (
+                          <span className="text-blue-200">-</span>
+                        );
+                      })()}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
