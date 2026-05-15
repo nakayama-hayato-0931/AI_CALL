@@ -266,6 +266,21 @@ export default function IndustryAnalysisPage() {
                           </td>
                         </tr>
                       ))}
+                      {/* 合計行（全業種の合算） */}
+                      <tr className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
+                        <td className="px-3 py-2 sticky left-0 bg-blue-50/70">合計</td>
+                        {data.months.map((ym, idx) => {
+                          const sum = data.industries.reduce((s, ind) => s + (Number(ind.monthlyData[idx]?.[metric.key]) || 0), 0);
+                          return (
+                            <td key={ym} className="px-3 py-2 text-center">
+                              {sum > 0 ? sum : <span className="text-blue-200">-</span>}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center bg-blue-100">
+                          {data.industries.reduce((s, ind) => s + (Number(ind.total[metric.key]) || 0), 0) || '-'}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
