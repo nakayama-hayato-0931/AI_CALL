@@ -566,13 +566,18 @@ const getCallList = async (req, res, next) => {
               // 全部有効 → フィルタなし
             } else {
               // 一部有効
-              // region/address どちらかで都道府県名のキーワードが含まれていればOK
-              // 表記揺れに強くするため、address は %prefname% (anywhere) も試す
-              const phs = enabledPrefs.map(() => '?').join(',');
+              // 短縮形（東京）と完全名（東京都）両方をINに含めて確実にマッチ
+              const allForms = [];
+              for (const p of enabledPrefs) {
+                allForms.push(p);
+                const short = p.replace(/(都|道|府|県)$/, '');
+                if (short !== p) allForms.push(short);
+              }
+              const phs = allForms.map(() => '?').join(',');
+              // 「東京都港区...」のような address のみ持つ会社のフォールバック
               const addressStartConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
-              const regionStartConds = enabledPrefs.map(() => `c.region LIKE CONCAT(?, '%')`).join(' OR ');
-              prefectureFilter = `AND (c.region IN (${phs}) OR ${regionStartConds} OR ${addressStartConds})`;
-              prefectureParams.push(...enabledPrefs, ...enabledPrefs, ...enabledPrefs);
+              prefectureFilter = `AND (c.region IN (${phs}) OR (${addressStartConds}))`;
+              prefectureParams.push(...allForms, ...enabledPrefs);
               logger.info(`[getCallList prefecture] mode=${mode} enabled=${enabledPrefs.length}: ${enabledPrefs.join(',')}`);
             }
           }
