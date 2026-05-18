@@ -541,10 +541,11 @@ const getCallList = async (req, res, next) => {
     }
 
     // 自動ピックアップ対象都道府県（auto / industry モードに適用）
-    // パフォーマンス最適化: 「無効になっている都道府県」だけを NOT IN で除外する
-    // - 全部有効 or 未設定 → フィルタなし（最速）
-    // - 一部無効 → c.region NOT IN (...)
-    // - 全部無効 → 1=0
+    // 「true 設定された都道府県」のみピックアップ許可（positive list）
+    // - 全47都道府県全部 true → フィルタなし（最速）
+    // - 一部 true → c.region IN (enabled)
+    // - 全部 false / マップ空 → 1=0
+    // c.region は CSVインポート時に都道府県名が入っているのでこれだけで判定
     let prefectureFilter = '';
     const prefectureParams = [];
     if (mode === 'auto' || mode === 'industry') {
@@ -555,18 +556,21 @@ const getCallList = async (req, res, next) => {
         if (prefRows.length > 0) {
           const prefMap = JSON.parse(prefRows[0].setting_value || '{}');
           const entries = Object.entries(prefMap);
-          const disabledPrefs = entries.filter(([, v]) => v === false).map(([k]) => k);
-          const enabledCount = entries.filter(([, v]) => v === true).length;
-          if (disabledPrefs.length > 0 && enabledCount === 0) {
-            // 全部チェック外し = 何もピックアップしない
-            prefectureFilter = 'AND 1 = 0';
-          } else if (disabledPrefs.length > 0) {
-            // 一部の都道府県を除外（インデックス使用可能な c.region のみで判定）
-            const phs = disabledPrefs.map(() => '?').join(',');
-            prefectureFilter = `AND (c.region IS NULL OR c.region NOT IN (${phs}))`;
-            prefectureParams.push(...disabledPrefs);
+          if (entries.length > 0) {
+            const enabledPrefs = entries.filter(([, v]) => v === true).map(([k]) => k);
+            const disabledCount = entries.filter(([, v]) => v === false).length;
+            if (enabledPrefs.length === 0) {
+              // 全部チェック外し
+              prefectureFilter = 'AND 1 = 0';
+            } else if (disabledCount === 0) {
+              // 全部有効 → フィルタなし
+            } else {
+              // 一部有効 → IN
+              const phs = enabledPrefs.map(() => '?').join(',');
+              prefectureFilter = `AND c.region IN (${phs})`;
+              prefectureParams.push(...enabledPrefs);
+            }
           }
-          // disabledPrefs.length === 0 → 全部有効。フィルタなし。
         }
       } catch (e) { /* ignore */ }
     }
