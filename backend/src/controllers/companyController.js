@@ -485,7 +485,7 @@ const getCallList = async (req, res, next) => {
     const userId = req.user.id;
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 8);
-    const LIST_SIZE = 10;
+    const LIST_SIZE = 25;
 
     // 架電種別（営業 or オペレーター）
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
@@ -541,7 +541,10 @@ const getCallList = async (req, res, next) => {
     }
 
     // 自動ピックアップ対象都道府県（auto / industry モードに適用）
-    // 明示的に有効/無効が指定された都道府県のみ制限。未設定の場合は無制限。
+    // パフォーマンス最適化: 「無効になっている都道府県」だけを NOT IN で除外する
+    // - 全部有効 or 未設定 → フィルタなし（最速）
+    // - 一部無効 → c.region NOT IN (...)
+    // - 全部無効 → 1=0
     let prefectureFilter = '';
     const prefectureParams = [];
     if (mode === 'auto' || mode === 'industry') {
@@ -551,19 +554,19 @@ const getCallList = async (req, res, next) => {
         );
         if (prefRows.length > 0) {
           const prefMap = JSON.parse(prefRows[0].setting_value || '{}');
-          const enabledPrefs = Object.entries(prefMap).filter(([k, v]) => v === true).map(([k]) => k);
-          const hasAnyExplicit = Object.keys(prefMap).length > 0;
-          // 何か明示設定がある場合のみフィルタを適用（全trueなら無条件全許可と同義になる）
-          if (hasAnyExplicit && enabledPrefs.length > 0) {
-            // c.region と一致 もしくは address 先頭が一致する企業のみ許可
-            const phs = enabledPrefs.map(() => '?').join(',');
-            const likeConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
-            prefectureFilter = `AND (c.region IN (${phs}) OR ${likeConds})`;
-            prefectureParams.push(...enabledPrefs, ...enabledPrefs);
-          } else if (hasAnyExplicit && enabledPrefs.length === 0) {
-            // 全都道府県のチェックを外している = 何もピックアップしない
+          const entries = Object.entries(prefMap);
+          const disabledPrefs = entries.filter(([, v]) => v === false).map(([k]) => k);
+          const enabledCount = entries.filter(([, v]) => v === true).length;
+          if (disabledPrefs.length > 0 && enabledCount === 0) {
+            // 全部チェック外し = 何もピックアップしない
             prefectureFilter = 'AND 1 = 0';
+          } else if (disabledPrefs.length > 0) {
+            // 一部の都道府県を除外（インデックス使用可能な c.region のみで判定）
+            const phs = disabledPrefs.map(() => '?').join(',');
+            prefectureFilter = `AND (c.region IS NULL OR c.region NOT IN (${phs}))`;
+            prefectureParams.push(...disabledPrefs);
           }
+          // disabledPrefs.length === 0 → 全部有効。フィルタなし。
         }
       } catch (e) { /* ignore */ }
     }

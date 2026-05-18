@@ -356,6 +356,7 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_companies_industry ON companies(industry)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_imported ON companies(imported_by_user_id)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_sales ON companies(is_sales_list, exclusion_flag, is_special)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_region ON companies(region)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_result ON calls(user_id, result_code, call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
