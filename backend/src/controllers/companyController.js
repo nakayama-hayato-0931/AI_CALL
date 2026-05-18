@@ -566,12 +566,14 @@ const getCallList = async (req, res, next) => {
               // 全部有効 → フィルタなし
             } else {
               // 一部有効
-              // 起動時マイグレーションで c.region が正規化されているため、
-              // region と「address先頭一致」だけで十分。
+              // region/address どちらかで都道府県名のキーワードが含まれていればOK
+              // 表記揺れに強くするため、address は %prefname% (anywhere) も試す
               const phs = enabledPrefs.map(() => '?').join(',');
-              const addressLikeConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
-              prefectureFilter = `AND (c.region IN (${phs}) OR ${addressLikeConds})`;
-              prefectureParams.push(...enabledPrefs, ...enabledPrefs);
+              const addressStartConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
+              const regionStartConds = enabledPrefs.map(() => `c.region LIKE CONCAT(?, '%')`).join(' OR ');
+              prefectureFilter = `AND (c.region IN (${phs}) OR ${regionStartConds} OR ${addressStartConds})`;
+              prefectureParams.push(...enabledPrefs, ...enabledPrefs, ...enabledPrefs);
+              logger.info(`[getCallList prefecture] mode=${mode} enabled=${enabledPrefs.length}: ${enabledPrefs.join(',')}`);
             }
           }
         }
@@ -960,6 +962,26 @@ const diagnoseCallList = async (req, res, next) => {
        GROUP BY addr_prefix ORDER BY cnt DESC LIMIT 20`
     );
 
+    // 都道府県フィルタを実際に適用した場合の件数
+    let prefFilterResult = null;
+    if (enabledPrefs.length > 0 && disabledPrefs.length > 0) {
+      const phs = enabledPrefs.map(() => '?').join(',');
+      const addressStart = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
+      const regionStart = enabledPrefs.map(() => `c.region LIKE CONCAT(?, '%')`).join(' OR ');
+      try {
+        const [rows] = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM companies c
+           WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesCond}
+             AND c.last_called_at IS NULL
+             AND (c.region IN (${phs}) OR ${regionStart} OR ${addressStart})`,
+          [...enabledPrefs, ...enabledPrefs, ...enabledPrefs]
+        );
+        prefFilterResult = Number(rows[0].cnt);
+      } catch (e) {
+        prefFilterResult = { error: e.message };
+      }
+    }
+
     return ApiResponse.success(res, {
       callType,
       steps,
@@ -976,6 +998,7 @@ const diagnoseCallList = async (req, res, next) => {
       },
       untouchedByRegion: byRegion,
       untouchedByAddressPrefix: byAddress,
+      prefectureFilterMatchCount: prefFilterResult,
     });
   } catch (err) {
     next(err);
