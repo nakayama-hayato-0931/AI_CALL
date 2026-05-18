@@ -566,19 +566,12 @@ const getCallList = async (req, res, next) => {
               // 全部有効 → フィルタなし
             } else {
               // 一部有効
-              // c.region は CSV/手動登録によって表記揺れがある（"東京"と"東京都"など）
-              // ので、region と address 両方で柔軟にマッチさせる
-              //   - c.region IN (有効都道府県)              … 完全一致
-              //   - c.region LIKE 'pref%' (短縮形)          … 「東京」→「東京都」を許容
-              //   - c.address LIKE 'pref%'                  … region 未設定/不一致でも住所先頭で救う
+              // 起動時マイグレーションで c.region が正規化されているため、
+              // region と「address先頭一致」だけで十分。
               const phs = enabledPrefs.map(() => '?').join(',');
-              const regionLikeConds = enabledPrefs.map(() => `c.region LIKE CONCAT(?, '%')`).join(' OR ');
               const addressLikeConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
-              // 「東京都」→「東京」へ短縮した値で region LIKE する用に、末尾の都府県を除いた前方一致も許容
-              const shortPrefs = enabledPrefs.map(p => p.replace(/(都|道|府|県)$/, ''));
-              const regionShortLikeConds = shortPrefs.map(() => `c.region = ?`).join(' OR ');
-              prefectureFilter = `AND (c.region IN (${phs}) OR ${regionLikeConds} OR ${regionShortLikeConds} OR ${addressLikeConds})`;
-              prefectureParams.push(...enabledPrefs, ...enabledPrefs, ...shortPrefs, ...enabledPrefs);
+              prefectureFilter = `AND (c.region IN (${phs}) OR ${addressLikeConds})`;
+              prefectureParams.push(...enabledPrefs, ...enabledPrefs);
             }
           }
         }
