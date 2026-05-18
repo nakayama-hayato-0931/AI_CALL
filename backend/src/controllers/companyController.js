@@ -565,10 +565,11 @@ const getCallList = async (req, res, next) => {
             } else if (disabledCount === 0) {
               // 全部有効 → フィルタなし
             } else {
-              // 一部有効 → IN
+              // 一部有効 → c.region IN (...) OR (region 未設定なら address 先頭で判定)
               const phs = enabledPrefs.map(() => '?').join(',');
-              prefectureFilter = `AND c.region IN (${phs})`;
-              prefectureParams.push(...enabledPrefs);
+              const likeConds = enabledPrefs.map(() => `c.address LIKE CONCAT(?, '%')`).join(' OR ');
+              prefectureFilter = `AND (c.region IN (${phs}) OR ((c.region IS NULL OR c.region = '') AND (${likeConds})))`;
+              prefectureParams.push(...enabledPrefs, ...enabledPrefs);
             }
           }
         }

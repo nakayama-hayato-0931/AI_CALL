@@ -358,6 +358,32 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_companies_sales ON companies(is_sales_list, exclusion_flag, is_special)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_region ON companies(region)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_result ON calls(user_id, result_code, call_started_at)'); } catch (e) {}
+
+  // companies.region が空の場合、address 先頭から都道府県を抜き出して埋める（一度だけ）
+  try {
+    const [flagRow] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'region_backfill_done'");
+    if (!flagRow.length) {
+      const prefs = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+      let backfilled = 0;
+      for (const p of prefs) {
+        const [r] = await pool.execute(
+          `UPDATE companies SET region = ?
+           WHERE (region IS NULL OR region = '')
+             AND address LIKE CONCAT(?, '%')`,
+          [p, p]
+        );
+        backfilled += r.affectedRows || 0;
+      }
+      await pool.execute(
+        `INSERT INTO system_settings (setting_key, setting_value) VALUES ('region_backfill_done', ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [String(Date.now())]
+      );
+      logger.info(`[Migration] companies.region backfill: ${backfilled}件`);
+    }
+  } catch (e) {
+    logger.warn(`region backfill skipped: ${e.message}`);
+  }
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
 
