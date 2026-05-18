@@ -12,14 +12,18 @@ const {
   getCallList,
   lockCallTarget,
   unlockCallTarget,
+  diagnoseCallList,
 } = require('../controllers/companyController');
 const { authenticate } = require('../middlewares/auth');
 
 // すべて認証必須
 router.use(authenticate);
 
-// GET /api/companies/call-list - 架電候補リスト (10件)
+// GET /api/companies/call-list - 架電候補リスト
 router.get('/call-list', getCallList);
+
+// GET /api/companies/call-list/diagnose - フィルタ毎の件数を返す診断用
+router.get('/call-list/diagnose', diagnoseCallList);
 
 // GET /api/companies/call-list/next - 次の架電先取得 (1件)
 router.get('/call-list/next', getNextCallTarget);

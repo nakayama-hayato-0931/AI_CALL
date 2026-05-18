@@ -895,6 +895,80 @@ const unlockCallTarget = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/companies/call-list/diagnose
+ * 各フィルタ段階のカウントを返す診断エンドポイント
+ */
+const diagnoseCallList = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
+    const salesCond = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
+
+    const steps = [];
+    const runCount = async (label, sql, params = []) => {
+      try {
+        const [rows] = await pool.query(`SELECT COUNT(*) AS cnt FROM companies c WHERE ${sql}`, params);
+        steps.push({ label, count: Number(rows[0].cnt) });
+      } catch (e) {
+        steps.push({ label, count: null, error: e.message });
+      }
+    };
+
+    await runCount('全企業', `1=1 ${salesCond}`);
+    await runCount('exclusion_flag=0', `c.exclusion_flag = 0 ${salesCond}`);
+    await runCount('+ is_special=0', `c.exclusion_flag = 0 AND c.is_special = 0 ${salesCond}`);
+    await runCount('+ 未架電 (last_called_at IS NULL)', `c.exclusion_flag = 0 AND c.is_special = 0 AND c.last_called_at IS NULL ${salesCond}`);
+    await runCount('+ リコール除外', `c.exclusion_flag = 0 AND c.is_special = 0 AND c.last_called_at IS NULL ${salesCond}
+      AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')`);
+
+    // 都道府県フィルタの現在の設定
+    const [prefRows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+    );
+    let prefMap = {};
+    try { prefMap = prefRows.length ? JSON.parse(prefRows[0].setting_value || '{}') : {}; } catch (e) {}
+    const enabledPrefs = Object.entries(prefMap).filter(([, v]) => v === true).map(([k]) => k);
+    const disabledPrefs = Object.entries(prefMap).filter(([, v]) => v === false).map(([k]) => k);
+
+    // 業種フィルタの現在の設定
+    const [indRows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
+    );
+    let indMap = {};
+    try { indMap = indRows.length ? JSON.parse(indRows[0].setting_value || '{}') : {}; } catch (e) {}
+    const disabledInds = Object.entries(indMap).filter(([, v]) => v === false).map(([k]) => k);
+
+    // 都道府県別件数（上位）
+    const [byRegion] = await pool.query(
+      `SELECT COALESCE(NULLIF(c.region, ''), '(未設定)') AS region, COUNT(*) AS cnt
+       FROM companies c
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesCond}
+         AND c.last_called_at IS NULL
+       GROUP BY region ORDER BY cnt DESC LIMIT 20`
+    );
+
+    return ApiResponse.success(res, {
+      callType,
+      steps,
+      prefectureSetting: {
+        totalEntries: Object.keys(prefMap).length,
+        enabled: enabledPrefs.length,
+        disabled: disabledPrefs.length,
+        enabledList: enabledPrefs,
+        disabledList: disabledPrefs,
+      },
+      industrySetting: {
+        totalEntries: Object.keys(indMap).length,
+        disabledList: disabledInds,
+      },
+      untouchedByRegion: byRegion,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCompanies,
   getCompanyById,
@@ -904,4 +978,5 @@ module.exports = {
   getCallList,
   lockCallTarget,
   unlockCallTarget,
+  diagnoseCallList,
 };
