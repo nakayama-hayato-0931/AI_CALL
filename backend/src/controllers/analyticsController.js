@@ -503,10 +503,15 @@ const importCostPdf = async (req, res, next) => {
     // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
     {
       // 給与PDF: 月次給与コストを保存
-      const { yearMonth, employees } = await parsePayrollPdf(req.file.buffer);
+      const { yearMonth: detectedYM, employees } = await parsePayrollPdf(req.file.buffer);
+      // 年月はフォームの year_month (YYYY-MM) を優先し、なければPDF抽出値を使用
+      const manualYM = String(req.body.year_month || '').trim();
+      const yearMonth = /^\d{4}-\d{2}$/.test(manualYM) ? manualYM : detectedYM;
       if (!yearMonth) {
-        return ApiResponse.badRequest(res, 'PDFから年月が読み取れませんでした');
+        return ApiResponse.badRequest(res, '年月を指定してください（フォームに year_month を入力するか、PDFに年月情報が含まれている必要があります）');
       }
+      // 全員の year_month を確定値に統一
+      for (const e of employees) e.year_month = yearMonth;
       const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
       const nameMap = new Map();
       users.forEach(u => {

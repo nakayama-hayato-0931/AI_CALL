@@ -93,6 +93,11 @@ export default function AnalyticsPage() {
   // PDF
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUploading, setPdfUploading] = useState(false);
+  // 給与PDFインポート用の年月
+  const [pdfYearMonth, setPdfYearMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   // 打刻ログCSV
   const [stampFile, setStampFile] = useState(null);
@@ -227,6 +232,7 @@ export default function AnalyticsPage() {
     try {
       const formData = new FormData();
       formData.append('file', pdfFile);
+      if (pdfYearMonth) formData.append('year_month', pdfYearMonth);
       const { data } = await directApi.post('/api/analytics/import-cost-pdf', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -822,9 +828,11 @@ export default function AnalyticsPage() {
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
           <span className="text-xs text-gray-500 font-medium">コストPDF取込:</span>
           <div className="flex items-center gap-2">
+            <input type="month" value={pdfYearMonth} onChange={e => setPdfYearMonth(e.target.value)}
+              className="text-xs border border-gray-200 rounded px-2 py-1" title="対象年月" />
             <input type="file" accept=".pdf" onChange={e => setPdfFile(e.target.files?.[0] || null)}
               className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 w-48" />
-            <button onClick={handlePdfUpload} disabled={!pdfFile || pdfUploading}
+            <button onClick={handlePdfUpload} disabled={!pdfFile || pdfUploading || !pdfYearMonth}
               className="px-3 py-1 text-xs font-medium bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-40 transition-colors whitespace-nowrap">
               {pdfUploading ? '処理中...' : 'PDF取込'}
             </button>
