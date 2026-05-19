@@ -264,7 +264,10 @@ export default function AnalyticsPage() {
       const formData = new FormData();
       formData.append('file', pdfFile);
       if (pdfYearMonth) formData.append('year_month', pdfYearMonth);
-      const { data } = await directApi.post('/api/analytics/import-cost-pdf', formData, {
+      // ファイル拡張子で振り分け: .xlsx は Excel パーサー、それ以外は PDF パーサー
+      const isXlsx = /\.xlsx?$/i.test(pdfFile.name);
+      const endpoint = isXlsx ? '/api/analytics/import-payroll-xlsx' : '/api/analytics/import-cost-pdf';
+      const { data } = await directApi.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const d = data.data || {};
@@ -872,11 +875,12 @@ export default function AnalyticsPage() {
           <div className="flex items-center gap-2">
             <input type="month" value={pdfYearMonth} onChange={e => setPdfYearMonth(e.target.value)}
               className="text-xs border border-gray-200 rounded px-2 py-1" title="対象年月" />
-            <input type="file" accept=".pdf" onChange={e => setPdfFile(e.target.files?.[0] || null)}
-              className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 w-48" />
+            <input type="file" accept=".pdf,.xlsx,.xls" onChange={e => setPdfFile(e.target.files?.[0] || null)}
+              className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 w-56"
+              title="PDF または Excel (xlsx) を選択。Excelの方が確実です。" />
             <button onClick={handlePdfUpload} disabled={!pdfFile || pdfUploading || !pdfYearMonth}
               className="px-3 py-1 text-xs font-medium bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-40 transition-colors whitespace-nowrap">
-              {pdfUploading ? '処理中...' : 'PDF取込'}
+              {pdfUploading ? '処理中...' : '取込'}
             </button>
             <button onClick={() => setPayrollPasteOpen(true)} disabled={!pdfYearMonth}
               className="px-3 py-1 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-40 transition-colors whitespace-nowrap"

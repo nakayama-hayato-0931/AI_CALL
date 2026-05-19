@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual } = require('../controllers/analyticsController');
+const { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx } = require('../controllers/analyticsController');
 const { authenticate, requireManager, requireEditor } = require('../middlewares/auth');
 const pool = require('../../config/database');
 
@@ -48,6 +48,7 @@ router.post('/import-cost-csv', requireEditor, upload.single('file'), importCost
 router.post('/import-cost-pdf', requireEditor, upload.single('file'), importCostPdf);
 router.post('/import-stamp-csv', requireEditor, upload.single('file'), importStampCsv);
 router.post('/import-payroll-manual', requireEditor, importPayrollManual);
+router.post('/import-payroll-xlsx', requireEditor, upload.single('file'), importPayrollXlsx);
 
 // 過去CPAデータ投入
 router.post('/import-past-cpa', async (req, res) => {

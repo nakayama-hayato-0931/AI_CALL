@@ -2472,4 +2472,145 @@ const importPayrollManual = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual };
+/**
+ * POST /api/analytics/import-payroll-xlsx
+ * 給与支給控除一覧の Excel (.xlsx) を取り込む
+ * - シート上で「従業員氏名」「支給合計額」「健康保険料」「介護保険料」
+ *   「厚生年金保険料」「雇用保険料」の行を探し、列ごとに従業員データを抽出
+ * - 複数セクション（ページ）が縦に並んでいてもOK
+ * - body: form-data file=xxx.xlsx, year_month=YYYY-MM
+ */
+const importPayrollXlsx = async (req, res, next) => {
+  try {
+    if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
+    const yearMonth = String(req.body.year_month || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      return ApiResponse.badRequest(res, 'year_month を YYYY-MM 形式で指定してください');
+    }
+    const XLSX = require('xlsx');
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    // operator名一覧
+    const [opUsers] = await pool.execute(
+      "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+    );
+    const norm = (s) => String(s || '').replace(/[\s　]+/g, '').trim();
+    const nameMap = new Map();
+    opUsers.forEach(u => {
+      nameMap.set(norm(u.name), u.id);
+      nameMap.set(u.name.trim(), u.id);
+    });
+
+    const toNum = (v) => {
+      if (v === '' || v === null || v === undefined) return 0;
+      if (typeof v === 'number') return Math.round(v);
+      const m = String(v).match(/-?[\d,]+/);
+      return m ? parseInt(m[0].replace(/,/g, ''), 10) || 0 : 0;
+    };
+
+    // 「従業員氏名」行を全部見つけて、それぞれセクションとして処理
+    const sections = [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r] || [];
+      if (typeof row[0] === 'string' && row[0].trim() === '従業員氏名') {
+        // ヘッダー行から列ごとの名前を取得
+        const cols = [];
+        for (let c = 1; c < row.length; c++) {
+          const name = String(row[c] || '').trim();
+          if (name) cols.push({ col: c, name });
+        }
+        sections.push({ headerRow: r, cols });
+      }
+    }
+
+    // テーブル作成
+    try {
+      await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        year_month VARCHAR(7) NOT NULL,
+        gross_pay INT NOT NULL DEFAULT 0,
+        health_insurance INT NOT NULL DEFAULT 0,
+        care_insurance INT NOT NULL DEFAULT 0,
+        pension_insurance INT NOT NULL DEFAULT 0,
+        employment_insurance INT NOT NULL DEFAULT 0,
+        total_cost INT NOT NULL DEFAULT 0,
+        imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_ym (user_id, year_month)
+      )`);
+    } catch (e) {}
+
+    const matched = [];
+    const unmatched = [];
+    const errors = [];
+    let imported = 0;
+
+    // 各セクションで各指標の行を見つけてデータを抽出
+    const LABELS = {
+      gross: '支給合計額',
+      health: '健康保険料',
+      care: '介護保険料',
+      pension: '厚生年金保険料',
+      employment: '雇用保険料',
+    };
+
+    for (const section of sections) {
+      // セクションの範囲: このsection.headerRow〜次のsectionのheaderRow-1（or最終行）
+      const nextHeader = sections.find(s => s.headerRow > section.headerRow);
+      const endRow = nextHeader ? nextHeader.headerRow : grid.length;
+      // 各ラベル行を探す
+      const labelRows = {};
+      for (let r = section.headerRow + 1; r < endRow; r++) {
+        const cell = String((grid[r] || [])[0] || '').trim();
+        for (const [key, label] of Object.entries(LABELS)) {
+          if (cell === label) labelRows[key] = r;
+        }
+      }
+
+      for (const { col, name } of section.cols) {
+        const uid = nameMap.get(norm(name)) || nameMap.get(name);
+        if (!uid) { unmatched.push(name); continue; }
+        const gross = labelRows.gross ? toNum(grid[labelRows.gross][col]) : 0;
+        const health = labelRows.health ? toNum(grid[labelRows.health][col]) : 0;
+        const care = labelRows.care ? toNum(grid[labelRows.care][col]) : 0;
+        const pension = labelRows.pension ? toNum(grid[labelRows.pension][col]) : 0;
+        const employment = labelRows.employment ? toNum(grid[labelRows.employment][col]) : 0;
+        const totalCost = gross + health + care + pension + employment;
+        if (gross === 0) {
+          // データなし（空セクション）はスキップ
+          continue;
+        }
+        try {
+          await pool.execute(
+            `INSERT INTO monthly_payroll_records
+              (user_id, year_month, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               gross_pay = VALUES(gross_pay),
+               health_insurance = VALUES(health_insurance),
+               care_insurance = VALUES(care_insurance),
+               pension_insurance = VALUES(pension_insurance),
+               employment_insurance = VALUES(employment_insurance),
+               total_cost = VALUES(total_cost),
+               imported_at = CURRENT_TIMESTAMP`,
+            [uid, yearMonth, gross, health, care, pension, employment, totalCost]
+          );
+          matched.push({ name, gross, health, care, pension, employment, total_cost: totalCost });
+          imported++;
+        } catch (err) {
+          errors.push(`${name}: ${err.message}`);
+        }
+      }
+    }
+
+    logger.info(`給与Excelインポート: ${yearMonth} ${imported}件, 未マッチ: ${unmatched.length}`);
+    return ApiResponse.success(res, { yearMonth, imported, matched, unmatched, errors });
+  } catch (err) {
+    logger.error(`[importPayrollXlsx] ${err.message}\n${err.stack}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx };
