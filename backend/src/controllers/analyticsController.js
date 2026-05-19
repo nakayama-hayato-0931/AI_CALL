@@ -375,10 +375,13 @@ const installPdfJsPolyfills = () => {
 
 /**
  * 給与支給控除一覧PDF → 月次給与コスト抽出
- * 行構造: 従業員氏名 / 支給合計額 / 健康保険料 / 介護保険料 / 厚生年金保険料 / 雇用保険料
- * 各列が1人の従業員。X座標で同じ列のセルを紐付ける。
+ * 名前駆動アプローチ:
+ *   1. usersテーブルから登録名一覧を取得
+ *   2. PDF各ページで「登録名」と一致する文字列のX座標を特定
+ *   3. その下方向にある同列の「支給合計額」「健康保険料」等の値を抽出
+ * テキスト断片化（pdfjs仕様）にも強い: 隣接アイテムを連結してから検索
  */
-const parsePayrollPdf = async (buffer) => {
+const parsePayrollPdf = async (buffer, knownUserNames = []) => {
   installPdfJsPolyfills();
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
@@ -405,13 +408,13 @@ const parsePayrollPdf = async (buffer) => {
     // X座標でソート + 隣接の同行アイテムを連結（pdfjsが文字単位で分割するケース対策）
     for (const arr of rowMap.values()) {
       arr.sort((a, b) => a.x - b.x);
-      // 同行で X差が小さい連続アイテムは連結
+      // 同行で X差が小さい連続アイテムは連結（日本語1文字あたり約8-12pt想定）
       const merged = [];
       for (const it of arr) {
         if (merged.length > 0) {
           const last = merged[merged.length - 1];
-          const lastEnd = last.x + (last.str.length * 6);
-          if (it.x - lastEnd < 6) {
+          const lastEnd = last.x + (last.str.length * 10);
+          if (it.x - lastEnd < 10) {
             last.str += it.str;
             continue;
           }
@@ -431,29 +434,55 @@ const parsePayrollPdf = async (buffer) => {
       if (ym) yearMonth = `${ym[1]}-${String(ym[2]).padStart(2, '0')}`;
     }
 
-    // 従業員氏名の行を探す（連結後）
-    const nameRow = rows.find(([, arr]) => arr.some(i => /従業員氏名/.test(i.str)));
-    if (!nameRow) {
-      debugLog.push(`page ${p}: 従業員氏名 row not found. Sample labels: ${rows.slice(0, 10).map(([,a]) => a.map(i => i.str).join('|')).join(' / ')}`);
-      continue;
-    }
-    debugLog.push(`page ${p}: name row has ${nameRow[1].length} items`);
-
-    // 「従業員氏名」ラベル自体は除外し、残りを名前として X 位置とともに保持
-    // ただし複数の文字列が連結された名前にも対応（隣接アイテムをマージ）
-    const labelX = nameRow[1].find(i => /従業員氏名/.test(i.str))?.x ?? 0;
-    const nameItems = nameRow[1]
-      .filter(i => i.x > labelX + 5 && i.str.trim() !== '')
-      .filter(i => !/^[\s.,-]*$/.test(i.str));
-    // 隣接（x差<25）かつ名前っぽい文字列同士をマージ
+    // 名前駆動: 登録ユーザー名がページ上のどこにあるかを探す
+    // 各アイテムをスキャンし、知っている名前に一致するX位置を特定
     const names = [];
-    for (const it of nameItems) {
-      if (names.length > 0 && it.x - names[names.length - 1].endX < 8) {
-        names[names.length - 1].name += it.str;
-        names[names.length - 1].endX = it.x + it.str.length * 4;
-      } else {
-        names.push({ name: it.str, x: it.x, endX: it.x + it.str.length * 4 });
+    // 全テキストとX位置のリスト（連結済み）
+    const allItems = [];
+    for (const [, arr] of rows) {
+      for (const it of arr) allItems.push(it);
+    }
+    // フォールバック: 1ページの全テキストを1つに連結し、名前を検索
+    const pageText = allItems.map(i => i.str).join('');
+
+    for (const uname of knownUserNames) {
+      const stripped = uname.replace(/\s+/g, '');
+      if (!stripped) continue;
+      // 連結後のアイテムから一致を探す
+      let found = null;
+      for (const it of allItems) {
+        if (it.str.includes(stripped) || it.str.includes(uname)) {
+          found = it;
+          break;
+        }
       }
+      // 連結前にもチェック（連結が外れた場合に対応するため、tc.itemsを直接走査）
+      if (!found) {
+        // 同行アイテムを順次連結したテキストから検索
+        for (const [y, arr] of rows) {
+          let concat = '';
+          let startX = null;
+          for (const it of arr) {
+            if (startX === null) startX = it.x;
+            concat += it.str;
+            if (concat.includes(stripped)) {
+              found = { x: startX, str: stripped, y };
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+      if (found) {
+        names.push({ name: uname, x: found.x });
+      }
+    }
+
+    debugLog.push(`page ${p}: matched ${names.length}/${knownUserNames.length} known users`);
+    if (names.length === 0) {
+      // 名前が一つも見つからないページはスキップ
+      debugLog.push(`page ${p}: pageText sample: ${pageText.slice(0, 300)}`);
+      continue;
     }
 
     // 各データ行の値を、X座標で最も近い名前列に割り当てる
@@ -525,8 +554,11 @@ const importCostPdf = async (req, res, next) => {
 
     // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
     {
+      // ユーザー名を先に取得（パーサーが名前駆動で探すため）
+      const [usersForParse] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
+      const knownNames = usersForParse.map(u => u.name);
       // 給与PDF: 月次給与コストを保存
-      const { yearMonth: detectedYM, employees, debugLog } = await parsePayrollPdf(req.file.buffer);
+      const { yearMonth: detectedYM, employees, debugLog } = await parsePayrollPdf(req.file.buffer, knownNames);
       logger.info(`[importCostPdf] parsed ${employees.length} employees. detectedYM=${detectedYM}. debug: ${(debugLog || []).join(' | ')}`);
       // 年月はフォームの year_month (YYYY-MM) を優先し、なければPDF抽出値を使用
       const manualYM = String(req.body.year_month || '').trim();
