@@ -1,6 +1,45 @@
 /**
  * CPA・案件質分析コントローラー
  */
+// pdfjs-dist が import 時点で参照するブラウザ globals を最優先で定義する
+(function installPdfJsPolyfillsAtLoad() {
+  if (typeof globalThis.DOMMatrix === 'undefined') {
+    globalThis.DOMMatrix = class DOMMatrix {
+      constructor(init) {
+        if (Array.isArray(init) && init.length === 6) {
+          [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+        } else if (Array.isArray(init) && init.length === 16) {
+          this.a = init[0]; this.b = init[1]; this.c = init[4]; this.d = init[5];
+          this.e = init[12]; this.f = init[13];
+        } else {
+          this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+        }
+        this.is2D = true;
+        this.isIdentity = this.a === 1 && this.b === 0 && this.c === 0 && this.d === 1 && this.e === 0 && this.f === 0;
+      }
+      multiply(o) { return new DOMMatrix([
+        this.a * o.a + this.c * o.b, this.b * o.a + this.d * o.b,
+        this.a * o.c + this.c * o.d, this.b * o.c + this.d * o.d,
+        this.a * o.e + this.c * o.f + this.e, this.b * o.e + this.d * o.f + this.f,
+      ]); }
+      translate(tx, ty) { return this.multiply(new DOMMatrix([1, 0, 0, 1, tx, ty])); }
+      scale(sx, sy = sx) { return this.multiply(new DOMMatrix([sx, 0, 0, sy, 0, 0])); }
+      transformPoint(p) {
+        return { x: this.a * p.x + this.c * p.y + this.e, y: this.b * p.x + this.d * p.y + this.f };
+      }
+    };
+  }
+  if (typeof globalThis.ImageData === 'undefined') {
+    globalThis.ImageData = class ImageData { constructor(d, w, h) { this.data = d; this.width = w; this.height = h; } };
+  }
+  if (typeof globalThis.Path2D === 'undefined') {
+    globalThis.Path2D = class Path2D {};
+  }
+  if (typeof globalThis.HTMLCanvasElement === 'undefined') {
+    globalThis.HTMLCanvasElement = class HTMLCanvasElement {};
+  }
+})();
+
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const { getDateRange } = require('../utils/periodHelper');
@@ -386,7 +425,22 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
   const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), cMapUrl, cMapPacked: true }).promise;
+  // pdfjs はワーカーを使う前提なので Node 環境では明示的に無効化
+  if (pdfjs.GlobalWorkerOptions) {
+    pdfjs.GlobalWorkerOptions.workerSrc = '';
+  }
+  // Buffer から正しい view を作成
+  const u8 = buffer instanceof Uint8Array
+    ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+    : new Uint8Array(buffer);
+  const doc = await pdfjs.getDocument({
+    data: u8,
+    cMapUrl,
+    cMapPacked: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+    standardFontDataUrl: path.join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts') + '/',
+  }).promise;
 
   // 年月推定（最初のページから抽出）
   let yearMonth = null;
