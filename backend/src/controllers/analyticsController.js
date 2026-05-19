@@ -626,9 +626,9 @@ const importCostPdf = async (req, res, next) => {
 
     // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
     {
-      // オペレーターのみ対象（コストはオペレーターだけ計算）
+      // オペレーターのみ対象（退職者も含む）
       const [usersForParse] = await pool.execute(
-        "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+        "SELECT id, name FROM users WHERE role = 'operator' AND is_test_account = 0"
       );
       const knownNames = usersForParse.map(u => u.name);
       // 給与PDF: 月次給与コストを保存
@@ -642,9 +642,9 @@ const importCostPdf = async (req, res, next) => {
       }
       // 全員の year_month を確定値に統一
       for (const e of employees) e.year_month = yearMonth;
-      // 保存対象もオペレーターのみ
+      // 保存対象もオペレーターのみ（退職者も含む）
       const [users] = await pool.execute(
-        "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+        "SELECT id, name FROM users WHERE role = 'operator' AND is_test_account = 0"
       );
       const nameMap = new Map();
       users.forEach(u => {
@@ -2277,7 +2277,7 @@ const importPayrollManual = async (req, res, next) => {
     if (text && typeof text === 'string') {
       // operatorユーザーの名前一覧を取得（テキスト内検索用）
       const [opUsers] = await pool.execute(
-        "SELECT name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+        "SELECT name FROM users WHERE role = 'operator' AND is_test_account = 0"
       );
       const norm = (s) => (s || '').replace(/[\s　]+/g, '');
       const operatorNames = opUsers.map(u => u.name);
@@ -2406,9 +2406,9 @@ const importPayrollManual = async (req, res, next) => {
       return ApiResponse.badRequest(res, '入力データがありません');
     }
 
-    // operator のみ対象
+    // operator のみ対象（退職者も含むため is_active 不問）
     const [users] = await pool.execute(
-      "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_test_account = 0"
     );
     const nameMap = new Map();
     const norm = (s) => (s || '').replace(/[\s　]+/g, '');
@@ -2491,9 +2491,9 @@ const importPayrollXlsx = async (req, res, next) => {
     const ws = wb.Sheets[wb.SheetNames[0]];
     const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-    // operator名一覧
+    // operator名一覧（退職者も含むため is_active 不問。過去月の給与データも取り込み可能に）
     const [opUsers] = await pool.execute(
-      "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+      "SELECT id, name FROM users WHERE role = 'operator' AND is_test_account = 0"
     );
     const norm = (s) => String(s || '').replace(/[\s　]+/g, '').trim();
     const nameMap = new Map();
