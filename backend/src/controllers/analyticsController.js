@@ -291,7 +291,7 @@ const getQualityMetrics = async (req, res, next) => {
 const getOperators = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, name, role, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
     return ApiResponse.success(res, rows);
   } catch (err) {
@@ -608,8 +608,10 @@ const importCostPdf = async (req, res, next) => {
 
     // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
     {
-      // ユーザー名を先に取得（パーサーが名前駆動で探すため）
-      const [usersForParse] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
+      // オペレーターのみ対象（コストはオペレーターだけ計算）
+      const [usersForParse] = await pool.execute(
+        "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+      );
       const knownNames = usersForParse.map(u => u.name);
       // 給与PDF: 月次給与コストを保存
       const { yearMonth: detectedYM, employees, debugLog } = await parsePayrollPdf(req.file.buffer, knownNames);
@@ -622,7 +624,10 @@ const importCostPdf = async (req, res, next) => {
       }
       // 全員の year_month を確定値に統一
       for (const e of employees) e.year_month = yearMonth;
-      const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
+      // 保存対象もオペレーターのみ
+      const [users] = await pool.execute(
+        "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+      );
       const nameMap = new Map();
       users.forEach(u => {
         nameMap.set(u.name.trim(), u.id);
@@ -837,7 +842,7 @@ const getCpaAll = async (req, res, next) => {
 
     // オペレーター一覧（無効ユーザーも含む。データがあれば集計に含めるため）
     const [users] = await pool.execute(
-      "SELECT id, name, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, is_active, operator_level, commute_type, commute_teiki_monthly, commute_daily_amount FROM users WHERE role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // コスト（全員分一括）
@@ -1173,7 +1178,7 @@ const getQualityAll = async (req, res, next) => {
     }
 
     const [users] = await pool.execute(
-      "SELECT id, name, role, is_active, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE role IN ('operator','intern') AND is_test_account = 0 ORDER BY id ASC"
+      "SELECT id, name, role, is_active, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
 
     // システム案件のみ（4月以降）。3月まではpast_quality_dataから取得
