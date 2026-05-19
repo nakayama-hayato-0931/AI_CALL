@@ -2445,7 +2445,7 @@ const importPayrollManual = async (req, res, next) => {
       try {
         await pool.execute(
           `INSERT INTO monthly_payroll_records
-            (user_id, year_month, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+            (user_id, `year_month`, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              gross_pay = VALUES(gross_pay),
