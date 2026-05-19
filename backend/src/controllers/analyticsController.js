@@ -425,9 +425,9 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
   const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
-  // pdfjs はワーカーを使う前提なので Node 環境では明示的に無効化
+  // pdfjs v5 はワーカー前提なので、Node 環境では fake worker のソースを指定
   if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
   }
   // Buffer から正しい view を作成
   const u8 = buffer instanceof Uint8Array
@@ -439,6 +439,7 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
     cMapPacked: true,
     isEvalSupported: false,
     useSystemFonts: true,
+    disableWorker: true,
     standardFontDataUrl: path.join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts') + '/',
   }).promise;
 
