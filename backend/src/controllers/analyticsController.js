@@ -339,7 +339,7 @@ const importCostCsv = async (req, res, next) => {
  * 各列が1人の従業員。X座標で同じ列のセルを紐付ける。
  */
 const parsePayrollPdf = async (buffer) => {
-  const pdfjs = require('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
   const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
   const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), cMapUrl, cMapPacked: true }).promise;
@@ -457,11 +457,12 @@ const parsePayrollPdf = async (buffer) => {
 const importCostPdf = async (req, res, next) => {
   try {
     if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
+    logger.info(`[importCostPdf] size=${req.file.size} mime=${req.file.mimetype}`);
 
     // 給与PDFかどうかを判定するため、まず軽くスキャン
     let isPayroll = false;
     try {
-      const pdfjs = require('pdfjs-dist/legacy/build/pdf.mjs');
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const path = require('path');
       const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
       const probe = await pdfjs.getDocument({
@@ -666,7 +667,8 @@ const importCostPdf = async (req, res, next) => {
       hint: imported === 0 ? 'PDFの形式が認識できませんでした。CSV形式でのインポートもご利用ください。' : null,
     });
   } catch (err) {
-    next(err);
+    logger.error(`[importCostPdf] ${err.message}\n${err.stack}`);
+    return ApiResponse.error(res, `PDFインポート失敗: ${err.message}`, 500);
   }
 };
 
