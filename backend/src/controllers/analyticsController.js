@@ -334,11 +334,52 @@ const importCostCsv = async (req, res, next) => {
  * PDF内のテーブルから日付・名前・開始時刻・終了時刻・休憩時間を自動抽出
  */
 /**
+ * pdfjs-dist がNode環境で必要とするブラウザ globals の最小ポリフィル
+ */
+const installPdfJsPolyfills = () => {
+  if (typeof globalThis.DOMMatrix === 'undefined') {
+    globalThis.DOMMatrix = class DOMMatrix {
+      constructor(init) {
+        if (Array.isArray(init) && init.length === 6) {
+          [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+        } else if (Array.isArray(init) && init.length === 16) {
+          this.a = init[0]; this.b = init[1]; this.c = init[4]; this.d = init[5];
+          this.e = init[12]; this.f = init[13];
+        } else {
+          this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+        }
+        this.is2D = true;
+        this.isIdentity = this.a === 1 && this.b === 0 && this.c === 0 && this.d === 1 && this.e === 0 && this.f === 0;
+      }
+      multiply(other) { return new DOMMatrix([
+        this.a * other.a + this.c * other.b,
+        this.b * other.a + this.d * other.b,
+        this.a * other.c + this.c * other.d,
+        this.b * other.c + this.d * other.d,
+        this.a * other.e + this.c * other.f + this.e,
+        this.b * other.e + this.d * other.f + this.f,
+      ]); }
+      translate(tx, ty) { return this.multiply(new DOMMatrix([1, 0, 0, 1, tx, ty])); }
+      scale(sx, sy = sx) { return this.multiply(new DOMMatrix([sx, 0, 0, sy, 0, 0])); }
+    };
+  }
+  if (typeof globalThis.ImageData === 'undefined') {
+    globalThis.ImageData = class ImageData {
+      constructor(data, width, height) { this.data = data; this.width = width; this.height = height; }
+    };
+  }
+  if (typeof globalThis.Path2D === 'undefined') {
+    globalThis.Path2D = class Path2D {};
+  }
+};
+
+/**
  * 給与支給控除一覧PDF → 月次給与コスト抽出
  * 行構造: 従業員氏名 / 支給合計額 / 健康保険料 / 介護保険料 / 厚生年金保険料 / 雇用保険料
  * 各列が1人の従業員。X座標で同じ列のセルを紐付ける。
  */
 const parsePayrollPdf = async (buffer) => {
+  installPdfJsPolyfills();
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
   const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
@@ -462,6 +503,7 @@ const importCostPdf = async (req, res, next) => {
     // 給与PDFかどうかを判定するため、まず軽くスキャン
     let isPayroll = false;
     try {
+      installPdfJsPolyfills();
       const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const path = require('path');
       const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
