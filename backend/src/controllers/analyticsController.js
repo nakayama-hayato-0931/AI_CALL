@@ -388,10 +388,12 @@ const parsePayrollPdf = async (buffer) => {
   // 年月推定（最初のページから抽出）
   let yearMonth = null;
   let employees = []; // [{ name, year_month, gross_pay, health, care, pension, employment }]
+  const debugLog = [];
 
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const tc = await page.getTextContent();
+    debugLog.push(`page ${p}: ${tc.items.length} items`);
 
     // Y座標でまとめて1行に
     const rowMap = new Map();
@@ -400,8 +402,25 @@ const parsePayrollPdf = async (buffer) => {
       if (!rowMap.has(y)) rowMap.set(y, []);
       rowMap.get(y).push({ x: it.transform[4], str: it.str });
     }
-    // X座標でソート
-    for (const arr of rowMap.values()) arr.sort((a, b) => a.x - b.x);
+    // X座標でソート + 隣接の同行アイテムを連結（pdfjsが文字単位で分割するケース対策）
+    for (const arr of rowMap.values()) {
+      arr.sort((a, b) => a.x - b.x);
+      // 同行で X差が小さい連続アイテムは連結
+      const merged = [];
+      for (const it of arr) {
+        if (merged.length > 0) {
+          const last = merged[merged.length - 1];
+          const lastEnd = last.x + (last.str.length * 6);
+          if (it.x - lastEnd < 6) {
+            last.str += it.str;
+            continue;
+          }
+        }
+        merged.push({ ...it });
+      }
+      arr.length = 0;
+      arr.push(...merged);
+    }
 
     const rows = [...rowMap.entries()].sort((a, b) => b[0] - a[0]);
 
@@ -412,9 +431,13 @@ const parsePayrollPdf = async (buffer) => {
       if (ym) yearMonth = `${ym[1]}-${String(ym[2]).padStart(2, '0')}`;
     }
 
-    // 従業員氏名の行を探す
+    // 従業員氏名の行を探す（連結後）
     const nameRow = rows.find(([, arr]) => arr.some(i => /従業員氏名/.test(i.str)));
-    if (!nameRow) continue;
+    if (!nameRow) {
+      debugLog.push(`page ${p}: 従業員氏名 row not found. Sample labels: ${rows.slice(0, 10).map(([,a]) => a.map(i => i.str).join('|')).join(' / ')}`);
+      continue;
+    }
+    debugLog.push(`page ${p}: name row has ${nameRow[1].length} items`);
 
     // 「従業員氏名」ラベル自体は除外し、残りを名前として X 位置とともに保持
     // ただし複数の文字列が連結された名前にも対応（隣接アイテムをマージ）
@@ -492,7 +515,7 @@ const parsePayrollPdf = async (buffer) => {
     }
   }
 
-  return { yearMonth, employees };
+  return { yearMonth, employees, debugLog };
 };
 
 const importCostPdf = async (req, res, next) => {
@@ -503,7 +526,8 @@ const importCostPdf = async (req, res, next) => {
     // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
     {
       // 給与PDF: 月次給与コストを保存
-      const { yearMonth: detectedYM, employees } = await parsePayrollPdf(req.file.buffer);
+      const { yearMonth: detectedYM, employees, debugLog } = await parsePayrollPdf(req.file.buffer);
+      logger.info(`[importCostPdf] parsed ${employees.length} employees. detectedYM=${detectedYM}. debug: ${(debugLog || []).join(' | ')}`);
       // 年月はフォームの year_month (YYYY-MM) を優先し、なければPDF抽出値を使用
       const manualYM = String(req.body.year_month || '').trim();
       const yearMonth = /^\d{4}-\d{2}$/.test(manualYM) ? manualYM : detectedYM;
@@ -573,6 +597,8 @@ const importCostPdf = async (req, res, next) => {
         matched,
         unmatched,
         errors: errors.slice(0, 20),
+        debug: debugLog,
+        totalParsed: employees.length,
       });
     }
 
