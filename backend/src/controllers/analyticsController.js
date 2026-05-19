@@ -500,37 +500,8 @@ const importCostPdf = async (req, res, next) => {
     if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
     logger.info(`[importCostPdf] size=${req.file.size} mime=${req.file.mimetype}`);
 
-    // 常に給与PDFパーサーで試みる（給与支給控除一覧表を想定）
-    // 軽くスキャンしてキーワードがあれば給与PDFと判定
-    let isPayroll = false;
-    try {
-      installPdfJsPolyfills();
-      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      const path = require('path');
-      const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
-      const probe = await pdfjs.getDocument({
-        data: new Uint8Array(req.file.buffer), cMapUrl, cMapPacked: true,
-      }).promise;
-      const p1 = await probe.getPage(1);
-      const tc = await p1.getTextContent();
-      const text1 = tc.items.map(i => i.str).join('');
-      logger.info(`[importCostPdf] probe text first 200: ${text1.slice(0, 200)}`);
-      if (/給与支給控除一覧|支給合計額|健康保険料/.test(text1)) isPayroll = true;
-    } catch (e) {
-      logger.warn(`[importCostPdf] probe failed: ${e.message}`);
-      // 給与PDF不可なら専用エラーを返す
-      return ApiResponse.error(res, `PDFを読み取れません: ${e.message}`, 400);
-    }
-
-    if (!isPayroll) {
-      return ApiResponse.error(
-        res,
-        '給与支給控除一覧PDFとして認識できませんでした。「支給合計額」「健康保険料」などのキーワードを含む給与PDFをアップロードしてください。',
-        400
-      );
-    }
-
-    if (isPayroll) {
+    // 常に給与PDFパーサーで試みる。probeは行わない（実際にパースして検証する）
+    {
       // 給与PDF: 月次給与コストを保存
       const { yearMonth, employees } = await parsePayrollPdf(req.file.buffer);
       if (!yearMonth) {
