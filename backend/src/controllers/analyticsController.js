@@ -333,10 +333,217 @@ const importCostCsv = async (req, res, next) => {
  * 出勤表PDFインポート
  * PDF内のテーブルから日付・名前・開始時刻・終了時刻・休憩時間を自動抽出
  */
+/**
+ * 給与支給控除一覧PDF → 月次給与コスト抽出
+ * 行構造: 従業員氏名 / 支給合計額 / 健康保険料 / 介護保険料 / 厚生年金保険料 / 雇用保険料
+ * 各列が1人の従業員。X座標で同じ列のセルを紐付ける。
+ */
+const parsePayrollPdf = async (buffer) => {
+  const pdfjs = require('pdfjs-dist/legacy/build/pdf.mjs');
+  const path = require('path');
+  const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), cMapUrl, cMapPacked: true }).promise;
+
+  // 年月推定（最初のページから抽出）
+  let yearMonth = null;
+  let employees = []; // [{ name, year_month, gross_pay, health, care, pension, employment }]
+
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+
+    // Y座標でまとめて1行に
+    const rowMap = new Map();
+    for (const it of tc.items) {
+      const y = Math.round(it.transform[5] / 3) * 3;
+      if (!rowMap.has(y)) rowMap.set(y, []);
+      rowMap.get(y).push({ x: it.transform[4], str: it.str });
+    }
+    // X座標でソート
+    for (const arr of rowMap.values()) arr.sort((a, b) => a.x - b.x);
+
+    const rows = [...rowMap.entries()].sort((a, b) => b[0] - a[0]);
+
+    // 年月抽出
+    if (!yearMonth) {
+      const fullText = rows.map(([, arr]) => arr.map(i => i.str).join(' ')).join(' ');
+      const ym = fullText.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+      if (ym) yearMonth = `${ym[1]}-${String(ym[2]).padStart(2, '0')}`;
+    }
+
+    // 従業員氏名の行を探す
+    const nameRow = rows.find(([, arr]) => arr.some(i => /従業員氏名/.test(i.str)));
+    if (!nameRow) continue;
+
+    // 「従業員氏名」ラベル自体は除外し、残りを名前として X 位置とともに保持
+    // ただし複数の文字列が連結された名前にも対応（隣接アイテムをマージ）
+    const labelX = nameRow[1].find(i => /従業員氏名/.test(i.str))?.x ?? 0;
+    const nameItems = nameRow[1]
+      .filter(i => i.x > labelX + 5 && i.str.trim() !== '')
+      .filter(i => !/^[\s.,-]*$/.test(i.str));
+    // 隣接（x差<25）かつ名前っぽい文字列同士をマージ
+    const names = [];
+    for (const it of nameItems) {
+      if (names.length > 0 && it.x - names[names.length - 1].endX < 8) {
+        names[names.length - 1].name += it.str;
+        names[names.length - 1].endX = it.x + it.str.length * 4;
+      } else {
+        names.push({ name: it.str, x: it.x, endX: it.x + it.str.length * 4 });
+      }
+    }
+
+    // 各データ行の値を、X座標で最も近い名前列に割り当てる
+    const findRow = (label) => rows.find(([, arr]) => arr.some(i => new RegExp(label).test(i.str)));
+    const extractRowValues = (label) => {
+      const found = findRow(label);
+      if (!found) return new Map();
+      const items = found[1];
+      // ラベル位置を取得
+      const labelItem = items.find(i => new RegExp(label).test(i.str));
+      const lx = labelItem ? labelItem.x : 0;
+      // ラベル以降の数値系セルだけ抽出
+      const numItems = items.filter(i => i.x > lx + 5 && /^-?[\d,]+$/.test(i.str.trim()));
+      // 最寄りの名前列にマッピング
+      const map = new Map();
+      for (const ni of numItems) {
+        let bestName = null;
+        let bestDist = Infinity;
+        for (const n of names) {
+          const d = Math.abs(n.x - ni.x);
+          if (d < bestDist) { bestDist = d; bestName = n.name; }
+        }
+        if (bestName && bestDist < 50) {
+          const val = parseInt(ni.str.replace(/,/g, ''), 10);
+          if (!isNaN(val)) {
+            if (!map.has(bestName)) map.set(bestName, val);
+          }
+        }
+      }
+      return map;
+    };
+
+    const gross = extractRowValues('支給合計額');
+    const health = extractRowValues('健康保険料');
+    const care = extractRowValues('介護保険料');
+    const pension = extractRowValues('厚生年金保険料');
+    const employment = extractRowValues('雇用保険料');
+
+    for (const n of names) {
+      const name = n.name.trim();
+      if (!name) continue;
+      const g = gross.get(name) || 0;
+      const h = health.get(name) || 0;
+      const c = care.get(name) || 0;
+      const ps = pension.get(name) || 0;
+      const e = employment.get(name) || 0;
+      const insurance = h + c + ps + e;
+      employees.push({
+        name,
+        year_month: yearMonth,
+        gross_pay: g,
+        health_insurance: h,
+        care_insurance: c,
+        pension_insurance: ps,
+        employment_insurance: e,
+        total_insurance: insurance,
+        total_cost: g + insurance,
+      });
+    }
+  }
+
+  return { yearMonth, employees };
+};
+
 const importCostPdf = async (req, res, next) => {
   try {
     if (!req.file) return ApiResponse.badRequest(res, 'ファイルが必要です');
 
+    // 給与PDFかどうかを判定するため、まず軽くスキャン
+    let isPayroll = false;
+    try {
+      const pdfjs = require('pdfjs-dist/legacy/build/pdf.mjs');
+      const path = require('path');
+      const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
+      const probe = await pdfjs.getDocument({
+        data: new Uint8Array(req.file.buffer), cMapUrl, cMapPacked: true,
+      }).promise;
+      const p1 = await probe.getPage(1);
+      const tc = await p1.getTextContent();
+      const text1 = tc.items.map(i => i.str).join('');
+      if (/給与支給控除一覧|支給合計額/.test(text1)) isPayroll = true;
+    } catch (e) { /* fallback to stamp parsing */ }
+
+    if (isPayroll) {
+      // 給与PDF: 月次給与コストを保存
+      const { yearMonth, employees } = await parsePayrollPdf(req.file.buffer);
+      if (!yearMonth) {
+        return ApiResponse.badRequest(res, 'PDFから年月が読み取れませんでした');
+      }
+      const [users] = await pool.execute('SELECT id, name FROM users WHERE is_active = 1');
+      const nameMap = new Map();
+      users.forEach(u => {
+        nameMap.set(u.name.trim(), u.id);
+        nameMap.set(u.name.replace(/\s+/g, ''), u.id);
+      });
+
+      // テーブル作成（冪等）
+      try {
+        await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          year_month VARCHAR(7) NOT NULL,
+          gross_pay INT NOT NULL DEFAULT 0,
+          health_insurance INT NOT NULL DEFAULT 0,
+          care_insurance INT NOT NULL DEFAULT 0,
+          pension_insurance INT NOT NULL DEFAULT 0,
+          employment_insurance INT NOT NULL DEFAULT 0,
+          total_cost INT NOT NULL DEFAULT 0,
+          imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_user_ym (user_id, year_month)
+        )`);
+      } catch (e) {}
+
+      let imported = 0;
+      const errors = [];
+      const matched = [];
+      const unmatched = [];
+      for (const e of employees) {
+        const uid = nameMap.get(e.name) || nameMap.get(e.name.replace(/\s+/g, ''));
+        if (!uid) { unmatched.push(e.name); continue; }
+        try {
+          await pool.execute(
+            `INSERT INTO monthly_payroll_records
+              (user_id, year_month, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               gross_pay = VALUES(gross_pay),
+               health_insurance = VALUES(health_insurance),
+               care_insurance = VALUES(care_insurance),
+               pension_insurance = VALUES(pension_insurance),
+               employment_insurance = VALUES(employment_insurance),
+               total_cost = VALUES(total_cost),
+               imported_at = CURRENT_TIMESTAMP`,
+            [uid, e.year_month, e.gross_pay, e.health_insurance, e.care_insurance, e.pension_insurance, e.employment_insurance, e.total_cost]
+          );
+          matched.push({ name: e.name, total_cost: e.total_cost });
+          imported++;
+        } catch (err) {
+          errors.push(`${e.name}: ${err.message}`);
+        }
+      }
+
+      logger.info(`給与PDFインポート: ${imported}件, 未マッチ: ${unmatched.length}件`);
+      return ApiResponse.success(res, {
+        type: 'payroll',
+        yearMonth,
+        imported,
+        matched,
+        unmatched,
+        errors: errors.slice(0, 20),
+      });
+    }
+
+    // 従来の打刻PDF処理
     const pdfParse = require('pdf-parse');
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
@@ -519,6 +726,30 @@ const getCpaAll = async (req, res, next) => {
       costMap.set(r.user_id, isIntern ? Math.round(totalCost / 2) : totalCost);
       workHoursMap.set(r.user_id, Math.round(totalMinutes / 6) / 10); // 小数第1位まで
     }
+
+    // 月次給与PDFがインポート済みなら、対応する月のコストを上書き
+    // （支給合計額 + 社会保険料合計 = total_cost を採用）
+    // 期間に複数月が含まれる場合は各月の重なり日数で按分
+    try {
+      const ymStart = `${dateFrom.slice(0, 4)}-${dateFrom.slice(5, 7)}`;
+      const ymEnd = `${dateTo.slice(0, 4)}-${dateTo.slice(5, 7)}`;
+      const [payrollRows] = await pool.query(
+        `SELECT user_id, year_month, total_cost FROM monthly_payroll_records
+         WHERE year_month BETWEEN ? AND ?`,
+        [ymStart, ymEnd]
+      );
+      if (payrollRows.length > 0) {
+        // 単純化: 期間が単一月ならそのまま、複数月にまたがる場合は合算
+        const byUser = new Map();
+        for (const r of payrollRows) {
+          const cur = byUser.get(r.user_id) || 0;
+          byUser.set(r.user_id, cur + Number(r.total_cost || 0));
+        }
+        for (const [uid, total] of byUser) {
+          costMap.set(uid, total); // 給与PDFが優先
+        }
+      }
+    } catch (e) { /* table may not exist yet */ }
 
     // テスト運用期間: 2026年3月末まではシステムデータをCPA計算から除外
     // （past_cpa_dataの手動入力データのみ使用）
