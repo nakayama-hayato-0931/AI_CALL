@@ -237,7 +237,10 @@ export default function AnalyticsPage() {
       setPdfFile(null);
       fetchData();
     } catch (err) {
-      toast.error('PDFインポートに失敗しました');
+      const msg = err.response?.data?.message || err.message;
+      toast.error(`PDFインポート失敗: ${msg}`, { duration: 10000 });
+      // eslint-disable-next-line no-console
+      console.error('[PDF import error]', err.response?.data || err);
     } finally {
       setPdfUploading(false);
     }
