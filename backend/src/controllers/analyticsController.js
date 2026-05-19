@@ -2525,7 +2525,7 @@ const importPayrollXlsx = async (req, res, next) => {
       }
     }
 
-    // テーブル作成
+    // テーブル作成 + 古いテーブルに不足カラムを追加（冪等）
     try {
       await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2541,6 +2541,20 @@ const importPayrollXlsx = async (req, res, next) => {
         UNIQUE KEY uk_user_ym (user_id, year_month)
       )`);
     } catch (e) {}
+    // 既存テーブルに不足カラムを補完
+    const ensureCols = [
+      ['gross_pay', 'INT NOT NULL DEFAULT 0'],
+      ['health_insurance', 'INT NOT NULL DEFAULT 0'],
+      ['care_insurance', 'INT NOT NULL DEFAULT 0'],
+      ['pension_insurance', 'INT NOT NULL DEFAULT 0'],
+      ['employment_insurance', 'INT NOT NULL DEFAULT 0'],
+      ['total_cost', 'INT NOT NULL DEFAULT 0'],
+    ];
+    for (const [col, def] of ensureCols) {
+      try {
+        await pool.execute(`ALTER TABLE monthly_payroll_records ADD COLUMN ${col} ${def}`);
+      } catch (e) { /* already exists */ }
+    }
 
     const matched = [];
     const unmatched = [];
