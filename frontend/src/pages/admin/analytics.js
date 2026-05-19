@@ -98,6 +98,37 @@ export default function AnalyticsPage() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+  // 給与手動貼り付けモーダル
+  const [payrollPasteOpen, setPayrollPasteOpen] = useState(false);
+  const [payrollText, setPayrollText] = useState('');
+  const [payrollUploading, setPayrollUploading] = useState(false);
+
+  const handlePayrollManualImport = async () => {
+    if (!payrollText.trim()) { toast.error('データを貼り付けてください'); return; }
+    if (!pdfYearMonth) { toast.error('対象月を選択してください'); return; }
+    setPayrollUploading(true);
+    try {
+      const { data } = await api.post('/api/analytics/import-payroll-manual', {
+        year_month: pdfYearMonth,
+        text: payrollText,
+      });
+      const d = data.data || {};
+      // eslint-disable-next-line no-console
+      console.log('[payroll manual import]', d);
+      if (d.imported > 0) {
+        toast.success(`${d.imported}件インポート: ${(d.matched || []).map(m => m.name).join(', ')}`, { duration: 8000 });
+        setPayrollPasteOpen(false);
+        setPayrollText('');
+      } else {
+        toast.error(`0件。未マッチ: ${(d.unmatched || []).join(', ') || 'なし'}`, { duration: 10000 });
+      }
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message);
+    } finally {
+      setPayrollUploading(false);
+    }
+  };
 
   // 打刻ログCSV
   const [stampFile, setStampFile] = useState(null);
@@ -847,6 +878,11 @@ export default function AnalyticsPage() {
               className="px-3 py-1 text-xs font-medium bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-40 transition-colors whitespace-nowrap">
               {pdfUploading ? '処理中...' : 'PDF取込'}
             </button>
+            <button onClick={() => setPayrollPasteOpen(true)} disabled={!pdfYearMonth}
+              className="px-3 py-1 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+              title="PDFを直接貼り付けて取込（PDF解析が動かない時用）">
+              テキスト貼付
+            </button>
           </div>
           <span className="text-xs text-gray-500 font-medium ml-2">打刻ログ取込:</span>
           <div className="flex items-center gap-2">
@@ -1163,6 +1199,42 @@ export default function AnalyticsPage() {
       )}
 
       {/* 打刻ログ重複確認モーダル */}
+      {/* 給与貼り付けモーダル */}
+      {payrollPasteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPayrollPasteOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-purple-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">給与データ貼り付け取込</h2>
+                <p className="text-xs text-gray-500 mt-1">対象月: {pdfYearMonth}</p>
+              </div>
+              <button onClick={() => setPayrollPasteOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <p className="text-sm text-gray-700">
+                1行=1人 で以下のフォーマットで貼り付けてください（タブ、カンマ、複数空白で区切り）:
+              </p>
+              <pre className="bg-gray-50 border rounded p-2 text-xs leading-relaxed">名前  支給合計額  健康保険料  介護保険料  厚生年金保険料  雇用保険料{'\n'}中田倫哉  224020  10080  0  18300  1120{'\n'}吉田拓矢  300000  18000  0  28000  1500</pre>
+              <p className="text-[11px] text-gray-500">※ コスト = 支給合計額 + (健康 + 介護 + 厚生年金 + 雇用) で自動計算します。介護保険料が無い場合は 0 を入れるか省略してください。</p>
+              <textarea
+                value={payrollText}
+                onChange={e => setPayrollText(e.target.value)}
+                rows={12}
+                placeholder="名前  支給合計額  健康保険料  介護保険料  厚生年金保険料  雇用保険料"
+                className="w-full border rounded p-2 text-sm font-mono"
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setPayrollPasteOpen(false)} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">キャンセル</button>
+              <button onClick={handlePayrollManualImport} disabled={payrollUploading || !payrollText.trim()}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-40">
+                {payrollUploading ? '処理中...' : '取込実行'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {stampDuplicateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setStampDuplicateModal(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>

@@ -2254,4 +2254,112 @@ const getIndustryPeriodDetail = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail };
+/**
+ * POST /api/analytics/import-payroll-manual
+ * 給与データを直接入力（タブ・カンマ・空白いずれかで区切り）
+ * body: {
+ *   year_month: 'YYYY-MM',
+ *   rows: [
+ *     { name, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance }
+ *   ]
+ * }
+ * または body.text を渡せば 1行=1人で解析（タブ/カンマ区切り）:
+ *   名前\t支給合計額\t健康保険料\t介護保険料\t厚生年金保険料\t雇用保険料
+ */
+const importPayrollManual = async (req, res, next) => {
+  try {
+    const { year_month, rows: bodyRows, text } = req.body || {};
+    if (!/^\d{4}-\d{2}$/.test(year_month || '')) {
+      return ApiResponse.badRequest(res, 'year_month は YYYY-MM 形式で指定してください');
+    }
+
+    // テキストパース（text または rows が与えられる）
+    let rows = Array.isArray(bodyRows) ? bodyRows.slice() : [];
+    if (text && typeof text === 'string') {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        // タブまたはカンマまたは複数空白で分割
+        const cols = line.split(/[\t,]+|\s{2,}/).map(c => c.trim()).filter(Boolean);
+        if (cols.length < 2) continue;
+        const num = (s) => parseInt(String(s).replace(/[,¥\s円]/g, ''), 10) || 0;
+        rows.push({
+          name: cols[0],
+          gross_pay: num(cols[1]),
+          health_insurance: num(cols[2]),
+          care_insurance: num(cols[3]),
+          pension_insurance: num(cols[4]),
+          employment_insurance: num(cols[5]),
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      return ApiResponse.badRequest(res, '入力データがありません');
+    }
+
+    // operator のみ対象
+    const [users] = await pool.execute(
+      "SELECT id, name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+    );
+    const nameMap = new Map();
+    const norm = (s) => (s || '').replace(/[\s　]+/g, '');
+    users.forEach(u => {
+      nameMap.set(u.name.trim(), u.id);
+      nameMap.set(norm(u.name), u.id);
+    });
+
+    try {
+      await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        year_month VARCHAR(7) NOT NULL,
+        gross_pay INT NOT NULL DEFAULT 0,
+        health_insurance INT NOT NULL DEFAULT 0,
+        care_insurance INT NOT NULL DEFAULT 0,
+        pension_insurance INT NOT NULL DEFAULT 0,
+        employment_insurance INT NOT NULL DEFAULT 0,
+        total_cost INT NOT NULL DEFAULT 0,
+        imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_ym (user_id, year_month)
+      )`);
+    } catch (e) {}
+
+    const matched = [];
+    const unmatched = [];
+    let imported = 0;
+    const errors = [];
+    for (const r of rows) {
+      const uid = nameMap.get(r.name?.trim()) || nameMap.get(norm(r.name));
+      if (!uid) { unmatched.push(r.name); continue; }
+      const totalInsurance = (r.health_insurance || 0) + (r.care_insurance || 0) + (r.pension_insurance || 0) + (r.employment_insurance || 0);
+      const totalCost = (r.gross_pay || 0) + totalInsurance;
+      try {
+        await pool.execute(
+          `INSERT INTO monthly_payroll_records
+            (user_id, year_month, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             gross_pay = VALUES(gross_pay),
+             health_insurance = VALUES(health_insurance),
+             care_insurance = VALUES(care_insurance),
+             pension_insurance = VALUES(pension_insurance),
+             employment_insurance = VALUES(employment_insurance),
+             total_cost = VALUES(total_cost),
+             imported_at = CURRENT_TIMESTAMP`,
+          [uid, year_month, r.gross_pay || 0, r.health_insurance || 0, r.care_insurance || 0, r.pension_insurance || 0, r.employment_insurance || 0, totalCost]
+        );
+        matched.push({ name: r.name, total_cost: totalCost });
+        imported++;
+      } catch (err) {
+        errors.push(`${r.name}: ${err.message}`);
+      }
+    }
+    logger.info(`給与手動インポート: ${year_month} ${imported}件, 未マッチ: ${unmatched.length}`);
+    return ApiResponse.success(res, { yearMonth: year_month, imported, matched, unmatched, errors });
+  } catch (err) {
+    logger.error(`[importPayrollManual] ${err.message}\n${err.stack}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual };
