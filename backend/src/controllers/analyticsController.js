@@ -499,32 +499,41 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
     // フォールバック: 1ページの全テキストを1つに連結し、名前を検索
     const pageText = allItems.map(i => i.str).join('');
 
+    // 名前マッチを空白に寛容にする（DB="渡邊 樹"、PDF="渡邊樹" or 逆も許容）
+    const stripWs = (s) => (s || '').replace(/[\s　]+/g, '');
+
     for (const uname of knownUserNames) {
-      const stripped = uname.replace(/\s+/g, '');
+      const stripped = stripWs(uname);
       if (!stripped) continue;
-      // 連結後のアイテムから一致を探す
       let found = null;
+      // 連結後の各アイテムを順番にチェック（空白除去後比較）
       for (const it of allItems) {
-        if (it.str.includes(stripped) || it.str.includes(uname)) {
+        const cleaned = stripWs(it.str);
+        if (cleaned.includes(stripped)) {
           found = it;
           break;
         }
       }
-      // 連結前にもチェック（連結が外れた場合に対応するため、tc.itemsを直接走査）
+      // 同行アイテムを連結してから空白除去で検索
       if (!found) {
-        // 同行アイテムを順次連結したテキストから検索
         for (const [y, arr] of rows) {
           let concat = '';
-          let startX = null;
+          let firstMatchX = null;
           for (const it of arr) {
-            if (startX === null) startX = it.x;
+            const before = stripWs(concat);
             concat += it.str;
-            if (concat.includes(stripped)) {
-              found = { x: startX, str: stripped, y };
-              break;
+            const after = stripWs(concat);
+            if (after.includes(stripped) && firstMatchX === null) {
+              // 一致が始まった位置のアイテムのXを採用
+              if (!before.includes(stripped)) {
+                firstMatchX = it.x;
+              }
             }
           }
-          if (found) break;
+          if (firstMatchX !== null) {
+            found = { x: firstMatchX, str: stripped, y };
+            break;
+          }
         }
       }
       if (found) {
