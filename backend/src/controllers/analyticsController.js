@@ -1008,12 +1008,13 @@ const importStampCsv = async (req, res, next) => {
       if (!stampDatetime || !stampType || !name) continue;
       if (!['出勤', '退勤', '休憩開始', '休憩終了'].includes(stampType)) continue;
 
-      // 日付と時刻を分離
-      const dtMatch = stampDatetime.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+      // 日付と時刻を分離（月日は1〜2桁の両方に対応）
+      const dtMatch = stampDatetime.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
       if (!dtMatch) continue;
 
-      const dateStr = `${dtMatch[1]}-${dtMatch[2]}-${dtMatch[3]}`;
-      const timeStr = `${dtMatch[4]}:${dtMatch[5]}`;
+      const pad = (s) => String(s).padStart(2, '0');
+      const dateStr = `${dtMatch[1]}-${pad(dtMatch[2])}-${pad(dtMatch[3])}`;
+      const timeStr = `${pad(dtMatch[4])}:${dtMatch[5]}`;
       const key = `${dateStr}_${name}`;
 
       if (!dayMap.has(key)) {
