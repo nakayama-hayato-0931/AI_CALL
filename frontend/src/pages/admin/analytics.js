@@ -236,9 +236,20 @@ export default function AnalyticsPage() {
       const { data } = await directApi.post('/api/analytics/import-cost-pdf', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success(`${data.data.imported}件インポートしました`);
-      if (data.data.errors?.length > 0) {
-        toast.error(`${data.data.errors.length}件エラー`);
+      const d = data.data || {};
+      // eslint-disable-next-line no-console
+      console.log('[PDF import result]', d);
+      if (d.imported > 0) {
+        const matchedNames = (d.matched || []).map(m => m.name).join(', ');
+        toast.success(`${d.imported}件インポートしました${matchedNames ? `: ${matchedNames}` : ''}`, { duration: 8000 });
+      } else {
+        toast.error(
+          `インポート件数0件。PDFから抽出した従業員数: ${d.totalParsed ?? 0}件。未マッチ: ${(d.unmatched || []).join(', ') || 'なし'}`,
+          { duration: 12000 }
+        );
+      }
+      if (d.errors?.length > 0) {
+        toast.error(`${d.errors.length}件エラー: ${d.errors.slice(0, 3).join(' / ')}`);
       }
       setPdfFile(null);
       fetchData();
