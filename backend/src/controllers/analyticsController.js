@@ -2276,21 +2276,131 @@ const importPayrollManual = async (req, res, next) => {
     // テキストパース（text または rows が与えられる）
     let rows = Array.isArray(bodyRows) ? bodyRows.slice() : [];
     if (text && typeof text === 'string') {
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      for (const line of lines) {
-        // タブまたはカンマまたは複数空白で分割
-        const cols = line.split(/[\t,]+|\s{2,}/).map(c => c.trim()).filter(Boolean);
-        if (cols.length < 2) continue;
-        const num = (s) => parseInt(String(s).replace(/[,¥\s円]/g, ''), 10) || 0;
-        rows.push({
-          name: cols[0],
-          gross_pay: num(cols[1]),
-          health_insurance: num(cols[2]),
-          care_insurance: num(cols[3]),
-          pension_insurance: num(cols[4]),
-          employment_insurance: num(cols[5]),
-        });
-      }
+      // operatorユーザーの名前一覧を取得（テキスト内検索用）
+      const [opUsers] = await pool.execute(
+        "SELECT name FROM users WHERE is_active = 1 AND role = 'operator' AND is_test_account = 0"
+      );
+      const norm = (s) => (s || '').replace(/[\s　]+/g, '');
+      const operatorNames = opUsers.map(u => u.name);
+
+      const allLines = text.split(/\r?\n/).map(l => l.trim());
+      const parseNum = (s) => {
+        if (!s) return null;
+        // "217,982-2,958-20,019" のように複数値が連結されているケースは最初の値のみ
+        const m = String(s).match(/-?[\d,]+/);
+        if (!m) return null;
+        const n = parseInt(m[0].replace(/,/g, ''), 10);
+        return isNaN(n) ? null : n;
+      };
+      // 単純な構造化テキスト（タブ/カンマ区切り）優先
+      const simpleParse = () => {
+        const out = [];
+        for (const line of allLines) {
+          if (!line) continue;
+          const cols = line.split(/[\t,]+|\s{2,}/).map(c => c.trim()).filter(Boolean);
+          if (cols.length < 2) continue;
+          // 1列目が登録名と一致するか
+          const matched = operatorNames.find(n => norm(n) === norm(cols[0]));
+          if (matched) {
+            out.push({
+              name: matched,
+              gross_pay: parseNum(cols[1]) || 0,
+              health_insurance: parseNum(cols[2]) || 0,
+              care_insurance: parseNum(cols[3]) || 0,
+              pension_insurance: parseNum(cols[4]) || 0,
+              employment_insurance: parseNum(cols[5]) || 0,
+            });
+          }
+        }
+        return out;
+      };
+
+      // PDFテキストダンプ向けの構造化抽出
+      // 各operator名が現れる行を起点に、後続の数値列から
+      // 支給合計額 / 健康保険料 / 介護保険料 / 厚生年金保険料 / 雇用保険料 を抽出
+      const dumpParse = () => {
+        const out = [];
+        // 各operator名の出現行を列挙
+        const occurrences = [];
+        for (let i = 0; i < allLines.length; i++) {
+          const cleaned = norm(allLines[i]);
+          if (!cleaned) continue;
+          for (const opName of operatorNames) {
+            if (cleaned === norm(opName) || cleaned.includes(norm(opName))) {
+              occurrences.push({ name: opName, line: i });
+              break;
+            }
+          }
+        }
+        // 各occurrence から次のoperatorまでの間に数値があると仮定
+        for (let i = 0; i < occurrences.length; i++) {
+          const cur = occurrences[i];
+          const next = occurrences[i + 1];
+          const endLine = next ? next.line : allLines.length;
+          // 取得した行から数値だけ抜き出す
+          const nums = [];
+          for (let j = cur.line + 1; j < endLine; j++) {
+            const line = allLines[j];
+            if (!line) continue;
+            // "X.X日" "XX:XX" "0人" "甲" などはスキップ
+            if (/日$|時|分|人$|^甲$|^乙$|^-?\d+:\d+$/.test(line)) continue;
+            // 浮動小数（時給単価など）も除外
+            if (/^\d{1,3}(,\d{3})*\.\d+$/.test(line)) continue;
+            // 行に複数値が連結されている場合は分割して取り出す
+            const matches = line.match(/-?[\d,]+(?!\.)/g);
+            if (matches) {
+              for (const m of matches) {
+                const n = parseInt(m.replace(/,/g, ''), 10);
+                if (!isNaN(n)) nums.push(n);
+              }
+            }
+          }
+          // ヒューリスティック:
+          // 1) 大きい値（>= 1万）の中で同値・近似値ペア(=支給合計&課税)を探す
+          //    そのペアの直後 4-5値を 健康/介護?/厚生年金/雇用 と判定
+          let gross = 0, health = 0, care = 0, pension = 0, employment = 0;
+          for (let k = 0; k < nums.length - 5; k++) {
+            const a = nums[k], b = nums[k + 1];
+            if (a >= 100000 && b >= 100000 && Math.abs(a - b) / Math.max(a, b) < 0.4) {
+              gross = a;
+              // 次の 4-5値で保険料を判定
+              const after = nums.slice(k + 2, k + 7);
+              // health: 最初の中規模値
+              const idxH = after.findIndex(v => v > 1000 && v < 100000);
+              if (idxH >= 0) {
+                health = after[idxH];
+                const rest = after.slice(idxH + 1);
+                // 次に介護保険料がある条件: 値が健康の0.3倍以下で 500-5000の小さい値
+                if (rest.length > 0 && rest[0] > 0 && rest[0] < health * 0.35 && rest[0] < 5000) {
+                  care = rest[0];
+                  pension = rest[1] || 0;
+                  employment = rest[2] || 0;
+                } else {
+                  care = 0;
+                  pension = rest[0] || 0;
+                  employment = rest[1] || 0;
+                }
+              }
+              break;
+            }
+          }
+          if (gross > 0) {
+            out.push({
+              name: cur.name,
+              gross_pay: gross,
+              health_insurance: health,
+              care_insurance: care,
+              pension_insurance: pension,
+              employment_insurance: employment,
+            });
+          }
+        }
+        return out;
+      };
+
+      // 構造化が先（明示的フォーマット）、ダメなら PDFダンプ
+      const simpleRows = simpleParse();
+      rows = simpleRows.length > 0 ? simpleRows : dumpParse();
     }
 
     if (rows.length === 0) {
