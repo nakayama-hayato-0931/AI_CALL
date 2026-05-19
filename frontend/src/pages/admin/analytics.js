@@ -102,6 +102,58 @@ export default function AnalyticsPage() {
   const [payrollPasteOpen, setPayrollPasteOpen] = useState(false);
   const [payrollText, setPayrollText] = useState('');
   const [payrollUploading, setPayrollUploading] = useState(false);
+  // 月次追加コスト（コンサル料など）モーダル
+  const [extraCostsOpen, setExtraCostsOpen] = useState(false);
+  const [extraCostsList, setExtraCostsList] = useState([]);
+  const [extraCostsLoading, setExtraCostsLoading] = useState(false);
+  const [newExtra, setNewExtra] = useState({ period_ym: '', category: 'コンサル料', amount: '', memo: '' });
+
+  const openExtraCostsModal = async () => {
+    setExtraCostsOpen(true);
+    setExtraCostsLoading(true);
+    const ym = (() => {
+      const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    })();
+    setNewExtra(prev => ({ ...prev, period_ym: prev.period_ym || ym }));
+    try {
+      const { data } = await api.get('/api/analytics/extra-costs');
+      if (data.success) setExtraCostsList(data.data || []);
+    } catch (err) {
+      toast.error('追加コスト取得失敗');
+    } finally {
+      setExtraCostsLoading(false);
+    }
+  };
+  const saveExtraCost = async () => {
+    if (!/^\d{4}-\d{2}$/.test(newExtra.period_ym)) { toast.error('対象月を選択してください'); return; }
+    if (!newExtra.amount) { toast.error('金額を入力してください'); return; }
+    try {
+      await api.post('/api/analytics/extra-costs', {
+        period_ym: newExtra.period_ym,
+        category: newExtra.category || 'その他',
+        amount: parseInt(newExtra.amount, 10),
+        memo: newExtra.memo || null,
+      });
+      toast.success('追加しました');
+      setNewExtra({ period_ym: newExtra.period_ym, category: 'コンサル料', amount: '', memo: '' });
+      const { data } = await api.get('/api/analytics/extra-costs');
+      if (data.success) setExtraCostsList(data.data || []);
+      fetchData();
+    } catch (err) {
+      toast.error('保存失敗');
+    }
+  };
+  const deleteExtraCost = async (id) => {
+    if (!confirm('削除しますか？')) return;
+    try {
+      await api.delete(`/api/analytics/extra-costs/${id}`);
+      toast.success('削除しました');
+      setExtraCostsList(prev => prev.filter(r => r.id !== id));
+      fetchData();
+    } catch (err) {
+      toast.error('削除失敗');
+    }
+  };
 
   const handlePayrollManualImport = async () => {
     if (!payrollText.trim()) { toast.error('データを貼り付けてください'); return; }
@@ -887,6 +939,11 @@ export default function AnalyticsPage() {
               title="PDFを直接貼り付けて取込（PDF解析が動かない時用）">
               テキスト貼付
             </button>
+            <button onClick={openExtraCostsModal}
+              className="px-3 py-1 text-xs font-medium bg-pink-600 text-white rounded hover:bg-pink-700 transition-colors whitespace-nowrap"
+              title="コンサル料など、特定オペレーターに紐付かない月次コストを追加">
+              追加コスト
+            </button>
           </div>
           <span className="text-xs text-gray-500 font-medium ml-2">打刻ログ取込:</span>
           <div className="flex items-center gap-2">
@@ -1203,6 +1260,85 @@ export default function AnalyticsPage() {
       )}
 
       {/* 打刻ログ重複確認モーダル */}
+      {/* 追加コスト管理モーダル */}
+      {extraCostsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setExtraCostsOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 bg-pink-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">追加コスト管理</h2>
+                <p className="text-xs text-gray-500 mt-1">コンサル料など、月次でチームコストに加算する費用を登録</p>
+              </div>
+              <button onClick={() => setExtraCostsOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="px-6 py-5 space-y-4 overflow-auto flex-1">
+              {/* 新規登録フォーム */}
+              <div className="border rounded p-3 bg-gray-50">
+                <h3 className="text-sm font-bold mb-2">新規登録</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                  <div>
+                    <label className="text-xs text-gray-500">対象月</label>
+                    <input type="month" value={newExtra.period_ym} onChange={e => setNewExtra({ ...newExtra, period_ym: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">カテゴリ</label>
+                    <input type="text" value={newExtra.category} onChange={e => setNewExtra({ ...newExtra, category: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm" placeholder="コンサル料" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">金額（円）</label>
+                    <input type="number" value={newExtra.amount} onChange={e => setNewExtra({ ...newExtra, amount: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm text-right" placeholder="100000" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="text-xs text-gray-500">メモ</label>
+                    <input type="text" value={newExtra.memo} onChange={e => setNewExtra({ ...newExtra, memo: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm" placeholder="任意" />
+                  </div>
+                  <button onClick={saveExtraCost} className="px-3 py-1.5 bg-pink-600 text-white rounded text-sm hover:bg-pink-700">追加</button>
+                </div>
+              </div>
+
+              {/* 一覧 */}
+              <div>
+                <h3 className="text-sm font-bold mb-2">登録済み</h3>
+                {extraCostsLoading ? (
+                  <p className="text-center py-4 text-gray-400 text-sm">読み込み中...</p>
+                ) : extraCostsList.length === 0 ? (
+                  <p className="text-center py-4 text-gray-400 text-sm">登録されていません</p>
+                ) : (
+                  <table className="w-full text-sm border">
+                    <thead className="bg-gray-100 text-xs">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left">対象月</th>
+                        <th className="px-2 py-1.5 text-left">カテゴリ</th>
+                        <th className="px-2 py-1.5 text-right">金額</th>
+                        <th className="px-2 py-1.5 text-left">メモ</th>
+                        <th className="px-2 py-1.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {extraCostsList.map(r => (
+                        <tr key={r.id} className="border-t hover:bg-gray-50">
+                          <td className="px-2 py-1.5">{r.period_ym}</td>
+                          <td className="px-2 py-1.5">{r.category}</td>
+                          <td className="px-2 py-1.5 text-right font-semibold">¥{Number(r.amount).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-gray-500 text-xs">{r.memo || '-'}</td>
+                          <td className="px-2 py-1.5 text-center">
+                            <button onClick={() => deleteExtraCost(r.id)} className="text-xs text-red-600 hover:underline">削除</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 給与貼り付けモーダル */}
       {payrollPasteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPayrollPasteOpen(false)}>

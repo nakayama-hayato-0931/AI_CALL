@@ -899,9 +899,9 @@ const getCpaAll = async (req, res, next) => {
     // 月次給与PDFがインポート済みなら、対応する月のコストを上書き
     // （支給合計額 + 社会保険料合計 = total_cost を採用）
     // 期間に複数月が含まれる場合は各月の重なり日数で按分
+    const ymStart = `${dateFrom.slice(0, 4)}-${dateFrom.slice(5, 7)}`;
+    const ymEnd = `${dateTo.slice(0, 4)}-${dateTo.slice(5, 7)}`;
     try {
-      const ymStart = `${dateFrom.slice(0, 4)}-${dateFrom.slice(5, 7)}`;
-      const ymEnd = `${dateTo.slice(0, 4)}-${dateTo.slice(5, 7)}`;
       const [payrollRows] = await pool.query(
         "SELECT user_id, period_ym, total_cost FROM monthly_payroll_records WHERE period_ym BETWEEN ? AND ?",
         [ymStart, ymEnd]
@@ -916,6 +916,21 @@ const getCpaAll = async (req, res, next) => {
         for (const [uid, total] of byUser) {
           costMap.set(uid, total); // 給与PDFが優先
         }
+      }
+    } catch (e) { /* table may not exist yet */ }
+
+    // 月次追加コスト（コンサル料など、特定オペレーターに紐付かない費用）
+    // チーム合計にのみ加算
+    let extraCostSum = 0;
+    const extraCostBreakdown = [];
+    try {
+      const [extraRows] = await pool.query(
+        "SELECT id, period_ym, category, amount, memo FROM monthly_extra_costs WHERE period_ym BETWEEN ? AND ?",
+        [ymStart, ymEnd]
+      );
+      for (const r of extraRows) {
+        extraCostSum += Number(r.amount) || 0;
+        extraCostBreakdown.push({ id: r.id, period_ym: r.period_ym, category: r.category, amount: Number(r.amount) || 0, memo: r.memo });
       }
     } catch (e) { /* table may not exist yet */ }
 
@@ -1163,10 +1178,12 @@ const getCpaAll = async (req, res, next) => {
     const effectiveTeamCost = teamCost; // cost_records（3月以降の打刻データ）
     const team = {
       name: '全体', workHours: Math.round(teamWorkHours * 10) / 10,
-      ...buildRow(effectiveTeamCost + pastCost, teamCalls + pastCalls, {
+      ...buildRow(effectiveTeamCost + pastCost + extraCostSum, teamCalls + pastCalls, {
         project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
         naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,
       }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
+      extraCost: extraCostSum,
+      extraCostBreakdown,
     };
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
@@ -2627,4 +2644,84 @@ const importPayrollXlsx = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx };
+/**
+ * 月次の追加コスト（コンサル料など、特定オペレーターに紐付かない費用）
+ * GET /api/analytics/extra-costs?year_month=YYYY-MM
+ * POST /api/analytics/extra-costs  body: { period_ym, category, amount, memo }
+ * DELETE /api/analytics/extra-costs/:id
+ */
+const ensureExtraCostsTable = async () => {
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_extra_costs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      period_ym VARCHAR(7) NOT NULL,
+      category VARCHAR(50) NOT NULL,
+      amount INT NOT NULL DEFAULT 0,
+      memo VARCHAR(255) DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_period (period_ym)
+    )`);
+  } catch (e) { /* ignore */ }
+};
+
+const listExtraCosts = async (req, res, next) => {
+  try {
+    await ensureExtraCostsTable();
+    const { year_month, date_from, date_to } = req.query;
+    let where = '1=1';
+    const params = [];
+    if (year_month) {
+      where = 'period_ym = ?';
+      params.push(year_month);
+    } else if (date_from && date_to) {
+      where = 'period_ym BETWEEN ? AND ?';
+      params.push(date_from.slice(0, 7), date_to.slice(0, 7));
+    }
+    const [rows] = await pool.query(
+      `SELECT id, period_ym, category, amount, memo, created_at
+       FROM monthly_extra_costs WHERE ${where} ORDER BY period_ym DESC, id DESC`,
+      params
+    );
+    return ApiResponse.success(res, rows);
+  } catch (err) { next(err); }
+};
+
+const upsertExtraCost = async (req, res, next) => {
+  try {
+    await ensureExtraCostsTable();
+    const { period_ym, category, amount, memo, id } = req.body || {};
+    if (!/^\d{4}-\d{2}$/.test(period_ym || '')) {
+      return ApiResponse.badRequest(res, 'period_ym は YYYY-MM 形式で指定してください');
+    }
+    if (!category || typeof category !== 'string') {
+      return ApiResponse.badRequest(res, 'category が必要です');
+    }
+    const amt = parseInt(amount, 10);
+    if (isNaN(amt) || amt < 0) {
+      return ApiResponse.badRequest(res, 'amount は0以上の整数を指定してください');
+    }
+    if (id) {
+      await pool.execute(
+        'UPDATE monthly_extra_costs SET period_ym=?, category=?, amount=?, memo=? WHERE id=?',
+        [period_ym, category, amt, memo || null, id]
+      );
+      return ApiResponse.success(res, { id });
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO monthly_extra_costs (period_ym, category, amount, memo) VALUES (?, ?, ?, ?)',
+      [period_ym, category, amt, memo || null]
+    );
+    return ApiResponse.success(res, { id: result.insertId });
+  } catch (err) { next(err); }
+};
+
+const deleteExtraCost = async (req, res, next) => {
+  try {
+    await ensureExtraCostsTable();
+    const { id } = req.params;
+    await pool.execute('DELETE FROM monthly_extra_costs WHERE id = ?', [id]);
+    return ApiResponse.success(res, null);
+  } catch (err) { next(err); }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx, listExtraCosts, upsertExtraCost, deleteExtraCost };
