@@ -424,10 +424,18 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
   installPdfJsPolyfills();
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const path = require('path');
-  const cMapUrl = path.join(__dirname, '../../node_modules/pdfjs-dist/cmaps') + '/';
+  // pdfjs-dist パッケージの実体位置を解決し、cmaps / standard_fonts を確実に指す
+  const pdfjsPkgDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+  const cMapUrl = path.join(pdfjsPkgDir, 'cmaps') + '/';
+  const standardFontDataUrl = path.join(pdfjsPkgDir, 'standard_fonts') + '/';
+  logger.info(`[parsePayrollPdf] pdfjs version: ${pdfjs.version}, pkgDir: ${pdfjsPkgDir}`);
   // pdfjs v5 はワーカー前提なので、Node 環境では fake worker のソースを指定
   if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    } catch (e) {
+      logger.warn(`[parsePayrollPdf] worker resolve failed: ${e.message}`);
+    }
   }
   // Buffer から正しい view を作成
   const u8 = buffer instanceof Uint8Array
@@ -440,7 +448,7 @@ const parsePayrollPdf = async (buffer, knownUserNames = []) => {
     isEvalSupported: false,
     useSystemFonts: true,
     disableWorker: true,
-    standardFontDataUrl: path.join(__dirname, '../../node_modules/pdfjs-dist/standard_fonts') + '/',
+    standardFontDataUrl,
   }).promise;
 
   // 年月推定（最初のページから抽出）
