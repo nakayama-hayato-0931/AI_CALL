@@ -657,7 +657,7 @@ const importCostPdf = async (req, res, next) => {
         await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
           id INT AUTO_INCREMENT PRIMARY KEY,
           user_id INT NOT NULL,
-          `year_month` VARCHAR(7) NOT NULL,
+          period_ym VARCHAR(7) NOT NULL,
           gross_pay INT NOT NULL DEFAULT 0,
           health_insurance INT NOT NULL DEFAULT 0,
           care_insurance INT NOT NULL DEFAULT 0,
@@ -665,7 +665,7 @@ const importCostPdf = async (req, res, next) => {
           employment_insurance INT NOT NULL DEFAULT 0,
           total_cost INT NOT NULL DEFAULT 0,
           imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY uk_user_ym (user_id, `year_month`)
+          UNIQUE KEY uk_user_ym (user_id, period_ym)
         )`);
       } catch (e) {}
 
@@ -679,7 +679,7 @@ const importCostPdf = async (req, res, next) => {
         try {
           await pool.execute(
             `INSERT INTO monthly_payroll_records
-              (user_id, `year_month`, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+              (user_id, period_ym, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                gross_pay = VALUES(gross_pay),
@@ -903,7 +903,7 @@ const getCpaAll = async (req, res, next) => {
       const ymStart = `${dateFrom.slice(0, 4)}-${dateFrom.slice(5, 7)}`;
       const ymEnd = `${dateTo.slice(0, 4)}-${dateTo.slice(5, 7)}`;
       const [payrollRows] = await pool.query(
-        "SELECT user_id, `year_month`, total_cost FROM monthly_payroll_records WHERE `year_month` BETWEEN ? AND ?",
+        "SELECT user_id, period_ym, total_cost FROM monthly_payroll_records WHERE period_ym BETWEEN ? AND ?",
         [ymStart, ymEnd]
       );
       if (payrollRows.length > 0) {
@@ -2421,7 +2421,7 @@ const importPayrollManual = async (req, res, next) => {
       await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        `year_month` VARCHAR(7) NOT NULL,
+        period_ym VARCHAR(7) NOT NULL,
         gross_pay INT NOT NULL DEFAULT 0,
         health_insurance INT NOT NULL DEFAULT 0,
         care_insurance INT NOT NULL DEFAULT 0,
@@ -2429,7 +2429,7 @@ const importPayrollManual = async (req, res, next) => {
         employment_insurance INT NOT NULL DEFAULT 0,
         total_cost INT NOT NULL DEFAULT 0,
         imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uk_user_ym (user_id, `year_month`)
+        UNIQUE KEY uk_user_ym (user_id, period_ym)
       )`);
     } catch (e) {}
 
@@ -2445,7 +2445,7 @@ const importPayrollManual = async (req, res, next) => {
       try {
         await pool.execute(
           `INSERT INTO monthly_payroll_records
-            (user_id, `year_month`, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+            (user_id, period_ym, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              gross_pay = VALUES(gross_pay),
@@ -2529,7 +2529,7 @@ const importPayrollXlsx = async (req, res, next) => {
       await pool.execute(`CREATE TABLE IF NOT EXISTS monthly_payroll_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        `year_month` VARCHAR(7) NOT NULL,
+        period_ym VARCHAR(7) NOT NULL,
         gross_pay INT NOT NULL DEFAULT 0,
         health_insurance INT NOT NULL DEFAULT 0,
         care_insurance INT NOT NULL DEFAULT 0,
@@ -2537,11 +2537,12 @@ const importPayrollXlsx = async (req, res, next) => {
         employment_insurance INT NOT NULL DEFAULT 0,
         total_cost INT NOT NULL DEFAULT 0,
         imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uk_user_ym (user_id, `year_month`)
+        UNIQUE KEY uk_user_ym (user_id, period_ym)
       )`);
     } catch (e) {}
     // 既存テーブルに不足カラムを補完
     const ensureCols = [
+      ['period_ym', "VARCHAR(7) NOT NULL DEFAULT ''"],
       ['gross_pay', 'INT NOT NULL DEFAULT 0'],
       ['health_insurance', 'INT NOT NULL DEFAULT 0'],
       ['care_insurance', 'INT NOT NULL DEFAULT 0'],
@@ -2598,7 +2599,7 @@ const importPayrollXlsx = async (req, res, next) => {
         try {
           await pool.execute(
             `INSERT INTO monthly_payroll_records
-              (user_id, `year_month`, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
+              (user_id, period_ym, gross_pay, health_insurance, care_insurance, pension_insurance, employment_insurance, total_cost)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                gross_pay = VALUES(gross_pay),
