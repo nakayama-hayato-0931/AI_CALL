@@ -934,11 +934,6 @@ export default function AnalyticsPage() {
               className="px-3 py-1 text-xs font-medium bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-40 transition-colors whitespace-nowrap">
               {pdfUploading ? '処理中...' : '取込'}
             </button>
-            <button onClick={() => setPayrollPasteOpen(true)} disabled={!pdfYearMonth}
-              className="px-3 py-1 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-40 transition-colors whitespace-nowrap"
-              title="PDFを直接貼り付けて取込（PDF解析が動かない時用）">
-              テキスト貼付
-            </button>
             <button onClick={openExtraCostsModal}
               className="px-3 py-1 text-xs font-medium bg-pink-600 text-white rounded hover:bg-pink-700 transition-colors whitespace-nowrap"
               title="コンサル料など、特定オペレーターに紐付かない月次コストを追加">
