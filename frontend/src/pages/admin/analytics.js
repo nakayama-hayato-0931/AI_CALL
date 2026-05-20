@@ -144,7 +144,7 @@ export default function AnalyticsPage() {
     }
   };
   const deleteExtraCost = async (id) => {
-    if (!confirm('削除しますか？')) return;
+    if (typeof window !== 'undefined' && !window.confirm('削除しますか？')) return;
     try {
       await api.delete(`/api/analytics/extra-costs/${id}`);
       toast.success('削除しました');
