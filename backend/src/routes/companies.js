@@ -13,6 +13,10 @@ const {
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
+  getCompanyActions,
+  createCompanyAction,
+  updateCompanyAction,
+  deleteCompanyAction,
 } = require('../controllers/companyController');
 const { authenticate } = require('../middlewares/auth');
 
@@ -42,6 +46,12 @@ router.put('/:id', updateCompany);
 
 // POST /api/companies/:id/lock - ロック取得
 router.post('/:id/lock', lockCallTarget);
+
+// アクション履歴
+router.get('/:id/actions', getCompanyActions);
+router.post('/:id/actions', createCompanyAction);
+router.put('/:id/actions/:actionId', updateCompanyAction);
+router.delete('/:id/actions/:actionId', deleteCompanyAction);
 
 // POST /api/companies/:id/unlock - ロック解除
 router.post('/:id/unlock', unlockCallTarget);

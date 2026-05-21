@@ -1029,6 +1029,138 @@ const diagnoseCallList = async (req, res, next) => {
   }
 };
 
+/**
+ * テーブル作成（冪等）
+ */
+const ensureCompanyActionsTable = async () => {
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS company_actions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      action_date DATE NOT NULL,
+      action_type VARCHAR(50) NOT NULL,
+      user_id INT DEFAULT NULL,
+      result VARCHAR(100) DEFAULT NULL,
+      memo TEXT DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_company (company_id),
+      INDEX idx_date (action_date)
+    )`);
+  } catch (e) { /* ignore */ }
+};
+
+/**
+ * GET /api/companies/:id/actions
+ * 企業のアクション履歴を取得
+ * 過去の架電履歴（calls）も統合して表示
+ */
+const getCompanyActions = async (req, res, next) => {
+  try {
+    await ensureCompanyActionsTable();
+    const { id } = req.params;
+
+    // 手動登録のアクション
+    const [actions] = await pool.query(
+      `SELECT a.id, a.company_id, a.action_date, a.action_type, a.user_id, a.result, a.memo, a.created_at,
+              u.name AS user_name, 'manual' AS source
+       FROM company_actions a
+       LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.company_id = ?
+       ORDER BY a.action_date DESC, a.id DESC`,
+      [id]
+    );
+
+    // 架電履歴も統合表示
+    const [calls] = await pool.query(
+      `SELECT cl.id, cl.company_id,
+              DATE(cl.call_started_at) AS action_date,
+              '架電' AS action_type,
+              cl.user_id,
+              cl.result_code AS result,
+              cl.memo,
+              cl.call_started_at AS created_at,
+              u.name AS user_name,
+              'call' AS source
+       FROM calls cl
+       LEFT JOIN users u ON cl.user_id = u.id
+       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
+       ORDER BY cl.call_started_at DESC`,
+      [id]
+    );
+
+    // マージしてソート
+    const merged = [...actions, ...calls].sort((a, b) => {
+      const ad = new Date(a.created_at || a.action_date).getTime();
+      const bd = new Date(b.created_at || b.action_date).getTime();
+      return bd - ad;
+    });
+
+    return ApiResponse.success(res, { actions: merged });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/companies/:id/actions
+ * 企業にアクションを記録
+ */
+const createCompanyAction = async (req, res, next) => {
+  try {
+    await ensureCompanyActionsTable();
+    const { id } = req.params;
+    const { action_date, action_type, result, memo, user_id } = req.body;
+    if (!action_date || !action_type) {
+      return ApiResponse.badRequest(res, 'action_date と action_type が必要です');
+    }
+    const targetUserId = user_id || req.user?.id || null;
+    const [r] = await pool.execute(
+      `INSERT INTO company_actions (company_id, action_date, action_type, user_id, result, memo)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, action_date, action_type, targetUserId, result || null, memo || null]
+    );
+    return ApiResponse.success(res, { id: r.insertId });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/companies/:id/actions/:actionId
+ */
+const updateCompanyAction = async (req, res, next) => {
+  try {
+    const { actionId } = req.params;
+    const { action_date, action_type, result, memo, user_id } = req.body;
+    const updates = [];
+    const params = [];
+    if (action_date !== undefined) { updates.push('action_date = ?'); params.push(action_date); }
+    if (action_type !== undefined) { updates.push('action_type = ?'); params.push(action_type); }
+    if (result !== undefined) { updates.push('result = ?'); params.push(result || null); }
+    if (memo !== undefined) { updates.push('memo = ?'); params.push(memo || null); }
+    if (user_id !== undefined) { updates.push('user_id = ?'); params.push(user_id || null); }
+    if (updates.length === 0) return ApiResponse.badRequest(res, '更新項目がありません');
+    params.push(actionId);
+    await pool.execute(`UPDATE company_actions SET ${updates.join(', ')} WHERE id = ?`, params);
+    return ApiResponse.success(res, null);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/companies/:id/actions/:actionId
+ */
+const deleteCompanyAction = async (req, res, next) => {
+  try {
+    const { actionId } = req.params;
+    await pool.execute('DELETE FROM company_actions WHERE id = ?', [actionId]);
+    return ApiResponse.success(res, null);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCompanies,
   getCompanyById,
@@ -1039,4 +1171,8 @@ module.exports = {
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
+  getCompanyActions,
+  createCompanyAction,
+  updateCompanyAction,
+  deleteCompanyAction,
 };

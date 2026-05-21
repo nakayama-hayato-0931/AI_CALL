@@ -49,6 +49,56 @@ export default function AdminCompanies() {
   const [categoryFilter, setCategoryFilter] = useState(''); // クリックされた業種カテゴリ
   const [selectedIds, setSelectedIds] = useState([]); // 一括削除用の選択ID
   const [assignModal, setAssignModal] = useState(null);
+  // アクション履歴モーダル
+  const [actionsModal, setActionsModal] = useState(null); // { company, actions, loading }
+  const [newAction, setNewAction] = useState({ action_date: '', action_type: '架電', result: '', memo: '' });
+
+  const openActionsModal = async (company) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setNewAction({ action_date: today, action_type: '架電', result: '', memo: '' });
+    setActionsModal({ company, actions: [], loading: true });
+    try {
+      const { data } = await api.get(`/api/companies/${company.id}/actions`);
+      if (data.success) {
+        setActionsModal(prev => prev ? { ...prev, actions: data.data.actions || [], loading: false } : null);
+      }
+    } catch (err) {
+      toast.error('アクション履歴の取得に失敗');
+      setActionsModal(prev => prev ? { ...prev, loading: false } : null);
+    }
+  };
+  const saveAction = async () => {
+    if (!actionsModal) return;
+    if (!newAction.action_date || !newAction.action_type) {
+      toast.error('日付とアクション種別を入力してください');
+      return;
+    }
+    try {
+      await api.post(`/api/companies/${actionsModal.company.id}/actions`, newAction);
+      toast.success('追加しました');
+      setNewAction({ ...newAction, result: '', memo: '' });
+      // 再取得
+      const { data } = await api.get(`/api/companies/${actionsModal.company.id}/actions`);
+      if (data.success) {
+        setActionsModal(prev => prev ? { ...prev, actions: data.data.actions || [] } : null);
+      }
+    } catch (err) {
+      toast.error('追加に失敗');
+    }
+  };
+  const deleteAction = async (actionId) => {
+    if (!actionsModal) return;
+    if (typeof window !== 'undefined' && !window.confirm('削除しますか？')) return;
+    try {
+      await api.delete(`/api/companies/${actionsModal.company.id}/actions/${actionId}`);
+      const { data } = await api.get(`/api/companies/${actionsModal.company.id}/actions`);
+      if (data.success) {
+        setActionsModal(prev => prev ? { ...prev, actions: data.data.actions || [] } : null);
+      }
+    } catch (err) {
+      toast.error('削除に失敗');
+    }
+  };
   const [selectedOp, setSelectedOp] = useState('');
 
   // === ルール設定 タブ ===
@@ -696,8 +746,12 @@ export default function AdminCompanies() {
                       )}
                     </td>
                     <td className="table-cell">
-                      <button onClick={() => { setAssignModal(c); setSelectedOp(''); }}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 割り当て</button>
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => { setAssignModal(c); setSelectedOp(''); }}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium text-left">+ 割り当て</button>
+                        <button onClick={() => openActionsModal(c)}
+                          className="text-xs text-purple-600 hover:text-purple-800 font-medium text-left">📋 履歴</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -740,6 +794,109 @@ export default function AdminCompanies() {
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setAssignModal(null)} className="btn-secondary !py-2 px-5">キャンセル</button>
                   <button onClick={handleAssign} disabled={!selectedOp} className="btn-primary !py-2 px-5 disabled:opacity-50">割り当て</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* アクション履歴モーダル */}
+          {actionsModal && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setActionsModal(null)}>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] mx-4 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-200 bg-purple-50 rounded-t-xl flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">アクション履歴</h2>
+                    <p className="text-sm text-gray-600 mt-0.5">{actionsModal.company.company_name}</p>
+                  </div>
+                  <button onClick={() => setActionsModal(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="px-6 py-4 overflow-auto flex-1 space-y-4">
+                  {/* 新規追加フォーム */}
+                  <div className="border rounded p-3 bg-gray-50">
+                    <h3 className="text-sm font-bold mb-2">新規アクション登録</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                      <div>
+                        <label className="text-xs text-gray-500">アクション日</label>
+                        <input type="date" value={newAction.action_date}
+                          onChange={e => setNewAction({...newAction, action_date: e.target.value})}
+                          className="w-full border rounded px-2 py-1 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">アクション内容</label>
+                        <select value={newAction.action_type}
+                          onChange={e => setNewAction({...newAction, action_type: e.target.value})}
+                          className="w-full border rounded px-2 py-1 text-sm">
+                          <option value="架電">架電</option>
+                          <option value="FAX">FAX</option>
+                          <option value="メール">メール</option>
+                          <option value="訪問">訪問</option>
+                          <option value="郵送">郵送</option>
+                          <option value="その他">その他</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">結果</label>
+                        <input type="text" value={newAction.result}
+                          onChange={e => setNewAction({...newAction, result: e.target.value})}
+                          placeholder="例: 不在、興味あり"
+                          className="w-full border rounded px-2 py-1 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">メモ</label>
+                        <input type="text" value={newAction.memo}
+                          onChange={e => setNewAction({...newAction, memo: e.target.value})}
+                          className="w-full border rounded px-2 py-1 text-sm" />
+                      </div>
+                      <button onClick={saveAction} className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm hover:bg-purple-700">追加</button>
+                    </div>
+                  </div>
+
+                  {/* 履歴一覧 */}
+                  <div>
+                    <h3 className="text-sm font-bold mb-2">履歴（架電履歴も統合表示）</h3>
+                    {actionsModal.loading ? (
+                      <p className="text-center py-4 text-gray-400 text-sm">読み込み中...</p>
+                    ) : actionsModal.actions.length === 0 ? (
+                      <p className="text-center py-4 text-gray-400 text-sm">履歴はありません</p>
+                    ) : (
+                      <table className="w-full text-sm border">
+                        <thead className="bg-gray-100 text-xs">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left">日付</th>
+                            <th className="px-2 py-1.5 text-left">アクション</th>
+                            <th className="px-2 py-1.5 text-left">担当</th>
+                            <th className="px-2 py-1.5 text-left">結果</th>
+                            <th className="px-2 py-1.5 text-left">メモ</th>
+                            <th className="px-2 py-1.5"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {actionsModal.actions.map(a => {
+                            const isCall = a.source === 'call';
+                            return (
+                              <tr key={`${a.source}-${a.id}`} className={`border-t ${isCall ? 'bg-blue-50/30' : ''} hover:bg-gray-50`}>
+                                <td className="px-2 py-1.5 text-xs">{a.action_date ? new Date(a.action_date).toLocaleDateString('ja-JP') : '-'}</td>
+                                <td className="px-2 py-1.5">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs ${isCall ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                    {a.action_type}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1.5 text-xs">{a.user_name || '-'}</td>
+                                <td className="px-2 py-1.5 text-xs">{a.result || '-'}</td>
+                                <td className="px-2 py-1.5 text-xs text-gray-500 max-w-xs truncate">{a.memo || '-'}</td>
+                                <td className="px-2 py-1.5 text-center">
+                                  {!isCall && (
+                                    <button onClick={() => deleteAction(a.id)} className="text-xs text-red-600 hover:underline">削除</button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    <p className="text-[10px] text-gray-400 mt-2">※ 青背景は架電履歴（自動）、白背景は手動登録アクション</p>
+                  </div>
                 </div>
               </div>
             </div>
