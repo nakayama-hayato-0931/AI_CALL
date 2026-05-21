@@ -6,6 +6,7 @@ const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { findTranscript, findTranscriptsBatch } = require('../services/googleSheetsService');
+const faxCrmClient = require('../services/faxCrmClient');
 
 /**
  * POST /api/calls/start
@@ -227,6 +228,18 @@ const endCall = async (req, res, next) => {
           } catch (e) { /* 無視 */ }
         }
       }).catch(() => {});
+    }
+
+    // fax-crm への通話結果通知 (非同期/失敗握りつぶし、本処理を阻害しない)
+    if (faxCrmClient.isEnabled()) {
+      faxCrmClient.notifyCallResult({
+        callId: parseInt(id),
+        companyId: call.company_id,
+        resultCode: result_code,
+        callStartedAt: call.call_started_at,
+        operatorEmail: req.user?.email || null,
+        memo,
+      }).catch((e) => logger.warn(`[endCall] fax-crm 通知失敗(無視): ${e.message}`));
     }
 
     return ApiResponse.success(res, { callId: parseInt(id), projectId, warnings }, '通話結果を保存しました');
