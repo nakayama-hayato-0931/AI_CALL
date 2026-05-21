@@ -60,7 +60,9 @@ export default function RecallsPage() {
     try {
       const { data } = await api.get('/api/admin/users');
       if (data.success) {
-        setOperators((data.data || []).filter(u => ['operator', 'intern'].includes(u.role) && !u.is_test_account));
+        setOperators((data.data || []).filter(u =>
+          ['operator', 'intern'].includes(u.role) && !u.is_test_account && u.is_active
+        ));
       }
     } catch (err) { /* ignore */ }
   };

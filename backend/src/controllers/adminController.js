@@ -1281,6 +1281,11 @@ async function getAllRecalls(req, res, next) {
     }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    // 無効ユーザーのリコールは除外
+    const activeUserClause = 'u.is_active = 1';
+    const fullWhere = whereClause
+      ? `${whereClause} AND ${activeUserClause}`
+      : `WHERE ${activeUserClause}`;
     const [rows] = await pool.query(
       `SELECT rt.id, rt.company_id, rt.call_id, rt.user_id, rt.recall_at, rt.status, rt.created_at,
               COALESCE(c.company_name, '(不明)') AS company_name,
@@ -1291,8 +1296,8 @@ async function getAllRecalls(req, res, next) {
               (TIMESTAMPDIFF(MINUTE, rt.recall_at, NOW())) AS overdue_minutes
        FROM recall_tasks rt
        LEFT JOIN companies c ON rt.company_id = c.id
-       LEFT JOIN users u ON rt.user_id = u.id
-       ${whereClause}
+       INNER JOIN users u ON rt.user_id = u.id
+       ${fullWhere}
        ORDER BY
          CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 0
               WHEN rt.status = 'pending' THEN 1
@@ -1302,7 +1307,7 @@ async function getAllRecalls(req, res, next) {
       params
     );
 
-    // サマリ情報
+    // サマリ情報（無効ユーザーのリコールは除外）
     const [summary] = await pool.query(
       `SELECT
          COUNT(*) AS total,
@@ -1310,10 +1315,12 @@ async function getAllRecalls(req, res, next) {
          SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= NOW() THEN 1 ELSE 0 END) AS upcoming_count,
          SUM(CASE WHEN rt.status = 'done' THEN 1 ELSE 0 END) AS done_count,
          SUM(CASE WHEN rt.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
-       FROM recall_tasks rt`
+       FROM recall_tasks rt
+       INNER JOIN users u ON rt.user_id = u.id
+       WHERE u.is_active = 1`
     );
 
-    // オペレーター別カウント
+    // オペレーター別カウント（有効なオペレーターのみ）
     const [byUser] = await pool.query(
       `SELECT u.id AS user_id, u.name AS user_name,
               SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
@@ -1321,7 +1328,7 @@ async function getAllRecalls(req, res, next) {
               SUM(CASE WHEN rt.status = 'pending' THEN 1 ELSE 0 END) AS pending_count
        FROM users u
        LEFT JOIN recall_tasks rt ON rt.user_id = u.id
-       WHERE u.role IN ('operator','intern') AND u.is_test_account = 0
+       WHERE u.role IN ('operator','intern') AND u.is_test_account = 0 AND u.is_active = 1
        GROUP BY u.id, u.name
        HAVING pending_count > 0 OR overdue_count > 0 OR upcoming_count > 0
        ORDER BY overdue_count DESC, pending_count DESC, u.name`
