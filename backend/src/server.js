@@ -64,8 +64,13 @@ app.use(helmet({
 // リクエストレートリミット
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分
-  max: 500, // 最大500リクエスト
+  max: 3000, // 最大3000リクエスト/15分（1ユーザーが複数タブを開く+ポーリングを想定）
   message: { success: false, message: 'リクエスト回数の上限に達しました。しばらくお待ちください。' },
+  // ヘルスチェック・ドロップダウン用エンドポイントなど高頻度アクセスをスキップ
+  skip: (req) => {
+    const p = req.path;
+    return p === '/auth/operators' || p === '/companies/operators' || p === '/calls/operators';
+  },
 });
 app.use('/api/', limiter);
 
