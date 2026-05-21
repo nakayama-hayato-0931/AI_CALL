@@ -348,8 +348,12 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
          WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM calls cl
+             WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
+           )
            ${modeFilterSQL}
-         ORDER BY c.created_at DESC
+         ORDER BY c.id DESC
          LIMIT 1`,
         [...modeFilterParams]
       );
@@ -622,6 +626,8 @@ const getCallList = async (req, res, next) => {
     }
 
     // 自作リストモード: 全件返す（上限1000件）
+    // 一度でも架電結果が入力された企業は除外
+    // 表示順: 自作リストに追加した日付の新しい順
     if (isMyList) {
       const [mylistRows] = await pool.query(
         `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -630,9 +636,13 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
          WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM calls cl
+             WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
+           )
            ${lockFilterSQL}
            ${modeFilterSQL}
-         ORDER BY c.created_at DESC
+         ORDER BY c.id DESC
          LIMIT 1000`,
         [userId, ...modeFilterParams]
       );
