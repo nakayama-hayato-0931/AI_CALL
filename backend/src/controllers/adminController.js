@@ -1243,7 +1243,159 @@ module.exports = {
   getAutoPickupPrefectures,
   setAutoPickupPrefectures,
   getIncentiveData,
+  getAllRecalls,
+  updateRecallTask,
+  deleteRecallTask,
+  reassignRecallTask,
 };
+
+/**
+ * GET /api/admin/recalls
+ * リコール一覧（管理者画面用）
+ * Query: status (pending/done/cancelled/overdue/all), user_id, date_from, date_to
+ */
+async function getAllRecalls(req, res, next) {
+  try {
+    const { status, user_id, date_from, date_to } = req.query;
+    const conditions = [];
+    const params = [];
+    if (status && status !== 'all') {
+      if (status === 'overdue') {
+        conditions.push("rt.status = 'pending' AND rt.recall_at < NOW()");
+      } else {
+        conditions.push('rt.status = ?');
+        params.push(status);
+      }
+    }
+    if (user_id) {
+      conditions.push('rt.user_id = ?');
+      params.push(user_id);
+    }
+    if (date_from) {
+      conditions.push('DATE(rt.recall_at) >= ?');
+      params.push(date_from);
+    }
+    if (date_to) {
+      conditions.push('DATE(rt.recall_at) <= ?');
+      params.push(date_to);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT rt.id, rt.company_id, rt.call_id, rt.user_id, rt.recall_at, rt.status, rt.created_at,
+              COALESCE(c.company_name, '(不明)') AS company_name,
+              c.phone_number, c.industry, c.address, c.region,
+              u.name AS user_name,
+              (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) AS last_memo,
+              (SELECT cl.result_code FROM calls cl WHERE cl.id = rt.call_id) AS last_result,
+              (TIMESTAMPDIFF(MINUTE, rt.recall_at, NOW())) AS overdue_minutes
+       FROM recall_tasks rt
+       LEFT JOIN companies c ON rt.company_id = c.id
+       LEFT JOIN users u ON rt.user_id = u.id
+       ${whereClause}
+       ORDER BY
+         CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 0
+              WHEN rt.status = 'pending' THEN 1
+              ELSE 2 END,
+         rt.recall_at ASC
+       LIMIT 1000`,
+      params
+    );
+
+    // サマリ情報
+    const [summary] = await pool.query(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
+         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= NOW() THEN 1 ELSE 0 END) AS upcoming_count,
+         SUM(CASE WHEN rt.status = 'done' THEN 1 ELSE 0 END) AS done_count,
+         SUM(CASE WHEN rt.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
+       FROM recall_tasks rt`
+    );
+
+    // オペレーター別カウント
+    const [byUser] = await pool.query(
+      `SELECT u.id AS user_id, u.name AS user_name,
+              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
+              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= NOW() THEN 1 ELSE 0 END) AS upcoming_count,
+              SUM(CASE WHEN rt.status = 'pending' THEN 1 ELSE 0 END) AS pending_count
+       FROM users u
+       LEFT JOIN recall_tasks rt ON rt.user_id = u.id
+       WHERE u.role IN ('operator','intern') AND u.is_test_account = 0
+       GROUP BY u.id, u.name
+       HAVING pending_count > 0 OR overdue_count > 0 OR upcoming_count > 0
+       ORDER BY overdue_count DESC, pending_count DESC, u.name`
+    );
+
+    return ApiResponse.success(res, {
+      recalls: rows,
+      summary: summary[0],
+      byUser,
+    });
+  } catch (err) {
+    logger.error(`[getAllRecalls] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * PUT /api/admin/recalls/:id
+ * リコールタスクのステータス・日時更新
+ */
+async function updateRecallTask(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { status, recall_at } = req.body;
+    const updates = [];
+    const params = [];
+    if (status !== undefined) {
+      const valid = ['pending', 'done', 'cancelled'];
+      if (!valid.includes(status)) return ApiResponse.badRequest(res, '無効なステータス');
+      updates.push('status = ?');
+      params.push(status);
+    }
+    if (recall_at !== undefined) {
+      updates.push('recall_at = ?');
+      params.push(recall_at || null);
+    }
+    if (updates.length === 0) return ApiResponse.badRequest(res, '更新項目なし');
+    params.push(id);
+    await pool.execute(`UPDATE recall_tasks SET ${updates.join(', ')} WHERE id = ?`, params);
+    return ApiResponse.success(res, null, '更新しました');
+  } catch (err) {
+    logger.error(`[updateRecallTask] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * DELETE /api/admin/recalls/:id
+ */
+async function deleteRecallTask(req, res, next) {
+  try {
+    const { id } = req.params;
+    await pool.execute('DELETE FROM recall_tasks WHERE id = ?', [id]);
+    return ApiResponse.success(res, null, '削除しました');
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * PUT /api/admin/recalls/:id/reassign
+ * 別オペレーターに割り当て直し
+ */
+async function reassignRecallTask(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body;
+    if (!user_id) return ApiResponse.badRequest(res, 'user_id 必須');
+    await pool.execute('UPDATE recall_tasks SET user_id = ? WHERE id = ?', [user_id, id]);
+    return ApiResponse.success(res, null, '担当変更しました');
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * GET /api/admin/incentive?month=YYYY-MM

@@ -24,6 +24,10 @@ const {
   getSpecialListBatches, getSpecialListBatchDetails, exportSpecialListBatch,
   saveKpiAdjustment,
   getIncentiveData,
+  getAllRecalls,
+  updateRecallTask,
+  deleteRecallTask,
+  reassignRecallTask,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -96,5 +100,11 @@ router.get('/special-list-batches/:id/export', requireManager, exportSpecialList
 
 // インセンティブ管理 (内定日ベース集計)
 router.get('/incentive', requireManager, getIncentiveData);
+
+// リコール管理（管理者用一括ビュー）
+router.get('/recalls', requireManager, getAllRecalls);
+router.put('/recalls/:id', requireEditor, updateRecallTask);
+router.delete('/recalls/:id', requireEditor, deleteRecallTask);
+router.put('/recalls/:id/reassign', requireEditor, reassignRecallTask);
 
 module.exports = router;

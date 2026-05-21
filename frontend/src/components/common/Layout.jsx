@@ -120,6 +120,7 @@ const getNavSections = (role, adminView) => {
         items: [
           { href: '/admin/projects', label: '案件管理', icon: 'project' },
           { href: '/admin/project-assignment', label: '案件割り振り', icon: 'project' },
+          ...(!isSalesView ? [{ href: '/admin/recalls', label: 'リコール管理', icon: 'recall' }] : []),
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
           { href: '/admin/special-list-progress', label: '特別リスト進捗', icon: 'status' },
