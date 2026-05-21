@@ -329,8 +329,12 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
          WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM calls cl
+             WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
+           )
            ${lockFilterSQL}
-         ORDER BY c.created_at DESC
+         ORDER BY c.id DESC
          LIMIT 1`,
         [userId]
       );
@@ -603,6 +607,7 @@ const getCallList = async (req, res, next) => {
     // 特別リストモード: is_special=1の企業のみ
     // オペレーター: 自分に割り当てられた企業 or 未割り当ての企業
     // 管理者: 全て表示
+    // 一度でも架電結果が入力された企業は除外、表示順は直近追加順
     if (isSpecialList) {
       const isManager = req.user.role === 'admin' || req.user.role === 'manager';
       const specialAssignFilter = isManager
@@ -616,9 +621,13 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
          WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM calls cl
+             WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
+           )
            ${lockFilterSQL}
            ${specialAssignFilter}
-         ORDER BY c.created_at DESC
+         ORDER BY c.id DESC
          LIMIT ?`,
         [userId, LIST_SIZE]
       );
