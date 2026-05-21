@@ -348,6 +348,10 @@ const runMigrations = async () => {
   // callsテーブルにcall_typeカラム追加（存在しなければ）
   try { await pool.execute(`ALTER TABLE calls ADD COLUMN call_type ENUM('operator','sales') DEFAULT 'operator'`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE calls ADD COLUMN transcript TEXT DEFAULT NULL`); } catch (e) {}
+  // 担当者情報（リコール選択時 or 担当者接続チェック時に保存）
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN contact_person_name VARCHAR(100) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN contact_person_gender VARCHAR(10) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN contact_person_impression TEXT DEFAULT NULL`); } catch (e) {}
   // callsテーブルのインデックス追加（パフォーマンス改善）
   try { await pool.execute('CREATE INDEX idx_calls_started_at ON calls(call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_started ON calls(user_id, call_started_at)'); } catch (e) {}

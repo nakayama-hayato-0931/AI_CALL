@@ -101,6 +101,10 @@ export default function CallPage() {
   const [isEffective, setIsEffective] = useState(false);
   const [isPerson, setIsPerson] = useState(false);
   const [isProspect, setIsProspect] = useState(false);
+  // 担当者情報（リコール or 担当者接続時のみ）
+  const [contactPersonName, setContactPersonName] = useState('');
+  const [contactPersonGender, setContactPersonGender] = useState('');
+  const [contactPersonImpression, setContactPersonImpression] = useState('');
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(null);
 
@@ -309,6 +313,9 @@ export default function CallPage() {
     setRecallAt('');
     setIsEffective(false);
     setIsPerson(false);
+    setContactPersonName('');
+    setContactPersonGender('');
+    setContactPersonImpression('');
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
@@ -346,6 +353,9 @@ export default function CallPage() {
     setIsEffective(false);
     setIsPerson(false);
     setIsProspect(false);
+    setContactPersonName('');
+    setContactPersonGender('');
+    setContactPersonImpression('');
   };
 
   // 自動で次の架電先へ進む（ロック取得まで。架電開始は手動）
@@ -569,6 +579,7 @@ export default function CallPage() {
       toast.error('リコール日時を入力してください');
       return;
     }
+    const showContactFields = resultCode === 'RECALL' || isPerson;
     const submitEndCall = async (overwrite = false) => {
       return api.put(`/api/calls/${callId}/end`, {
         result_code: resultCode,
@@ -578,6 +589,9 @@ export default function CallPage() {
         is_person_in_charge: isPerson,
         is_prospect: resultCode === 'PROJECT' ? isProspect : false,
         overwrite,
+        contact_person_name: showContactFields ? (contactPersonName || null) : null,
+        contact_person_gender: showContactFields ? (contactPersonGender || null) : null,
+        contact_person_impression: showContactFields ? (contactPersonImpression || null) : null,
       });
     };
     try {
@@ -1146,6 +1160,48 @@ export default function CallPage() {
                       onChange={(e) => setRecallAt(e.target.value)}
                       className="input"
                     />
+                  </div>
+                )}
+
+                {/* 担当者情報（リコール時 or 担当者接続にチェック時） */}
+                {(resultCode === 'RECALL' || isPerson) && (
+                  <div className="mb-5 p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+                    <h3 className="text-sm font-bold text-indigo-700">担当者情報</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="input-label">担当者名</label>
+                        <input
+                          type="text"
+                          value={contactPersonName}
+                          onChange={(e) => setContactPersonName(e.target.value)}
+                          className="input"
+                          placeholder="例: 山田太郎"
+                        />
+                      </div>
+                      <div>
+                        <label className="input-label">性別</label>
+                        <select
+                          value={contactPersonGender}
+                          onChange={(e) => setContactPersonGender(e.target.value)}
+                          className="input"
+                        >
+                          <option value="">選択...</option>
+                          <option value="男性">男性</option>
+                          <option value="女性">女性</option>
+                          <option value="不明">不明</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="input-label">印象 / メモ</label>
+                      <textarea
+                        value={contactPersonImpression}
+                        onChange={(e) => setContactPersonImpression(e.target.value)}
+                        rows={2}
+                        className="input resize-none"
+                        placeholder="話し方、雰囲気、関心の度合いなど"
+                      />
+                    </div>
                   </div>
                 )}
 

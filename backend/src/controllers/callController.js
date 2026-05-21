@@ -111,6 +111,9 @@ const endCall = async (req, res, next) => {
     is_person_in_charge,
     is_prospect,
     overwrite, // true なら同企業の既存レコードを上書き保存
+    contact_person_name,
+    contact_person_gender,
+    contact_person_impression,
   } = req.body;
 
   // バリデーション
@@ -198,26 +201,58 @@ const endCall = async (req, res, next) => {
     }
 
     // ステップ1: 通話レコード更新（トランザクションなしでシンプルに）
-    const [updateResult] = await pool.execute(
-      `UPDATE calls SET
-        call_ended_at = NOW(),
-        result_code = ?,
-        memo = ?,
-        recall_at = ?,
-        is_effective_connection = ?,
-        is_person_in_charge = ?,
-        is_project_created = ?
-       WHERE id = ?`,
-      [
-        result_code,
-        memo || null,
-        recall_at || null,
-        is_effective_connection ? 1 : 0,
-        is_person_in_charge ? 1 : 0,
-        (result_code === 'PROJECT' && !is_prospect) ? 1 : 0,
-        id,
-      ]
-    );
+    let updateResult;
+    try {
+      [updateResult] = await pool.execute(
+        `UPDATE calls SET
+          call_ended_at = NOW(),
+          result_code = ?,
+          memo = ?,
+          recall_at = ?,
+          is_effective_connection = ?,
+          is_person_in_charge = ?,
+          is_project_created = ?,
+          contact_person_name = ?,
+          contact_person_gender = ?,
+          contact_person_impression = ?
+         WHERE id = ?`,
+        [
+          result_code,
+          memo || null,
+          recall_at || null,
+          is_effective_connection ? 1 : 0,
+          is_person_in_charge ? 1 : 0,
+          (result_code === 'PROJECT' && !is_prospect) ? 1 : 0,
+          contact_person_name || null,
+          contact_person_gender || null,
+          contact_person_impression || null,
+          id,
+        ]
+      );
+    } catch (colErr) {
+      // 担当者情報カラムが無い場合のフォールバック
+      logger.warn(`[endCall] contact_person columns missing? ${colErr.message}`);
+      [updateResult] = await pool.execute(
+        `UPDATE calls SET
+          call_ended_at = NOW(),
+          result_code = ?,
+          memo = ?,
+          recall_at = ?,
+          is_effective_connection = ?,
+          is_person_in_charge = ?,
+          is_project_created = ?
+         WHERE id = ?`,
+        [
+          result_code,
+          memo || null,
+          recall_at || null,
+          is_effective_connection ? 1 : 0,
+          is_person_in_charge ? 1 : 0,
+          (result_code === 'PROJECT' && !is_prospect) ? 1 : 0,
+          id,
+        ]
+      );
+    }
 
     if (updateResult.affectedRows === 0) {
       return ApiResponse.notFound(res, '通話が見つかりません');
