@@ -101,9 +101,10 @@ export default function CallPage() {
   const [isEffective, setIsEffective] = useState(false);
   const [isPerson, setIsPerson] = useState(false);
   const [isProspect, setIsProspect] = useState(false);
-  // 担当者情報（リコール or 担当者接続時のみ）
+  // 担当者情報（リコール or 担当者接続時のみ。全項目任意）
   const [contactPersonName, setContactPersonName] = useState('');
   const [contactPersonGender, setContactPersonGender] = useState('');
+  const [contactPersonPhone, setContactPersonPhone] = useState('');
   const [contactPersonImpression, setContactPersonImpression] = useState('');
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(null);
@@ -315,6 +316,7 @@ export default function CallPage() {
     setIsPerson(false);
     setContactPersonName('');
     setContactPersonGender('');
+    setContactPersonPhone('');
     setContactPersonImpression('');
     try {
       // 前回の未保存callがあればキャンセル
@@ -355,6 +357,7 @@ export default function CallPage() {
     setIsProspect(false);
     setContactPersonName('');
     setContactPersonGender('');
+    setContactPersonPhone('');
     setContactPersonImpression('');
   };
 
@@ -591,6 +594,7 @@ export default function CallPage() {
         overwrite,
         contact_person_name: showContactFields ? (contactPersonName || null) : null,
         contact_person_gender: showContactFields ? (contactPersonGender || null) : null,
+        contact_person_phone: showContactFields ? (contactPersonPhone || null) : null,
         contact_person_impression: showContactFields ? (contactPersonImpression || null) : null,
       });
     };
@@ -1166,7 +1170,10 @@ export default function CallPage() {
                 {/* 担当者情報（リコール時 or 担当者接続にチェック時） */}
                 {(resultCode === 'RECALL' || isPerson) && (
                   <div className="mb-5 p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
-                    <h3 className="text-sm font-bold text-indigo-700">担当者情報</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-indigo-700">担当者情報</h3>
+                      <span className="text-[10px] text-indigo-500">すべて任意・聞けた範囲で入力</span>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="input-label">担当者名</label>
@@ -1191,6 +1198,16 @@ export default function CallPage() {
                           <option value="不明">不明</option>
                         </select>
                       </div>
+                    </div>
+                    <div>
+                      <label className="input-label">担当者の電話番号</label>
+                      <input
+                        type="tel"
+                        value={contactPersonPhone}
+                        onChange={(e) => setContactPersonPhone(e.target.value)}
+                        className="input"
+                        placeholder="例: 090-1234-5678"
+                      />
                     </div>
                     <div>
                       <label className="input-label">印象 / メモ</label>

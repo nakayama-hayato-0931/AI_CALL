@@ -1070,7 +1070,7 @@ const getCompanyActions = async (req, res, next) => {
       [id]
     );
 
-    // 架電履歴も統合表示
+    // 架電履歴も統合表示（担当者情報を含む）
     const [calls] = await pool.query(
       `SELECT cl.id, cl.company_id,
               DATE(cl.call_started_at) AS action_date,
@@ -1079,6 +1079,11 @@ const getCompanyActions = async (req, res, next) => {
               cl.result_code AS result,
               cl.memo,
               cl.call_started_at AS created_at,
+              cl.contact_person_name,
+              cl.contact_person_gender,
+              cl.contact_person_phone,
+              cl.contact_person_impression,
+              cl.is_person_in_charge,
               u.name AS user_name,
               'call' AS source
        FROM calls cl

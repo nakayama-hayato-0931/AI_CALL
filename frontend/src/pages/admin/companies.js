@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
@@ -873,23 +873,37 @@ export default function AdminCompanies() {
                         <tbody>
                           {actionsModal.actions.map(a => {
                             const isCall = a.source === 'call';
+                            const hasContact = isCall && (a.contact_person_name || a.contact_person_phone || a.contact_person_gender || a.contact_person_impression);
                             return (
-                              <tr key={`${a.source}-${a.id}`} className={`border-t ${isCall ? 'bg-blue-50/30' : ''} hover:bg-gray-50`}>
-                                <td className="px-2 py-1.5 text-xs">{a.action_date ? new Date(a.action_date).toLocaleDateString('ja-JP') : '-'}</td>
-                                <td className="px-2 py-1.5">
-                                  <span className={`inline-block px-2 py-0.5 rounded text-xs ${isCall ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
-                                    {a.action_type}
-                                  </span>
-                                </td>
-                                <td className="px-2 py-1.5 text-xs">{a.user_name || '-'}</td>
-                                <td className="px-2 py-1.5 text-xs">{a.result || '-'}</td>
-                                <td className="px-2 py-1.5 text-xs text-gray-500 max-w-xs truncate">{a.memo || '-'}</td>
-                                <td className="px-2 py-1.5 text-center">
-                                  {!isCall && (
-                                    <button onClick={() => deleteAction(a.id)} className="text-xs text-red-600 hover:underline">削除</button>
-                                  )}
-                                </td>
-                              </tr>
+                              <React.Fragment key={`${a.source}-${a.id}`}>
+                                <tr className={`border-t ${isCall ? 'bg-blue-50/30' : ''} hover:bg-gray-50`}>
+                                  <td className="px-2 py-1.5 text-xs">{a.action_date ? new Date(a.action_date).toLocaleDateString('ja-JP') : '-'}</td>
+                                  <td className="px-2 py-1.5">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-xs ${isCall ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                      {a.action_type}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-xs">{a.user_name || '-'}</td>
+                                  <td className="px-2 py-1.5 text-xs">{a.result || '-'}</td>
+                                  <td className="px-2 py-1.5 text-xs text-gray-500 max-w-xs truncate">{a.memo || '-'}</td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    {!isCall && (
+                                      <button onClick={() => deleteAction(a.id)} className="text-xs text-red-600 hover:underline">削除</button>
+                                    )}
+                                  </td>
+                                </tr>
+                                {hasContact && (
+                                  <tr className={isCall ? 'bg-indigo-50/40' : ''}>
+                                    <td colSpan={6} className="px-2 py-1.5 text-xs text-indigo-800">
+                                      <span className="font-semibold mr-1">👤 担当者:</span>
+                                      {a.contact_person_name && <span className="mr-3">{a.contact_person_name}</span>}
+                                      {a.contact_person_gender && <span className="mr-3">({a.contact_person_gender})</span>}
+                                      {a.contact_person_phone && <span className="mr-3">📞 {a.contact_person_phone}</span>}
+                                      {a.contact_person_impression && <span className="text-gray-600">— {a.contact_person_impression}</span>}
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </tbody>

@@ -114,6 +114,7 @@ const endCall = async (req, res, next) => {
     contact_person_name,
     contact_person_gender,
     contact_person_impression,
+    contact_person_phone,
   } = req.body;
 
   // バリデーション
@@ -214,7 +215,8 @@ const endCall = async (req, res, next) => {
           is_project_created = ?,
           contact_person_name = ?,
           contact_person_gender = ?,
-          contact_person_impression = ?
+          contact_person_impression = ?,
+          contact_person_phone = ?
          WHERE id = ?`,
         [
           result_code,
@@ -226,6 +228,7 @@ const endCall = async (req, res, next) => {
           contact_person_name || null,
           contact_person_gender || null,
           contact_person_impression || null,
+          contact_person_phone || null,
           id,
         ]
       );
