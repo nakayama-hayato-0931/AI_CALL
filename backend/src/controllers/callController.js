@@ -110,6 +110,7 @@ const endCall = async (req, res, next) => {
     is_effective_connection,
     is_person_in_charge,
     is_prospect,
+    overwrite, // true なら同企業の既存レコードを上書き保存
   } = req.body;
 
   // バリデーション
@@ -122,6 +123,80 @@ const endCall = async (req, res, next) => {
   }
 
   try {
+    // 重複チェック (PROJECT / RECALL のみ)
+    // 既存があり overwrite フラグが立っていない場合は 409 で問い合わせる
+    if (!overwrite && (result_code === 'PROJECT' || result_code === 'RECALL')) {
+      // 通話から company_id を取得
+      const [callPre] = await pool.execute(
+        'SELECT company_id FROM calls WHERE id = ?', [id]
+      );
+      const companyId = callPre[0]?.company_id;
+      if (companyId) {
+        if (result_code === 'PROJECT') {
+          const [exists] = await pool.execute(
+            `SELECT p.id, p.status, p.created_at, p.job_number,
+                    COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+                    u.name AS owner_name
+             FROM projects p
+             LEFT JOIN companies c ON p.company_id = c.id
+             LEFT JOIN users u ON p.owner_user_id = u.id
+             WHERE p.company_id = ? AND p.is_legacy = 0
+               AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI'))
+             ORDER BY p.created_at DESC LIMIT 1`,
+            [companyId]
+          );
+          if (exists.length > 0) {
+            return res.status(409).json({
+              success: false,
+              code: 'DUPLICATE_PROJECT',
+              message: `この企業には既に案件があります（${exists[0].status || '未確定'}）。上書き保存しますか？`,
+              existing: exists[0],
+            });
+          }
+        } else if (result_code === 'RECALL') {
+          const [exists] = await pool.execute(
+            `SELECT rt.id, rt.recall_at, rt.status, u.name AS user_name
+             FROM recall_tasks rt
+             LEFT JOIN users u ON rt.user_id = u.id
+             WHERE rt.company_id = ? AND rt.status = 'pending'
+             ORDER BY rt.recall_at DESC LIMIT 1`,
+            [companyId]
+          );
+          if (exists.length > 0) {
+            return res.status(409).json({
+              success: false,
+              code: 'DUPLICATE_RECALL',
+              message: `この企業には既にリコール予定があります（${exists[0].user_name || '?'} / ${new Date(exists[0].recall_at).toLocaleString('ja-JP')}）。上書き保存しますか？`,
+              existing: exists[0],
+            });
+          }
+        }
+      }
+    }
+
+    // overwrite=true の場合は既存レコードを無効化
+    if (overwrite && (result_code === 'PROJECT' || result_code === 'RECALL')) {
+      const [callPre] = await pool.execute('SELECT company_id FROM calls WHERE id = ?', [id]);
+      const companyId = callPre[0]?.company_id;
+      if (companyId) {
+        if (result_code === 'PROJECT') {
+          // 既存案件を LOST にして残す（履歴保持）。新しい案件は通常通り作成される。
+          await pool.execute(
+            `UPDATE projects SET status = 'LOST', memo = CONCAT(COALESCE(memo, ''), '\n[上書きにより無効化]')
+             WHERE company_id = ? AND is_legacy = 0
+               AND (status IS NULL OR status NOT IN ('LOST','BARASHI'))`,
+            [companyId]
+          );
+        } else if (result_code === 'RECALL') {
+          // 既存リコールをキャンセル扱い
+          await pool.execute(
+            `UPDATE recall_tasks SET status = 'cancelled' WHERE company_id = ? AND status = 'pending'`,
+            [companyId]
+          );
+        }
+      }
+    }
+
     // ステップ1: 通話レコード更新（トランザクションなしでシンプルに）
     const [updateResult] = await pool.execute(
       `UPDATE calls SET

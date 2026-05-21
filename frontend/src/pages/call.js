@@ -569,15 +569,35 @@ export default function CallPage() {
       toast.error('リコール日時を入力してください');
       return;
     }
-    try {
-      const response = await api.put(`/api/calls/${callId}/end`, {
+    const submitEndCall = async (overwrite = false) => {
+      return api.put(`/api/calls/${callId}/end`, {
         result_code: resultCode,
         memo,
         recall_at: recallAt || null,
         is_effective_connection: isEffective,
         is_person_in_charge: isPerson,
         is_prospect: resultCode === 'PROJECT' ? isProspect : false,
+        overwrite,
       });
+    };
+    try {
+      let response;
+      try {
+        response = await submitEndCall(false);
+      } catch (err) {
+        // 409 = 同企業に既存の案件/リコール → 上書き確認
+        if (err.response?.status === 409) {
+          const d = err.response.data || {};
+          const ok = typeof window !== 'undefined' && window.confirm(`${d.message || '既存レコードがあります。'}\n\nOK = 上書き保存 / キャンセル = 中止`);
+          if (!ok) {
+            toast.error('保存をキャンセルしました');
+            return;
+          }
+          response = await submitEndCall(true);
+        } else {
+          throw err;
+        }
+      }
       toast.success('通話結果を保存しました');
       const prevId = selectedTargetId;
       const wasAutoMode = autoMode;
