@@ -383,7 +383,7 @@ export default function CallPage() {
         setSelectedTargetId(null);
         setCallHistory([]);
         setReason('');
-        toast('架電対象がなくなりました', { icon: '📋' });
+        toast('架電対象がなくなりました');
         return;
       }
 
@@ -471,7 +471,7 @@ export default function CallPage() {
         setSelectedTargetId(null);
         setCallHistory([]);
         setReason('');
-        toast('架電対象がなくなりました。自動架電を終了します。', { icon: '📋' });
+        toast('架電対象がなくなりました。自動架電を終了します。');
         return;
       }
 

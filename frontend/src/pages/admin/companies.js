@@ -750,7 +750,7 @@ export default function AdminCompanies() {
                         <button onClick={() => { setAssignModal(c); setSelectedOp(''); }}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium text-left">+ 割り当て</button>
                         <button onClick={() => openActionsModal(c)}
-                          className="text-xs text-purple-600 hover:text-purple-800 font-medium text-left">📋 履歴</button>
+                          className="text-xs text-purple-600 hover:text-purple-800 font-medium text-left">履歴</button>
                       </div>
                     </td>
                   </tr>
@@ -900,10 +900,10 @@ export default function AdminCompanies() {
                                 {hasContact && (
                                   <tr className={isCall ? 'bg-indigo-50/40' : ''}>
                                     <td colSpan={6} className="px-2 py-1.5 text-xs text-indigo-800">
-                                      <span className="font-semibold mr-1">👤 担当者:</span>
+                                      <span className="font-semibold mr-1">担当者:</span>
                                       {a.contact_person_name && <span className="mr-3">{a.contact_person_name}</span>}
                                       {a.contact_person_gender && <span className="mr-3">({a.contact_person_gender})</span>}
-                                      {a.contact_person_phone && <span className="mr-3">📞 {a.contact_person_phone}</span>}
+                                      {a.contact_person_phone && <span className="mr-3">TEL: {a.contact_person_phone}</span>}
                                       {a.contact_person_impression && <span className="text-gray-600">— {a.contact_person_impression}</span>}
                                     </td>
                                   </tr>
@@ -1349,7 +1349,7 @@ export default function AdminCompanies() {
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm('⚠️ 緊急クリーンアップを実行します\n（通常クリーンアップで解消しない場合のみ）\n\n削除対象（SKIP/PROJECT/文字起こしは保持）:\n- 2日以上前のNO_ANSWER\n- 90日以上前のNG\n- 7日以上前のRECALL\n\n実行しますか？')) return;
+                  if (!confirm('緊急クリーンアップを実行します\n（通常クリーンアップで解消しない場合のみ）\n\n削除対象（SKIP/PROJECT/文字起こしは保持）:\n- 2日以上前のNO_ANSWER\n- 90日以上前のNG\n- 7日以上前のRECALL\n\n実行しますか？')) return;
                   try {
                     const { data } = await api.post('/api/admin/cleanup-database', { aggressive: true });
                     if (data.success) {

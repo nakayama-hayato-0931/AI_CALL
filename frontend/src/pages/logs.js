@@ -164,7 +164,7 @@ export default function AIEvaluationPage() {
       setSheetLogs(data.data.sheetLogs || []);
       setSearched(true);
       if (data.data.totalDbCalls === 0 && data.data.totalSheetLogs === 0) {
-        toast('該当する通話ログが見つかりません', { icon: '🔍' });
+        toast('該当する通話ログが見つかりません');
       }
     } catch (err) {
       toast.error('検索に失敗しました');
