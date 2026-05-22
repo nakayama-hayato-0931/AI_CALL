@@ -25,6 +25,7 @@ const authenticate = (req, res, next) => {
       email: decoded.email,
       role: decoded.role,
       isTestAccount: !!decoded.isTestAccount,
+      isServiceAccount: !!decoded.isServiceAccount,
     };
 
     next();

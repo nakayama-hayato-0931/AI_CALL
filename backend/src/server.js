@@ -9,6 +9,24 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
+
+/**
+ * Authorization ヘッダから JWT を軽くデコードして isServiceAccount を判定。
+ * rate-limit の skip 用なので失敗しても何もしない。
+ */
+function isServiceAccountReq(req) {
+  try {
+    const h = req.headers && req.headers.authorization;
+    if (!h || !h.startsWith('Bearer ')) return false;
+    const token = h.slice(7);
+    // 署名検証あり（不正トークンに対する免除を防ぐ）
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return !!decoded.isServiceAccount;
+  } catch (_e) {
+    return false;
+  }
+}
 const path = require('path');
 
 const logger = require('./utils/logger');
@@ -69,7 +87,10 @@ const limiter = rateLimit({
   // ヘルスチェック・ドロップダウン用エンドポイントなど高頻度アクセスをスキップ
   skip: (req) => {
     const p = req.path;
-    return p === '/auth/operators' || p === '/companies/operators' || p === '/calls/operators';
+    if (p === '/auth/operators' || p === '/companies/operators' || p === '/calls/operators') return true;
+    // サービスアカウント（fax-crm 同期など）はレート制限から除外
+    if (isServiceAccountReq(req)) return true;
+    return false;
   },
 });
 app.use('/api/', limiter);
