@@ -1,7 +1,9 @@
 /**
  * 顧客マスタ
  * - callcenter の companies と FAX CRM の contact_events を統合表示
- * - 各顧客で架電履歴 / NG理由 / 手動アクション(FAX等) / FAX CRM 履歴 を確認
+ * - フィルタ（結果/期間/オペレーター/業種）対応
+ * - 架電 + 手動アクション + FAX を時系列タイムラインで表示
+ * - fax-crm との双方向同期（callcenter→fax-crm push / fax-crm→callcenter pull）
  */
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -26,32 +28,56 @@ const fmtDateTime = (s) => {
 const RESULT_LABEL = {
   NO_ANSWER: '不通', NG: 'NG', RECALL: 'リコール', INTERESTED: '興味あり', PROJECT: '案件化', SKIP: 'SKIP',
 };
+const RESULT_OPTIONS = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
+
+const KIND_BADGE = {
+  call: { label: '架電', cls: 'bg-blue-100 text-blue-800' },
+  manual: { label: '手動', cls: 'bg-purple-100 text-purple-800' },
+  fax: { label: 'FAX', cls: 'bg-orange-100 text-orange-800' },
+};
 
 export default function CustomerMasterPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [filters, setFilters] = useState({
+    search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '',
+  });
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [faxCrmEnabled, setFaxCrmEnabled] = useState(false);
+  const [operators, setOperators] = useState([]);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
       router.push('/');
       return;
     }
-    if (user) fetchList();
-  }, [user, search]);
+    if (user) {
+      fetchList();
+      fetchOperators();
+    }
+  }, [user, filters]);
+
+  const fetchOperators = async () => {
+    try {
+      const { data } = await api.get('/api/admin/users');
+      if (data.success) {
+        const users = data.data?.users || data.data || [];
+        setOperators(users.filter(u => u.role === 'operator'));
+      }
+    } catch (_e) { /* ignore */ }
+  };
 
   const fetchList = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
       const { data } = await api.get(`/api/admin/customer-master?${params}`);
       if (data.success) {
         setList(data.data.customers || []);
@@ -78,34 +104,145 @@ export default function CustomerMasterPage() {
     }
   };
 
+  const canEdit = user && ['admin', 'manager', 'editor'].includes(user.role);
+
+  const syncToFaxCrm = async () => {
+    if (!selectedId) return;
+    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
+    setSyncing(true);
+    try {
+      const { data } = await api.post(`/api/admin/customer-master/${selectedId}/sync-to-faxcrm`);
+      if (data.success) {
+        toast.success(data.message || `送信完了: ${data.data?.pushed || 0}件`);
+        openDetail(selectedId);
+      } else {
+        toast.error(data.message || '送信失敗');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || '送信に失敗しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncFromFaxCrm = async () => {
+    if (!selectedId) return;
+    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
+    if (typeof window !== 'undefined' && !window.confirm('fax-crm 側のFAX履歴を callcenter に取込しますか？\n（重複は自動でスキップされます）')) return;
+    setSyncing(true);
+    try {
+      const { data } = await api.post(`/api/admin/customer-master/${selectedId}/sync-from-faxcrm`);
+      if (data.success) {
+        toast.success(data.message || `取込完了: ${data.data?.inserted || 0}件`);
+        openDetail(selectedId);
+      } else {
+        toast.error(data.message || '取込失敗');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || '取込に失敗しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncBoth = async () => {
+    if (!selectedId) return;
+    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
+    if (typeof window !== 'undefined' && !window.confirm('双方向同期を実行します。\n1) callcenter → fax-crm に架電履歴を送信\n2) fax-crm → callcenter に FAX 履歴を取込\nよろしいですか？')) return;
+    setSyncing(true);
+    try {
+      const r1 = await api.post(`/api/admin/customer-master/${selectedId}/sync-to-faxcrm`);
+      const r2 = await api.post(`/api/admin/customer-master/${selectedId}/sync-from-faxcrm`);
+      const pushed = r1.data?.data?.pushed || 0;
+      const inserted = r2.data?.data?.inserted || 0;
+      toast.success(`双方向同期 完了: 送信${pushed}件 / 取込${inserted}件`);
+      openDetail(selectedId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || '同期に失敗しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (!user) return null;
   if (!['admin', 'manager', 'consultant'].includes(user.role)) {
     return <Layout><div className="p-6">権限がありません</div></Layout>;
   }
 
+  const applySearch = () => setFilters(f => ({ ...f, search: searchInput }));
+  const updateFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
+  const clearAll = () => {
+    setSearchInput('');
+    setFilters({ search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '' });
+  };
+
   return (
     <Layout>
       <div className="p-6">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold">顧客マスタ</h1>
             <p className="text-sm text-gray-500 mt-1">
-              架電結果・NG理由・手動アクション・FAX CRMの履歴を統合して確認できます。
+              架電結果・NG理由・手動アクション・FAX CRM の履歴を統合して確認できます。
               {faxCrmEnabled
                 ? <span className="ml-2 inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs">FAX CRM 連携 有効</span>
                 : <span className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">FAX CRM 連携 未設定</span>}
             </p>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); setSearch(searchInput); }} className="flex items-center gap-2">
-            <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
-              placeholder="企業名・電話番号で検索"
-              className="border rounded px-3 py-1.5 text-sm w-64" />
-            <button type="submit" className="text-sm px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700">検索</button>
-            {search && (
-              <button type="button" onClick={() => { setSearch(''); setSearchInput(''); }}
-                className="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">クリア</button>
-            )}
-          </form>
+        </div>
+
+        {/* フィルタバー */}
+        <div className="bg-white rounded-lg shadow p-3 mb-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); applySearch(); }} className="flex items-end gap-1">
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-0.5">検索</label>
+                <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
+                  placeholder="企業名・電話番号"
+                  className="border rounded px-2 py-1 text-sm w-56" />
+              </div>
+              <button type="submit" className="text-sm px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">検索</button>
+            </form>
+
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">結果</label>
+              <select value={filters.result} onChange={e => updateFilter('result', e.target.value)}
+                className="border rounded px-2 py-1 text-sm">
+                <option value="">全て</option>
+                {RESULT_OPTIONS.map(r => <option key={r} value={r}>{RESULT_LABEL[r]}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">期間 (開始)</label>
+              <input type="date" value={filters.date_from} onChange={e => updateFilter('date_from', e.target.value)}
+                className="border rounded px-2 py-1 text-sm" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">期間 (終了)</label>
+              <input type="date" value={filters.date_to} onChange={e => updateFilter('date_to', e.target.value)}
+                className="border rounded px-2 py-1 text-sm" />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">オペレーター</label>
+              <select value={filters.user_id} onChange={e => updateFilter('user_id', e.target.value)}
+                className="border rounded px-2 py-1 text-sm">
+                <option value="">全て</option>
+                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">業種</label>
+              <input type="text" value={filters.industry} onChange={e => updateFilter('industry', e.target.value)}
+                placeholder="例: 飲食"
+                className="border rounded px-2 py-1 text-sm w-32" />
+            </div>
+
+            <button type="button" onClick={clearAll}
+              className="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50">クリア</button>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-4">
@@ -115,7 +252,7 @@ export default function CustomerMasterPage() {
               <span>顧客一覧</span>
               <span className="text-xs text-gray-500">{list.length}件</span>
             </div>
-            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
               {loading ? (
                 <p className="text-center py-8 text-gray-400 text-sm">読み込み中...</p>
               ) : list.length === 0 ? (
@@ -169,7 +306,28 @@ export default function CustomerMasterPage() {
               <div className="space-y-4">
                 {/* 顧客基本情報 */}
                 <div className="bg-white rounded-lg shadow p-4">
-                  <h2 className="text-lg font-bold mb-2">{detail.company.company_name}</h2>
+                  <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
+                    <h2 className="text-lg font-bold">{detail.company.company_name}</h2>
+                    {canEdit && (
+                      <div className="flex flex-wrap gap-1">
+                        <button onClick={syncToFaxCrm} disabled={syncing || !faxCrmEnabled}
+                          className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300"
+                          title="callcenter の架電履歴を fax-crm に送信（肉付けマージ）">
+                          callcenter から送信
+                        </button>
+                        <button onClick={syncFromFaxCrm} disabled={syncing || !faxCrmEnabled}
+                          className="text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-300"
+                          title="fax-crm の FAX 履歴を callcenter に取込">
+                          callcenter へ取込
+                        </button>
+                        <button onClick={syncBoth} disabled={syncing || !faxCrmEnabled}
+                          className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                          title="双方向同期（送信＋取込）">
+                          双方向同期
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div><span className="text-gray-500">電話:</span> {detail.company.phone_number || '-'}</div>
                     <div><span className="text-gray-500">業種:</span> {detail.company.industry || '-'}</div>
@@ -182,6 +340,27 @@ export default function CustomerMasterPage() {
                     </div>
                   )}
                 </div>
+
+                {/* 担当者情報 */}
+                {detail.contactPersons && detail.contactPersons.length > 0 && (
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="text-sm font-bold mb-2 text-indigo-700">担当者情報 ({detail.contactPersons.length}名)</h3>
+                    <div className="space-y-2">
+                      {detail.contactPersons.map((p, i) => (
+                        <div key={i} className="border border-indigo-100 bg-indigo-50/40 rounded p-2 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold">
+                              {p.name || '(名前未登録)'}{p.gender ? ` (${p.gender})` : ''}
+                            </span>
+                            <span className="text-gray-500 text-[11px]">最終: {fmtDate(p.last_at)}</span>
+                          </div>
+                          {p.phone && <div className="text-gray-700 mt-0.5">TEL: {p.phone}</div>}
+                          {p.impression && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">印象: {p.impression}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* NG理由集計 */}
                 {detail.ngBreakdown && detail.ngBreakdown.length > 0 && (
@@ -216,81 +395,60 @@ export default function CustomerMasterPage() {
                   </div>
                 )}
 
-                {/* 架電履歴 */}
+                {/* 統合タイムライン（架電 + 手動 + FAX） */}
                 <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="text-sm font-bold mb-2 text-blue-700">架電履歴 ({detail.calls.length}件)</h3>
-                  {detail.calls.length === 0 ? (
+                  <h3 className="text-sm font-bold mb-2">アクション履歴 (時系列 {detail.timeline?.length || 0}件)</h3>
+                  {(!detail.timeline || detail.timeline.length === 0) ? (
                     <p className="text-xs text-gray-400">記録なし</p>
                   ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {detail.calls.map(c => (
-                        <div key={c.id} className="border border-blue-100 bg-blue-50/40 rounded p-2 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="font-semibold">{RESULT_LABEL[c.result_code] || c.result_code}</span>
-                            <span className="text-gray-500 text-[11px]">{fmtDateTime(c.call_started_at)}</span>
-                          </div>
-                          <div className="text-gray-600 mt-0.5">担当: {c.operator_name || '-'}</div>
-                          {c.result_code === 'NG' && c.ng_reason && (
-                            <div className="text-red-600 mt-0.5">NG理由: {c.ng_reason}</div>
-                          )}
-                          {(c.contact_person_name || c.contact_person_phone) && (
-                            <div className="text-indigo-700 mt-0.5">
-                              担当者: {c.contact_person_name || '?'}{c.contact_person_gender ? ` (${c.contact_person_gender})` : ''}
-                              {c.contact_person_phone && <span className="ml-2">TEL: {c.contact_person_phone}</span>}
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                      {detail.timeline.map((e, i) => {
+                        const badge = KIND_BADGE[e.kind] || { label: e.kind, cls: 'bg-gray-100 text-gray-700' };
+                        return (
+                          <div key={i} className="border rounded p-2 text-xs">
+                            <div className="flex justify-between items-center mb-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
+                                <span className="font-semibold">
+                                  {e.kind === 'call' && (RESULT_LABEL[e.result_code] || e.result_code || '-')}
+                                  {e.kind === 'manual' && (e.action_type || '-')}
+                                  {e.kind === 'fax' && (e.event_type || 'FAX')}
+                                </span>
+                                {e.kind === 'fax' && e.result_label && (
+                                  <span className="text-gray-500">- {e.result_label}</span>
+                                )}
+                                {e.kind === 'manual' && e.result && (
+                                  <span className="text-gray-500">- {e.result}</span>
+                                )}
+                              </div>
+                              <span className="text-gray-500 text-[11px]">{fmtDateTime(e.at)}</span>
                             </div>
-                          )}
-                          {c.contact_person_impression && (
-                            <div className="text-gray-600 mt-0.5">印象: {c.contact_person_impression}</div>
-                          )}
-                          {c.memo && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">{c.memo}</div>}
-                        </div>
-                      ))}
+                            {e.operator_name && (
+                              <div className="text-gray-600">担当: {e.operator_name}</div>
+                            )}
+                            {e.kind === 'call' && e.result_code === 'NG' && e.ng_reason && (
+                              <div className="text-red-600">NG理由: {e.ng_reason}</div>
+                            )}
+                            {e.kind === 'call' && (e.contact_person_name || e.contact_person_phone) && (
+                              <div className="text-indigo-700">
+                                担当者: {e.contact_person_name || '?'}{e.contact_person_gender ? ` (${e.contact_person_gender})` : ''}
+                                {e.contact_person_phone && <span className="ml-2">TEL: {e.contact_person_phone}</span>}
+                              </div>
+                            )}
+                            {e.kind === 'call' && e.contact_person_impression && (
+                              <div className="text-gray-600">印象: {e.contact_person_impression}</div>
+                            )}
+                            {e.memo && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">{e.memo}</div>}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                </div>
-
-                {/* 手動アクション */}
-                {detail.manualActions && detail.manualActions.length > 0 && (
-                  <div className="bg-white rounded-lg shadow p-4">
-                    <h3 className="text-sm font-bold mb-2 text-purple-700">手動アクション ({detail.manualActions.length}件)</h3>
-                    <div className="space-y-2 max-h-72 overflow-y-auto">
-                      {detail.manualActions.map(a => (
-                        <div key={a.id} className="border border-purple-100 bg-purple-50/40 rounded p-2 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="font-semibold">{a.action_type}</span>
-                            <span className="text-gray-500 text-[11px]">{fmtDate(a.action_date)}</span>
-                          </div>
-                          <div className="text-gray-600 mt-0.5">担当: {a.user_name || '-'}</div>
-                          {a.result && <div className="text-gray-700 mt-0.5">結果: {a.result}</div>}
-                          {a.memo && <div className="text-gray-600 mt-0.5">{a.memo}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* FAX CRM 履歴 */}
-                <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="text-sm font-bold mb-2 text-orange-700">FAX CRM 履歴</h3>
-                  {detail.faxCrmStatus === 'disabled' ? (
-                    <p className="text-xs text-gray-400">FAX CRM 連携が未設定です（環境変数 FAX_CRM_API_URL を設定してください）</p>
-                  ) : detail.faxCrmStatus !== 'ok' ? (
-                    <p className="text-xs text-amber-600">FAX CRM への接続に失敗: {detail.faxCrmStatus}</p>
-                  ) : detail.faxHistory.length === 0 ? (
-                    <p className="text-xs text-gray-400">FAX 履歴なし</p>
-                  ) : (
-                    <div className="space-y-2 max-h-72 overflow-y-auto">
-                      {detail.faxHistory.map((e, i) => (
-                        <div key={e.id || i} className="border border-orange-100 bg-orange-50/40 rounded p-2 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="font-semibold">{e.event_type || 'FAX'}{e.result_label ? ` - ${e.result_label}` : ''}</span>
-                            <span className="text-gray-500 text-[11px]">{fmtDateTime(e.occurred_at)}</span>
-                          </div>
-                          {e.operator_name && <div className="text-gray-600 mt-0.5">担当: {e.operator_name}</div>}
-                          {e.memo && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">{e.memo}</div>}
-                        </div>
-                      ))}
-                    </div>
+                  {detail.faxCrmStatus && detail.faxCrmStatus !== 'ok' && detail.faxCrmStatus !== 'disabled' && (
+                    <p className="text-xs text-amber-600 mt-2">FAX CRM 接続に失敗: {detail.faxCrmStatus}</p>
+                  )}
+                  {detail.faxCrmStatus === 'disabled' && (
+                    <p className="text-xs text-gray-400 mt-2">FAX CRM 連携が未設定です（FAX_CRM_API_URL を設定すると FAX 履歴も統合表示されます）</p>
                   )}
                 </div>
               </div>

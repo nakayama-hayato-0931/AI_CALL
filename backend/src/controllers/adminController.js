@@ -1249,6 +1249,8 @@ module.exports = {
   reassignRecallTask,
   getCustomerMasterList,
   getCustomerMasterDetail,
+  syncCustomerToFaxCrm,
+  syncCustomerFromFaxCrm,
 };
 
 const faxCrmClient = require('../services/faxCrmClient');
@@ -1260,18 +1262,47 @@ const faxCrmClient = require('../services/faxCrmClient');
  */
 async function getCustomerMasterList(req, res, next) {
   try {
-    const { search = '', limit = 200 } = req.query;
+    const {
+      search = '',
+      limit = 200,
+      result,
+      user_id,
+      industry,
+      date_from,
+      date_to,
+    } = req.query;
     const params = [];
+    const lim = Math.min(500, Math.max(10, parseInt(limit, 10) || 200));
+
+    // 直近の架電条件で絞る場合のサブクエリ条件
+    const callConds = [];
+    if (result) { callConds.push('cl.result_code = ?'); params.push(result); }
+    if (user_id) { callConds.push('cl.user_id = ?'); params.push(user_id); }
+    if (date_from) { callConds.push('DATE(cl.call_started_at) >= ?'); params.push(date_from); }
+    if (date_to) { callConds.push('DATE(cl.call_started_at) <= ?'); params.push(date_to); }
+    const callWhereSub = callConds.length
+      ? `AND ${callConds.join(' AND ')}`
+      : '';
+
     let where = "c.exclusion_flag = 0";
     if (search) {
       where += " AND (c.company_name LIKE ? OR c.phone_number LIKE ?)";
       const s = `%${search}%`;
       params.push(s, s);
     }
-    const lim = Math.min(500, Math.max(10, parseInt(limit, 10) || 200));
+    if (industry) {
+      where += " AND (c.industry LIKE ? OR c.industry_category = ?)";
+      const s = `%${industry}%`;
+      params.push(s, industry);
+    }
+    // 結果/担当/期間のいずれかが指定された場合は、その条件に一致する架電が
+    // 1件以上ある企業のみに絞り込む
+    if (callConds.length > 0) {
+      where += ` AND EXISTS (SELECT 1 FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ${callWhereSub})`;
+    }
 
     const [rows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region, c.address,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region, c.address, c.industry_category,
               c.created_at, c.last_called_at,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) AS call_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG') AS ng_count,
@@ -1376,6 +1407,79 @@ async function getCustomerMasterDetail(req, res, next) {
       }
     }
 
+    // 時系列タイムライン（架電 + 手動アクション + FAX を統合）
+    const timeline = [];
+    for (const c of calls) {
+      timeline.push({
+        kind: 'call',
+        at: c.call_started_at,
+        operator_name: c.operator_name,
+        result_code: c.result_code,
+        ng_reason: c.ng_reason,
+        memo: c.memo,
+        contact_person_name: c.contact_person_name,
+        contact_person_gender: c.contact_person_gender,
+        contact_person_phone: c.contact_person_phone,
+        contact_person_impression: c.contact_person_impression,
+        call_type: c.call_type,
+        ref_id: c.id,
+      });
+    }
+    for (const a of manualActions) {
+      timeline.push({
+        kind: 'manual',
+        at: a.action_date || a.created_at,
+        operator_name: a.user_name,
+        action_type: a.action_type,
+        result: a.result,
+        memo: a.memo,
+        ref_id: a.id,
+      });
+    }
+    for (const f of faxHistory) {
+      timeline.push({
+        kind: 'fax',
+        at: f.occurred_at || f.created_at,
+        operator_name: f.operator_name,
+        event_type: f.event_type,
+        result_label: f.result_label,
+        memo: f.memo,
+        channel: f.channel,
+        ref_id: f.id,
+      });
+    }
+    timeline.sort((x, y) => {
+      const tx = x.at ? new Date(x.at).getTime() : 0;
+      const ty = y.at ? new Date(y.at).getTime() : 0;
+      return ty - tx;
+    });
+
+    // 担当者情報集約（架電履歴から重複排除）
+    const cpMap = new Map();
+    for (const c of calls) {
+      if (!c.contact_person_name && !c.contact_person_phone) continue;
+      const key = `${(c.contact_person_name || '').trim()}|${(c.contact_person_phone || '').trim()}`;
+      if (cpMap.has(key)) {
+        const ex = cpMap.get(key);
+        // 印象などは新しい方を残す（callsはDESCで先頭が最新）
+        if (!ex.last_at || new Date(c.call_started_at) > new Date(ex.last_at)) {
+          ex.last_at = c.call_started_at;
+          if (c.contact_person_impression) ex.impression = c.contact_person_impression;
+          if (c.contact_person_gender) ex.gender = c.contact_person_gender;
+        }
+      } else {
+        cpMap.set(key, {
+          name: c.contact_person_name || null,
+          phone: c.contact_person_phone || null,
+          gender: c.contact_person_gender || null,
+          impression: c.contact_person_impression || null,
+          last_at: c.call_started_at,
+        });
+      }
+    }
+    const contactPersons = Array.from(cpMap.values())
+      .sort((a, b) => new Date(b.last_at || 0) - new Date(a.last_at || 0));
+
     return ApiResponse.success(res, {
       company,
       calls,
@@ -1384,9 +1488,127 @@ async function getCustomerMasterDetail(req, res, next) {
       projects,
       faxHistory,
       faxCrmStatus,
+      timeline,
+      contactPersons,
     });
   } catch (err) {
     logger.error(`[getCustomerMasterDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * POST /api/admin/customer-master/:id/sync-to-faxcrm
+ * callcenter の顧客＋直近架電履歴を fax-crm 側に push（肉付けマージ）
+ */
+async function syncCustomerToFaxCrm(req, res) {
+  try {
+    if (!faxCrmClient.isEnabled()) {
+      return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
+    }
+    const { id } = req.params;
+    const [companies] = await pool.execute(`SELECT * FROM companies WHERE id = ?`, [id]);
+    if (companies.length === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
+    const company = companies[0];
+
+    const [calls] = await pool.query(
+      `SELECT cl.id, cl.call_started_at, cl.result_code, cl.memo, cl.ng_reason,
+              cl.contact_person_name, cl.contact_person_phone,
+              u.email AS operator_email, u.name AS operator_name
+       FROM calls cl
+       LEFT JOIN users u ON cl.user_id = u.id
+       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
+       ORDER BY cl.call_started_at DESC LIMIT 100`,
+      [id]
+    );
+
+    let pushed = 0;
+    let failed = 0;
+    const errors = [];
+    for (const c of calls) {
+      const r = await faxCrmClient.notifyCallResult({
+        callId: `cc-${c.id}`,
+        companyId: id,
+        resultCode: c.result_code,
+        callStartedAt: c.call_started_at,
+        operatorEmail: c.operator_email || c.operator_name,
+        memo: c.memo,
+      });
+      if (r.ok) pushed++;
+      else { failed++; if (errors.length < 5) errors.push(r.error || r.body || r.status); }
+    }
+
+    // 顧客本体の upsert ヒント（lookup + メタ）も 1 件 contact_event として送る
+    const meta = await faxCrmClient.postContactEvent({
+      lookup: { external_callcenter_id: id },
+      channel: 'sync',
+      event_type: 'sync_push',
+      occurred_at: new Date().toISOString(),
+      source_system: 'callcenter-ai',
+      source_event_id: `sync-${id}-${Date.now()}`,
+      memo: `company sync: ${company.company_name}`,
+      company_name: company.company_name,
+      phone_number: company.phone_number,
+      industry: company.industry,
+      region: company.region,
+      address: company.address,
+    });
+
+    return ApiResponse.success(res, {
+      pushed, failed, errors, meta_ok: !!meta.ok,
+    }, `${pushed}件の架電履歴を FAX CRM に送信しました`);
+  } catch (err) {
+    logger.error(`[syncCustomerToFaxCrm] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * POST /api/admin/customer-master/:id/sync-from-faxcrm
+ * fax-crm の FAX 履歴を取得して、callcenter 側 company_actions に肉付けマージ
+ */
+async function syncCustomerFromFaxCrm(req, res) {
+  try {
+    if (!faxCrmClient.isEnabled()) {
+      return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
+    }
+    const { id } = req.params;
+    const [companies] = await pool.execute(`SELECT id FROM companies WHERE id = ?`, [id]);
+    if (companies.length === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
+
+    const r = await faxCrmClient.getFaxHistory(id);
+    if (!r.ok) {
+      return ApiResponse.error(res, `FAX CRM 取得失敗: ${r.error || r.status || 'unknown'}`, 502);
+    }
+    const events = r.events || [];
+
+    // company_actions に FAX 履歴を upsert（source_event_id を memo に埋めて冪等化）
+    let inserted = 0;
+    let skipped = 0;
+    for (const ev of events) {
+      const tag = `[fax-crm:${ev.id || ev.source_event_id || ''}]`;
+      const [exist] = await pool.query(
+        `SELECT id FROM company_actions WHERE company_id = ? AND memo LIKE ? LIMIT 1`,
+        [id, `%${tag}%`]
+      );
+      if (exist.length > 0) { skipped++; continue; }
+      const actionDate = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
+      const actionType = ev.channel === 'fax' ? 'FAX' : (ev.channel || 'OTHER').toUpperCase();
+      const result = ev.event_type || ev.result_label || null;
+      const memo = `${tag} ${ev.memo || ''}`.trim();
+      await pool.query(
+        `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
+         VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
+        [id, actionDate, actionType, result, memo]
+      );
+      inserted++;
+    }
+
+    return ApiResponse.success(res, {
+      fetched: events.length, inserted, skipped,
+    }, `${inserted}件の FAX 履歴を取込しました（既存スキップ: ${skipped}件）`);
+  } catch (err) {
+    logger.error(`[syncCustomerFromFaxCrm] ${err.message}`);
     return ApiResponse.error(res, err.message, 500);
   }
 }

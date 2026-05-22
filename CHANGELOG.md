@@ -6,6 +6,18 @@
 
 ## 2026年5月 〜 直近
 
+### 顧客マスタ（FAX CRM 統合）
+- **顧客マスタ拡張**
+  - フィルタ追加: 結果 / 期間 / オペレーター / 業種。
+  - 統合タイムライン: 架電 + 手動アクション + FAX CRM 履歴を時系列で1リスト表示（kind badge付き）。
+  - 担当者情報セクション: 架電履歴から名前+電話で重複排除して右パネル上部に表示（性別/印象/最終接触日）。
+  - **fax-crm 双方向同期ボタン**:
+    - `POST /api/admin/customer-master/:id/sync-to-faxcrm` … callcenter の架電履歴を fax-crm に push（肉付けマージ）。call_id を source_event_id にして冪等化。
+    - `POST /api/admin/customer-master/:id/sync-from-faxcrm` … fax-crm の FAX 履歴を取得して `company_actions` に取込。`[fax-crm:<id>]` タグで重複スキップ。
+    - 「双方向同期」ボタン: 上記2つを連続実行（confirm付き）。
+  - 単方向の取込側にも confirm を付与。
+
+
 ### コスト・給与関連
 - **給与Excel取込（推奨）** `f7785e2`
   - 給与支給控除一覧の `.xlsx` を 1ファイル丸ごと取込。

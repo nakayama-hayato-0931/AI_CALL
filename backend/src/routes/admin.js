@@ -30,6 +30,8 @@ const {
   reassignRecallTask,
   getCustomerMasterList,
   getCustomerMasterDetail,
+  syncCustomerToFaxCrm,
+  syncCustomerFromFaxCrm,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -112,5 +114,7 @@ router.put('/recalls/:id/reassign', requireEditor, reassignRecallTask);
 // 顧客マスタ（架電履歴 + 手動アクション + FAX CRM 統合表示）
 router.get('/customer-master', requireManager, getCustomerMasterList);
 router.get('/customer-master/:id', requireManager, getCustomerMasterDetail);
+router.post('/customer-master/:id/sync-to-faxcrm', requireEditor, syncCustomerToFaxCrm);
+router.post('/customer-master/:id/sync-from-faxcrm', requireEditor, syncCustomerFromFaxCrm);
 
 module.exports = router;
