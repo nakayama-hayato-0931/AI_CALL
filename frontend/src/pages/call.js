@@ -86,6 +86,10 @@ export default function CallPage() {
   const [selectedTargetId, setSelectedTargetId] = useState(null);
   const [callHistory, setCallHistory] = useState([]);
   const [reason, setReason] = useState('');
+  // 企業のアクション履歴（架電 + FAX/メール等の手動アクション）
+  const [companyActions, setCompanyActions] = useState([]);
+  const [actionFormOpen, setActionFormOpen] = useState(false);
+  const [newCompanyAction, setNewCompanyAction] = useState({ action_date: '', action_type: 'FAX', result: '', memo: '' });
 
   // 通話状態
   const [callId, setCallId] = useState(null);
@@ -218,6 +222,55 @@ export default function CallPage() {
       }).catch(() => {});
     }
   }, [isManager]);
+
+  // 企業選択時にアクション履歴を取得（架電+手動アクション統合）
+  useEffect(() => {
+    if (!company?.id) {
+      setCompanyActions([]);
+      return;
+    }
+    const cid = company.id;
+    api.get(`/api/companies/${cid}/actions`).then(res => {
+      if (res.data.success && company?.id === cid) {
+        setCompanyActions(res.data.data.actions || []);
+      }
+    }).catch(() => {});
+  }, [company?.id]);
+
+  const refreshCompanyActions = async () => {
+    if (!company?.id) return;
+    try {
+      const { data } = await api.get(`/api/companies/${company.id}/actions`);
+      if (data.success) setCompanyActions(data.data.actions || []);
+    } catch (e) { /* ignore */ }
+  };
+
+  const submitCompanyAction = async () => {
+    if (!company?.id) return;
+    if (!newCompanyAction.action_date || !newCompanyAction.action_type) {
+      toast.error('日付とアクション種別を入力してください');
+      return;
+    }
+    try {
+      await api.post(`/api/companies/${company.id}/actions`, newCompanyAction);
+      toast.success('アクションを記録しました');
+      setActionFormOpen(false);
+      const today = new Date().toISOString().slice(0, 10);
+      setNewCompanyAction({ action_date: today, action_type: 'FAX', result: '', memo: '' });
+      refreshCompanyActions();
+    } catch (e) {
+      toast.error('記録に失敗しました');
+    }
+  };
+
+  const deleteCompanyAction = async (actionId) => {
+    if (!company?.id) return;
+    if (typeof window !== 'undefined' && !window.confirm('削除しますか？')) return;
+    try {
+      await api.delete(`/api/companies/${company.id}/actions/${actionId}`);
+      refreshCompanyActions();
+    } catch (e) { toast.error('削除に失敗しました'); }
+  };
 
   // ピックアップ: 架電リストページからのロック済み企業を自動読み込み
   useEffect(() => {
@@ -968,24 +1021,98 @@ export default function CallPage() {
                   </div>
                 )}
 
-                {callHistory.length > 0 && (
-                  <div className="mt-5 pt-4 border-t border-gray-100">
-                    <h3 className="text-xs font-semibold text-gray-500 mb-2.5">前回履歴</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {callHistory.slice(0, 5).map((c) => (
-                        <div key={c.id} className="bg-gray-50 rounded-lg p-2.5 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400">
-                              {new Date(c.call_started_at).toLocaleString('ja-JP')}
-                            </span>
-                            <span className="font-semibold text-gray-700">{c.result_code || '-'}</span>
-                          </div>
-                          {c.memo && <p className="text-gray-500 mt-1 leading-relaxed">{c.memo}</p>}
-                        </div>
-                      ))}
-                    </div>
+                <div className="mt-5 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h3 className="text-xs font-semibold text-gray-500">アクション履歴</h3>
+                    <button
+                      onClick={() => {
+                        const today = new Date().toISOString().slice(0, 10);
+                        setNewCompanyAction({ action_date: today, action_type: 'FAX', result: '', memo: '' });
+                        setActionFormOpen(prev => !prev);
+                      }}
+                      className="text-[11px] px-2 py-0.5 rounded border border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      {actionFormOpen ? '閉じる' : '+ 追加'}
+                    </button>
                   </div>
-                )}
+
+                  {actionFormOpen && (
+                    <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 block">日付</label>
+                          <input type="date" value={newCompanyAction.action_date}
+                            onChange={e => setNewCompanyAction({...newCompanyAction, action_date: e.target.value})}
+                            className="w-full border rounded px-1.5 py-1 text-xs" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 block">種別</label>
+                          <select value={newCompanyAction.action_type}
+                            onChange={e => setNewCompanyAction({...newCompanyAction, action_type: e.target.value})}
+                            className="w-full border rounded px-1.5 py-1 text-xs">
+                            <option value="FAX">FAX</option>
+                            <option value="メール">メール</option>
+                            <option value="郵送">郵送</option>
+                            <option value="訪問">訪問</option>
+                            <option value="その他">その他</option>
+                          </select>
+                        </div>
+                      </div>
+                      <input type="text" placeholder="結果(任意)" value={newCompanyAction.result}
+                        onChange={e => setNewCompanyAction({...newCompanyAction, result: e.target.value})}
+                        className="w-full border rounded px-1.5 py-1 text-xs" />
+                      <input type="text" placeholder="メモ(任意)" value={newCompanyAction.memo}
+                        onChange={e => setNewCompanyAction({...newCompanyAction, memo: e.target.value})}
+                        className="w-full border rounded px-1.5 py-1 text-xs" />
+                      <button onClick={submitCompanyAction}
+                        className="w-full px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">
+                        記録
+                      </button>
+                    </div>
+                  )}
+
+                  {companyActions.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-3">履歴なし</p>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {companyActions.slice(0, 20).map(a => {
+                        const isCall = a.source === 'call';
+                        const dateStr = a.created_at
+                          ? new Date(a.created_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                          : (a.action_date ? new Date(a.action_date).toLocaleDateString('ja-JP') : '-');
+                        return (
+                          <div key={`${a.source}-${a.id}`} className={`rounded-lg p-2 text-xs ${isCall ? 'bg-blue-50/60 border border-blue-100' : 'bg-purple-50/60 border border-purple-100'}`}>
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${isCall ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                  {a.action_type}
+                                </span>
+                                <span className="text-gray-400 text-[10px]">{dateStr}</span>
+                              </div>
+                              <span className="font-semibold text-gray-700 text-[11px]">{a.result || '-'}</span>
+                            </div>
+                            <div className="flex justify-between items-start mt-1">
+                              <div className="text-gray-500 text-[10px] flex-1">
+                                <span className="font-medium">{a.user_name || '-'}</span>
+                                {a.result === 'NG' && a.ng_reason && (
+                                  <span className="ml-1 text-red-600">／ {a.ng_reason}</span>
+                                )}
+                                {(a.contact_person_name || a.contact_person_phone) && (
+                                  <span className="ml-1 text-indigo-700">／ 担当: {a.contact_person_name || '?'}{a.contact_person_phone ? ` (${a.contact_person_phone})` : ''}</span>
+                                )}
+                                {a.memo && <p className="mt-0.5 leading-relaxed">{a.memo}</p>}
+                              </div>
+                              {!isCall && (
+                                <button onClick={() => deleteCompanyAction(a.id)}
+                                  className="text-[10px] text-red-500 hover:underline ml-2">削除</button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 架電操作 */}
