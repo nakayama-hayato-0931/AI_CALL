@@ -28,6 +28,8 @@ const {
   updateRecallTask,
   deleteRecallTask,
   reassignRecallTask,
+  getCustomerMasterList,
+  getCustomerMasterDetail,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -106,5 +108,9 @@ router.get('/recalls', requireManager, getAllRecalls);
 router.put('/recalls/:id', requireEditor, updateRecallTask);
 router.delete('/recalls/:id', requireEditor, deleteRecallTask);
 router.put('/recalls/:id/reassign', requireEditor, reassignRecallTask);
+
+// 顧客マスタ（架電履歴 + 手動アクション + FAX CRM 統合表示）
+router.get('/customer-master', requireManager, getCustomerMasterList);
+router.get('/customer-master/:id', requireManager, getCustomerMasterDetail);
 
 module.exports = router;

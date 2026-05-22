@@ -103,9 +103,34 @@ async function notifyCallResult({ callId, companyId, resultCode, callStartedAt, 
   return result;
 }
 
+/**
+ * 顧客の FAX 履歴を fax-crm から取得
+ * external_callcenter_id（= callcenter の companies.id）で検索
+ */
+async function getFaxHistory(companyId) {
+  if (!isEnabled()) return { ok: false, skipped: true, events: [] };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const url = endpoint(`/api/contact-events?external_callcenter_id=${encodeURIComponent(companyId)}&channel=fax`);
+    const resp = await fetch(url, { signal: ctrl.signal });
+    if (!resp.ok) return { ok: false, status: resp.status, events: [] };
+    const text = await resp.text();
+    let body;
+    try { body = JSON.parse(text); } catch (_e) { return { ok: false, error: 'invalid JSON', events: [] }; }
+    const events = Array.isArray(body) ? body : (body.events || body.data || []);
+    return { ok: true, events };
+  } catch (e) {
+    return { ok: false, error: e.message, events: [] };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 module.exports = {
   isEnabled,
   postContactEvent,
   notifyCallResult,
+  getFaxHistory,
   RESULT_CODE_TO_EVENT_TYPE,
 };

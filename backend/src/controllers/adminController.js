@@ -1247,7 +1247,149 @@ module.exports = {
   updateRecallTask,
   deleteRecallTask,
   reassignRecallTask,
+  getCustomerMasterList,
+  getCustomerMasterDetail,
 };
+
+const faxCrmClient = require('../services/faxCrmClient');
+
+/**
+ * GET /api/admin/customer-master
+ * 顧客マスタ一覧（companies + 集計）
+ * Query: search, has_calls, has_ng, has_project
+ */
+async function getCustomerMasterList(req, res, next) {
+  try {
+    const { search = '', limit = 200 } = req.query;
+    const params = [];
+    let where = "c.exclusion_flag = 0";
+    if (search) {
+      where += " AND (c.company_name LIKE ? OR c.phone_number LIKE ?)";
+      const s = `%${search}%`;
+      params.push(s, s);
+    }
+    const lim = Math.min(500, Math.max(10, parseInt(limit, 10) || 200));
+
+    const [rows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region, c.address,
+              c.created_at, c.last_called_at,
+              (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) AS call_count,
+              (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG') AS ng_count,
+              (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'PROJECT') AS project_count,
+              (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) AS last_result,
+              (SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) AS last_call_at,
+              (SELECT cl.ng_reason FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG' ORDER BY cl.call_started_at DESC LIMIT 1) AS last_ng_reason,
+              (SELECT COUNT(*) FROM company_actions ca WHERE ca.company_id = c.id) AS manual_action_count
+       FROM companies c
+       WHERE ${where}
+       ORDER BY (last_call_at IS NULL), last_call_at DESC, c.id DESC
+       LIMIT ${lim}`,
+      params
+    );
+
+    return ApiResponse.success(res, {
+      customers: rows,
+      faxCrmEnabled: faxCrmClient.isEnabled(),
+    });
+  } catch (err) {
+    logger.error(`[getCustomerMasterList] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * GET /api/admin/customer-master/:id
+ * 顧客詳細（架電履歴 + 手動アクション + FAX CRM の履歴）
+ */
+async function getCustomerMasterDetail(req, res, next) {
+  try {
+    const { id } = req.params;
+    const [companies] = await pool.execute(
+      `SELECT * FROM companies WHERE id = ?`, [id]
+    );
+    if (companies.length === 0) {
+      return ApiResponse.notFound(res, '顧客が見つかりません');
+    }
+    const company = companies[0];
+
+    // 架電履歴
+    const [calls] = await pool.query(
+      `SELECT cl.id, cl.call_started_at, cl.call_ended_at, cl.result_code, cl.memo,
+              cl.is_effective_connection, cl.is_person_in_charge,
+              cl.contact_person_name, cl.contact_person_gender, cl.contact_person_phone, cl.contact_person_impression,
+              cl.ng_reason,
+              cl.call_type,
+              u.name AS operator_name
+       FROM calls cl
+       LEFT JOIN users u ON cl.user_id = u.id
+       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
+       ORDER BY cl.call_started_at DESC LIMIT 200`,
+      [id]
+    );
+
+    // 手動アクション
+    const [manualActions] = await pool.query(
+      `SELECT a.id, a.action_date, a.action_type, a.result, a.memo, a.created_at,
+              u.name AS user_name
+       FROM company_actions a
+       LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.company_id = ?
+       ORDER BY a.action_date DESC, a.id DESC LIMIT 200`,
+      [id]
+    );
+
+    // NG 理由集計
+    const [ngBreakdown] = await pool.query(
+      `SELECT ng_reason, COUNT(*) AS cnt
+       FROM calls
+       WHERE company_id = ? AND result_code = 'NG' AND ng_reason IS NOT NULL
+       GROUP BY ng_reason ORDER BY cnt DESC`,
+      [id]
+    );
+
+    // 案件
+    const [projects] = await pool.query(
+      `SELECT p.id, p.status, p.created_at, p.naitei_date, p.job_number,
+              u.name AS owner_name, su.name AS sales_name
+       FROM projects p
+       LEFT JOIN users u ON p.owner_user_id = u.id
+       LEFT JOIN users su ON p.sales_user_id = su.id
+       WHERE p.company_id = ? AND p.is_legacy = 0
+       ORDER BY p.created_at DESC`,
+      [id]
+    );
+
+    // FAX CRM から FAX 履歴を取得（任意。失敗してもエラーにしない）
+    let faxHistory = [];
+    let faxCrmStatus = 'disabled';
+    if (faxCrmClient.isEnabled()) {
+      try {
+        const r = await faxCrmClient.getFaxHistory(id);
+        if (r.ok) {
+          faxHistory = r.events || [];
+          faxCrmStatus = 'ok';
+        } else {
+          faxCrmStatus = `error:${r.status || r.error || 'unknown'}`;
+        }
+      } catch (e) {
+        faxCrmStatus = `error:${e.message}`;
+      }
+    }
+
+    return ApiResponse.success(res, {
+      company,
+      calls,
+      manualActions,
+      ngBreakdown,
+      projects,
+      faxHistory,
+      faxCrmStatus,
+    });
+  } catch (err) {
+    logger.error(`[getCustomerMasterDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
 /**
  * GET /api/admin/recalls
