@@ -28,6 +28,11 @@
 - **サービスアカウント対応**
   - `authenticate` ミドルウェアで JWT の `isServiceAccount` を `req.user.isServiceAccount` に伝搬。
   - rate-limit (`/api/` の 3000req/15min) のスキップ条件にサービスアカウントを追加（fax-crm 同期バッチが上限に当たらないように）。`skip` 内で JWT を再検証してから判定するため不正トークンによる免除は不可。
+- **顧客マスタ: FAX番号フィールド追加**
+  - companies に `fax_number VARCHAR(50)` 追加（idempotent ALTER）。
+  - `PATCH /api/admin/customer-master/:id`（fax_number / phone_number / company_name / address を任意で更新）。
+  - 顧客マスタ詳細パネルで FAX番号をインライン編集可能（管理者・マネージャー）。
+  - fax-crm への push payload に `fax_number` を含めるよう拡張。
 
 
 ### コスト・給与関連

@@ -55,6 +55,9 @@ export default function CustomerMasterPage() {
   const [faxCrmEnabled, setFaxCrmEnabled] = useState(false);
   const [operators, setOperators] = useState([]);
   const [syncing, setSyncing] = useState(false);
+  const [editingFax, setEditingFax] = useState(false);
+  const [faxInput, setFaxInput] = useState('');
+  const [savingFax, setSavingFax] = useState(false);
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
@@ -105,6 +108,7 @@ export default function CustomerMasterPage() {
     setSelectedId(id);
     setDetail(null);
     setDetailLoading(true);
+    setEditingFax(false);
     try {
       const { data } = await api.get(`/api/admin/customer-master/${id}`);
       if (data.success) setDetail(data.data);
@@ -116,6 +120,26 @@ export default function CustomerMasterPage() {
   };
 
   const canEdit = user && ['admin', 'manager', 'editor'].includes(user.role);
+
+  const saveFax = async () => {
+    if (!selectedId) return;
+    setSavingFax(true);
+    try {
+      const { data } = await api.patch(`/api/admin/customer-master/${selectedId}`, { fax_number: faxInput });
+      if (data.success) {
+        toast.success('FAX番号を更新しました');
+        setEditingFax(false);
+        openDetail(selectedId);
+        fetchList();
+      } else {
+        toast.error(data.message || '更新失敗');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || '更新に失敗しました');
+    } finally {
+      setSavingFax(false);
+    }
+  };
 
   const bulkSync = async (direction) => {
     if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
@@ -370,9 +394,30 @@ export default function CustomerMasterPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div><span className="text-gray-500">電話:</span> {detail.company.phone_number || '-'}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-500">FAX:</span>
+                      {editingFax ? (
+                        <>
+                          <input type="text" value={faxInput} onChange={e => setFaxInput(e.target.value)}
+                            className="border rounded px-2 py-0.5 text-xs w-40" placeholder="例: 03-1234-5678" />
+                          <button onClick={saveFax} disabled={savingFax}
+                            className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300">保存</button>
+                          <button onClick={() => setEditingFax(false)} disabled={savingFax}
+                            className="text-xs px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-50">取消</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{detail.company.fax_number || '-'}</span>
+                          {canEdit && (
+                            <button onClick={() => { setFaxInput(detail.company.fax_number || ''); setEditingFax(true); }}
+                              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 hover:bg-gray-50">編集</button>
+                          )}
+                        </>
+                      )}
+                    </div>
                     <div><span className="text-gray-500">業種:</span> {detail.company.industry || '-'}</div>
-                    <div><span className="text-gray-500">住所:</span> {detail.company.address || '-'}</div>
                     <div><span className="text-gray-500">地域:</span> {detail.company.region || '-'}</div>
+                    <div className="col-span-2"><span className="text-gray-500">住所:</span> {detail.company.address || '-'}</div>
                   </div>
                   {detail.company.comment && (
                     <div className="mt-2 text-xs text-gray-600">

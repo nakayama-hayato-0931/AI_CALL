@@ -445,6 +445,8 @@ const runMigrations = async () => {
   // FAX CRM 同期日時カラム
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_synced_to_faxcrm_at DATETIME NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_synced_from_faxcrm_at DATETIME NULL`); } catch (e) {}
+  // FAX番号カラム（電話番号とは別管理）
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN fax_number VARCHAR(50) DEFAULT NULL`); } catch (e) {}
   try {
     await pool.execute('CREATE INDEX idx_companies_category ON companies(industry_category)');
   } catch (e) {}

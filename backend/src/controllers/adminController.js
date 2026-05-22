@@ -1252,6 +1252,7 @@ module.exports = {
   syncCustomerToFaxCrm,
   syncCustomerFromFaxCrm,
   bulkSyncCustomers,
+  updateCustomerMaster,
 };
 
 const faxCrmClient = require('../services/faxCrmClient');
@@ -1306,7 +1307,7 @@ async function getCustomerMasterList(req, res, next) {
     }
 
     const [rows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region, c.address, c.industry_category,
+      `SELECT c.id, c.company_name, c.phone_number, c.fax_number, c.industry, c.region, c.address, c.industry_category,
               c.created_at, c.last_called_at,
               c.last_synced_to_faxcrm_at, c.last_synced_from_faxcrm_at,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) AS call_count,
@@ -1520,6 +1521,34 @@ async function getCustomerMasterDetail(req, res, next) {
 }
 
 /**
+ * PATCH /api/admin/customer-master/:id
+ * 顧客の基本情報を更新（現状は fax_number / phone_number / company_name / address のみ）
+ */
+async function updateCustomerMaster(req, res) {
+  try {
+    const { id } = req.params;
+    const { fax_number, phone_number, company_name, address } = req.body || {};
+    const sets = [];
+    const params = [];
+    if (fax_number !== undefined)    { sets.push('fax_number = ?');    params.push(fax_number || null); }
+    if (phone_number !== undefined)  { sets.push('phone_number = ?');  params.push(phone_number || null); }
+    if (company_name !== undefined)  { sets.push('company_name = ?');  params.push(company_name || null); }
+    if (address !== undefined)       { sets.push('address = ?');       params.push(address || null); }
+    if (sets.length === 0) return ApiResponse.error(res, '更新項目が指定されていません', 400);
+    params.push(id);
+    const [r] = await pool.execute(
+      `UPDATE companies SET ${sets.join(', ')} WHERE id = ?`,
+      params
+    );
+    if (r.affectedRows === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
+    return ApiResponse.success(res, { id: Number(id) }, '更新しました');
+  } catch (err) {
+    logger.error(`[updateCustomerMaster] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
  * 内部: 1社分 push（callcenter → fax-crm）
  */
 async function _pushOneToFaxCrm(id) {
@@ -1562,6 +1591,7 @@ async function _pushOneToFaxCrm(id) {
     memo: `company sync: ${company.company_name}`,
     company_name: company.company_name,
     phone_number: company.phone_number,
+    fax_number: company.fax_number,
     industry: company.industry,
     region: company.region,
     address: company.address,
