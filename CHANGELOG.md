@@ -21,6 +21,10 @@
   - `POST /api/admin/customer-master/bulk-sync` { ids[], direction: push|pull|both }。最大500社。
   - companies に `last_synced_to_faxcrm_at` / `last_synced_from_faxcrm_at` カラム追加（idempotent ALTER）。
   - 一覧テーブルに「同期」列を追加（↑送信日 / ↓取込日 / 未同期）、詳細パネルにも同期日を表示。
+- **顧客マスタ: ページネーション + 並び順改善 + UI 整理**
+  - 一覧をページングに変更（page / limit パラメータ、total / totalPages 返却）。デフォルト 50件、25/50/100/200 切替。
+  - 並び順を「最終更新が近い順」に: 架電 / 手動アクション / 同期日時 / 作成日時 の GREATEST。
+  - 詳細パネルの「NG理由（過去）」セクションを削除（アクション履歴に NG 理由が表示済みのため重複）。
 
 
 ### コスト・給与関連

@@ -45,6 +45,10 @@ export default function CustomerMasterPage() {
   const [filters, setFilters] = useState({
     search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '',
   });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -61,7 +65,10 @@ export default function CustomerMasterPage() {
       fetchList();
       fetchOperators();
     }
-  }, [user, filters]);
+  }, [user, filters, page, pageSize]);
+
+  // フィルタが変わったら 1 ページ目に戻す
+  useEffect(() => { setPage(1); }, [filters, pageSize]);
 
   const fetchOperators = async () => {
     try {
@@ -78,10 +85,14 @@ export default function CustomerMasterPage() {
     try {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
       const { data } = await api.get(`/api/admin/customer-master?${params}`);
       if (data.success) {
         setList(data.data.customers || []);
         setFaxCrmEnabled(!!data.data.faxCrmEnabled);
+        setTotal(data.data.total || 0);
+        setTotalPages(data.data.totalPages || 1);
       }
     } catch (err) {
       toast.error('顧客一覧の取得に失敗しました');
@@ -237,9 +248,13 @@ export default function CustomerMasterPage() {
         <div className="grid grid-cols-12 gap-4">
           {/* 左: 顧客一覧 */}
           <div className="col-span-5 bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-3 py-2 border-b bg-gray-50 text-sm font-bold flex justify-between">
+            <div className="px-3 py-2 border-b bg-gray-50 text-sm font-bold flex justify-between items-center">
               <span>顧客一覧</span>
-              <span className="text-xs text-gray-500">{list.length}件</span>
+              <span className="text-xs text-gray-500 font-normal">
+                {total > 0
+                  ? `${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} / ${total}件`
+                  : '0件'}
+              </span>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
               {loading ? (
@@ -297,6 +312,31 @@ export default function CustomerMasterPage() {
                   </tbody>
                 </table>
               )}
+            </div>
+            {/* ページ切替 */}
+            <div className="px-2 py-2 border-t bg-gray-50 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500">表示</span>
+                <select value={pageSize} onChange={e => setPageSize(parseInt(e.target.value, 10))}
+                  className="border rounded px-1 py-0.5 text-xs">
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                </select>
+                <span className="text-gray-500">件</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(1)} disabled={page <= 1}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-white disabled:opacity-40">先頭</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-white disabled:opacity-40">前へ</button>
+                <span className="px-2 text-gray-700">{page} / {totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-white disabled:opacity-40">次へ</button>
+                <button onClick={() => setPage(totalPages)} disabled={page >= totalPages}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-white disabled:opacity-40">末尾</button>
+              </div>
             </div>
           </div>
 
@@ -356,21 +396,6 @@ export default function CustomerMasterPage() {
                           </div>
                           {p.phone && <div className="text-gray-700 mt-0.5">TEL: {p.phone}</div>}
                           {p.impression && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">印象: {p.impression}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* NG理由集計 */}
-                {detail.ngBreakdown && detail.ngBreakdown.length > 0 && (
-                  <div className="bg-white rounded-lg shadow p-4">
-                    <h3 className="text-sm font-bold text-red-700 mb-2">NG理由（過去）</h3>
-                    <div className="space-y-1">
-                      {detail.ngBreakdown.map(r => (
-                        <div key={r.ng_reason} className="flex justify-between text-xs">
-                          <span>{r.ng_reason}</span>
-                          <span className="font-bold text-red-600">{r.cnt}回</span>
                         </div>
                       ))}
                     </div>

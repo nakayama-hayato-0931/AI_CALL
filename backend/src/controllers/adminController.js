@@ -1265,7 +1265,8 @@ async function getCustomerMasterList(req, res, next) {
   try {
     const {
       search = '',
-      limit = 200,
+      limit = 50,
+      page = 1,
       result,
       user_id,
       industry,
@@ -1273,7 +1274,9 @@ async function getCustomerMasterList(req, res, next) {
       date_to,
     } = req.query;
     const params = [];
-    const lim = Math.min(500, Math.max(10, parseInt(limit, 10) || 200));
+    const lim = Math.min(200, Math.max(10, parseInt(limit, 10) || 50));
+    const pg = Math.max(1, parseInt(page, 10) || 1);
+    const offset = (pg - 1) * lim;
 
     // 直近の架電条件で絞る場合のサブクエリ条件
     const callConds = [];
@@ -1315,13 +1318,30 @@ async function getCustomerMasterList(req, res, next) {
               (SELECT COUNT(*) FROM company_actions ca WHERE ca.company_id = c.id) AS manual_action_count
        FROM companies c
        WHERE ${where}
-       ORDER BY (last_call_at IS NULL), last_call_at DESC, c.id DESC
-       LIMIT ${lim}`,
+       ORDER BY GREATEST(
+                  COALESCE((SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1), '1900-01-01'),
+                  COALESCE((SELECT ca.action_date FROM company_actions ca WHERE ca.company_id = c.id ORDER BY ca.action_date DESC LIMIT 1), '1900-01-01'),
+                  COALESCE(c.last_synced_to_faxcrm_at, '1900-01-01'),
+                  COALESCE(c.last_synced_from_faxcrm_at, '1900-01-01'),
+                  COALESCE(c.created_at, '1900-01-01')
+                ) DESC, c.id DESC
+       LIMIT ${lim} OFFSET ${offset}`,
       params
     );
 
+    // 総件数（同じ where 条件で COUNT）
+    const [cnt] = await pool.query(
+      `SELECT COUNT(*) AS total FROM companies c WHERE ${where}`,
+      params
+    );
+    const total = cnt[0]?.total || 0;
+
     return ApiResponse.success(res, {
       customers: rows,
+      total,
+      page: pg,
+      limit: lim,
+      totalPages: Math.max(1, Math.ceil(total / lim)),
       faxCrmEnabled: faxCrmClient.isEnabled(),
     });
   } catch (err) {
