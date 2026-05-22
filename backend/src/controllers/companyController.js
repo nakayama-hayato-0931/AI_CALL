@@ -39,10 +39,22 @@ const getCompanies = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
-    const { search, industry, region, show_excluded, list_type, is_sales_list, mylist } = req.query;
+    const { search, industry, region, show_excluded, list_type, is_sales_list, mylist, updated_since } = req.query;
 
     let whereClauses = [];
     let params = [];
+
+    // updated_since=ISO8601 (例: 2026-05-21T12:00:00Z) で差分同期用
+    //   companies.updated_at >= ? の行のみ返す。 fax-crm 等の外部システムが
+    //   最終同期日時を保持して差分のみ pull するために使う
+    if (updated_since) {
+      // 緩いバリデーション: 数字とハイフン/コロン/T/Z/. のみ許容
+      if (!/^[\d\-:TZ.\s+]+$/.test(updated_since)) {
+        return ApiResponse.badRequest(res, 'updated_since は ISO8601 形式 (例: 2026-05-21T12:00:00Z)');
+      }
+      whereClauses.push('c.updated_at >= ?');
+      params.push(updated_since);
+    }
 
     // show_excluded=1 なら除外企業も表示、デフォルトは除外
     if (show_excluded !== '1') {
