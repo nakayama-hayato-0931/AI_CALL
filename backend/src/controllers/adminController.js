@@ -1251,6 +1251,7 @@ module.exports = {
   getCustomerMasterDetail,
   syncCustomerToFaxCrm,
   syncCustomerFromFaxCrm,
+  bulkSyncCustomers,
 };
 
 const faxCrmClient = require('../services/faxCrmClient');
@@ -1304,6 +1305,7 @@ async function getCustomerMasterList(req, res, next) {
     const [rows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.region, c.address, c.industry_category,
               c.created_at, c.last_called_at,
+              c.last_synced_to_faxcrm_at, c.last_synced_from_faxcrm_at,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) AS call_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG') AS ng_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'PROJECT') AS project_count,
@@ -1498,117 +1500,168 @@ async function getCustomerMasterDetail(req, res, next) {
 }
 
 /**
- * POST /api/admin/customer-master/:id/sync-to-faxcrm
- * callcenter の顧客＋直近架電履歴を fax-crm 側に push（肉付けマージ）
+ * 内部: 1社分 push（callcenter → fax-crm）
  */
+async function _pushOneToFaxCrm(id) {
+  const [companies] = await pool.execute(`SELECT * FROM companies WHERE id = ?`, [id]);
+  if (companies.length === 0) return { ok: false, error: 'not_found' };
+  const company = companies[0];
+
+  const [calls] = await pool.query(
+    `SELECT cl.id, cl.call_started_at, cl.result_code, cl.memo, cl.ng_reason,
+            cl.contact_person_name, cl.contact_person_phone,
+            u.email AS operator_email, u.name AS operator_name
+     FROM calls cl
+     LEFT JOIN users u ON cl.user_id = u.id
+     WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
+     ORDER BY cl.call_started_at DESC LIMIT 100`,
+    [id]
+  );
+
+  let pushed = 0;
+  let failed = 0;
+  for (const c of calls) {
+    const r = await faxCrmClient.notifyCallResult({
+      callId: `cc-${c.id}`,
+      companyId: id,
+      resultCode: c.result_code,
+      callStartedAt: c.call_started_at,
+      operatorEmail: c.operator_email || c.operator_name,
+      memo: c.memo,
+    });
+    if (r.ok) pushed++; else failed++;
+  }
+
+  const meta = await faxCrmClient.postContactEvent({
+    lookup: { external_callcenter_id: id },
+    channel: 'sync',
+    event_type: 'sync_push',
+    occurred_at: new Date().toISOString(),
+    source_system: 'callcenter-ai',
+    source_event_id: `sync-${id}-${Date.now()}`,
+    memo: `company sync: ${company.company_name}`,
+    company_name: company.company_name,
+    phone_number: company.phone_number,
+    industry: company.industry,
+    region: company.region,
+    address: company.address,
+  });
+
+  await pool.execute(`UPDATE companies SET last_synced_to_faxcrm_at = NOW() WHERE id = ?`, [id]);
+
+  return { ok: true, pushed, failed, meta_ok: !!meta.ok };
+}
+
+/**
+ * 内部: 1社分 pull（fax-crm → callcenter）
+ */
+async function _pullOneFromFaxCrm(id) {
+  const [companies] = await pool.execute(`SELECT id FROM companies WHERE id = ?`, [id]);
+  if (companies.length === 0) return { ok: false, error: 'not_found' };
+
+  const r = await faxCrmClient.getFaxHistory(id);
+  if (!r.ok) return { ok: false, error: r.error || r.status || 'unknown' };
+  const events = r.events || [];
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const ev of events) {
+    const tag = `[fax-crm:${ev.id || ev.source_event_id || ''}]`;
+    const [exist] = await pool.query(
+      `SELECT id FROM company_actions WHERE company_id = ? AND memo LIKE ? LIMIT 1`,
+      [id, `%${tag}%`]
+    );
+    if (exist.length > 0) { skipped++; continue; }
+    const actionDate = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
+    const actionType = ev.channel === 'fax' ? 'FAX' : (ev.channel || 'OTHER').toUpperCase();
+    const result = ev.event_type || ev.result_label || null;
+    const memo = `${tag} ${ev.memo || ''}`.trim();
+    await pool.query(
+      `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
+       VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
+      [id, actionDate, actionType, result, memo]
+    );
+    inserted++;
+  }
+
+  await pool.execute(`UPDATE companies SET last_synced_from_faxcrm_at = NOW() WHERE id = ?`, [id]);
+
+  return { ok: true, fetched: events.length, inserted, skipped };
+}
+
 async function syncCustomerToFaxCrm(req, res) {
   try {
     if (!faxCrmClient.isEnabled()) {
       return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
     }
-    const { id } = req.params;
-    const [companies] = await pool.execute(`SELECT * FROM companies WHERE id = ?`, [id]);
-    if (companies.length === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
-    const company = companies[0];
-
-    const [calls] = await pool.query(
-      `SELECT cl.id, cl.call_started_at, cl.result_code, cl.memo, cl.ng_reason,
-              cl.contact_person_name, cl.contact_person_phone,
-              u.email AS operator_email, u.name AS operator_name
-       FROM calls cl
-       LEFT JOIN users u ON cl.user_id = u.id
-       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
-       ORDER BY cl.call_started_at DESC LIMIT 100`,
-      [id]
-    );
-
-    let pushed = 0;
-    let failed = 0;
-    const errors = [];
-    for (const c of calls) {
-      const r = await faxCrmClient.notifyCallResult({
-        callId: `cc-${c.id}`,
-        companyId: id,
-        resultCode: c.result_code,
-        callStartedAt: c.call_started_at,
-        operatorEmail: c.operator_email || c.operator_name,
-        memo: c.memo,
-      });
-      if (r.ok) pushed++;
-      else { failed++; if (errors.length < 5) errors.push(r.error || r.body || r.status); }
-    }
-
-    // 顧客本体の upsert ヒント（lookup + メタ）も 1 件 contact_event として送る
-    const meta = await faxCrmClient.postContactEvent({
-      lookup: { external_callcenter_id: id },
-      channel: 'sync',
-      event_type: 'sync_push',
-      occurred_at: new Date().toISOString(),
-      source_system: 'callcenter-ai',
-      source_event_id: `sync-${id}-${Date.now()}`,
-      memo: `company sync: ${company.company_name}`,
-      company_name: company.company_name,
-      phone_number: company.phone_number,
-      industry: company.industry,
-      region: company.region,
-      address: company.address,
-    });
-
-    return ApiResponse.success(res, {
-      pushed, failed, errors, meta_ok: !!meta.ok,
-    }, `${pushed}件の架電履歴を FAX CRM に送信しました`);
+    const r = await _pushOneToFaxCrm(req.params.id);
+    if (!r.ok) return ApiResponse.error(res, r.error, 502);
+    return ApiResponse.success(res, r, `${r.pushed}件の架電履歴を FAX CRM に送信しました`);
   } catch (err) {
     logger.error(`[syncCustomerToFaxCrm] ${err.message}`);
     return ApiResponse.error(res, err.message, 500);
   }
 }
 
-/**
- * POST /api/admin/customer-master/:id/sync-from-faxcrm
- * fax-crm の FAX 履歴を取得して、callcenter 側 company_actions に肉付けマージ
- */
 async function syncCustomerFromFaxCrm(req, res) {
   try {
     if (!faxCrmClient.isEnabled()) {
       return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
     }
-    const { id } = req.params;
-    const [companies] = await pool.execute(`SELECT id FROM companies WHERE id = ?`, [id]);
-    if (companies.length === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
+    const r = await _pullOneFromFaxCrm(req.params.id);
+    if (!r.ok) return ApiResponse.error(res, r.error, 502);
+    return ApiResponse.success(res, r, `${r.inserted}件の FAX 履歴を取込しました（既存スキップ: ${r.skipped}件）`);
+  } catch (err) {
+    logger.error(`[syncCustomerFromFaxCrm] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
 
-    const r = await faxCrmClient.getFaxHistory(id);
-    if (!r.ok) {
-      return ApiResponse.error(res, `FAX CRM 取得失敗: ${r.error || r.status || 'unknown'}`, 502);
+/**
+ * POST /api/admin/customer-master/bulk-sync
+ * body: { ids: [int], direction: 'push'|'pull'|'both' }
+ */
+async function bulkSyncCustomers(req, res) {
+  try {
+    if (!faxCrmClient.isEnabled()) {
+      return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
     }
-    const events = r.events || [];
+    const { ids, direction = 'both' } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return ApiResponse.error(res, 'ids が空です', 400);
+    }
+    const MAX = 500;
+    const target = ids.slice(0, MAX);
 
-    // company_actions に FAX 履歴を upsert（source_event_id を memo に埋めて冪等化）
-    let inserted = 0;
-    let skipped = 0;
-    for (const ev of events) {
-      const tag = `[fax-crm:${ev.id || ev.source_event_id || ''}]`;
-      const [exist] = await pool.query(
-        `SELECT id FROM company_actions WHERE company_id = ? AND memo LIKE ? LIMIT 1`,
-        [id, `%${tag}%`]
-      );
-      if (exist.length > 0) { skipped++; continue; }
-      const actionDate = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
-      const actionType = ev.channel === 'fax' ? 'FAX' : (ev.channel || 'OTHER').toUpperCase();
-      const result = ev.event_type || ev.result_label || null;
-      const memo = `${tag} ${ev.memo || ''}`.trim();
-      await pool.query(
-        `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
-         VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
-        [id, actionDate, actionType, result, memo]
-      );
-      inserted++;
+    let pushedTotal = 0, pulledTotal = 0;
+    let okCount = 0, failCount = 0;
+    const failures = [];
+    for (const id of target) {
+      try {
+        if (direction === 'push' || direction === 'both') {
+          const r = await _pushOneToFaxCrm(id);
+          if (r.ok) pushedTotal += (r.pushed || 0);
+          else { failCount++; if (failures.length < 10) failures.push({ id, stage: 'push', error: r.error }); continue; }
+        }
+        if (direction === 'pull' || direction === 'both') {
+          const r = await _pullOneFromFaxCrm(id);
+          if (r.ok) pulledTotal += (r.inserted || 0);
+          else { failCount++; if (failures.length < 10) failures.push({ id, stage: 'pull', error: r.error }); continue; }
+        }
+        okCount++;
+      } catch (e) {
+        failCount++;
+        if (failures.length < 10) failures.push({ id, error: e.message });
+      }
     }
 
     return ApiResponse.success(res, {
-      fetched: events.length, inserted, skipped,
-    }, `${inserted}件の FAX 履歴を取込しました（既存スキップ: ${skipped}件）`);
+      target_count: target.length, ok: okCount, fail: failCount,
+      pushed_events: pushedTotal, pulled_events: pulledTotal,
+      failures,
+    }, `一括同期 完了: 成功${okCount}/${target.length}社（送信${pushedTotal}件・取込${pulledTotal}件）`);
   } catch (err) {
-    logger.error(`[syncCustomerFromFaxCrm] ${err.message}`);
+    logger.error(`[bulkSyncCustomers] ${err.message}`);
     return ApiResponse.error(res, err.message, 500);
   }
 }

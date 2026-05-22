@@ -106,59 +106,29 @@ export default function CustomerMasterPage() {
 
   const canEdit = user && ['admin', 'manager', 'editor'].includes(user.role);
 
-  const syncToFaxCrm = async () => {
-    if (!selectedId) return;
+  const bulkSync = async (direction) => {
     if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
+    if (list.length === 0) { toast.error('対象の顧客がありません'); return; }
+    const label = direction === 'push' ? 'callcenter → fax-crm 送信'
+      : direction === 'pull' ? 'fax-crm → callcenter 取込'
+      : '双方向同期';
+    if (typeof window !== 'undefined' && !window.confirm(`現在表示中の ${list.length} 社に対して「${label}」を実行します。\nよろしいですか？`)) return;
     setSyncing(true);
+    const t = toast.loading(`一括同期 実行中... (${list.length}社)`);
     try {
-      const { data } = await api.post(`/api/admin/customer-master/${selectedId}/sync-to-faxcrm`);
+      const ids = list.map(c => c.id);
+      const { data } = await api.post('/api/admin/customer-master/bulk-sync', { ids, direction });
+      toast.dismiss(t);
       if (data.success) {
-        toast.success(data.message || `送信完了: ${data.data?.pushed || 0}件`);
-        openDetail(selectedId);
+        toast.success(data.message || '一括同期 完了');
+        fetchList();
+        if (selectedId) openDetail(selectedId);
       } else {
-        toast.error(data.message || '送信失敗');
+        toast.error(data.message || '一括同期 失敗');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || '送信に失敗しました');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const syncFromFaxCrm = async () => {
-    if (!selectedId) return;
-    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
-    if (typeof window !== 'undefined' && !window.confirm('fax-crm 側のFAX履歴を callcenter に取込しますか？\n（重複は自動でスキップされます）')) return;
-    setSyncing(true);
-    try {
-      const { data } = await api.post(`/api/admin/customer-master/${selectedId}/sync-from-faxcrm`);
-      if (data.success) {
-        toast.success(data.message || `取込完了: ${data.data?.inserted || 0}件`);
-        openDetail(selectedId);
-      } else {
-        toast.error(data.message || '取込失敗');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || '取込に失敗しました');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const syncBoth = async () => {
-    if (!selectedId) return;
-    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
-    if (typeof window !== 'undefined' && !window.confirm('双方向同期を実行します。\n1) callcenter → fax-crm に架電履歴を送信\n2) fax-crm → callcenter に FAX 履歴を取込\nよろしいですか？')) return;
-    setSyncing(true);
-    try {
-      const r1 = await api.post(`/api/admin/customer-master/${selectedId}/sync-to-faxcrm`);
-      const r2 = await api.post(`/api/admin/customer-master/${selectedId}/sync-from-faxcrm`);
-      const pushed = r1.data?.data?.pushed || 0;
-      const inserted = r2.data?.data?.inserted || 0;
-      toast.success(`双方向同期 完了: 送信${pushed}件 / 取込${inserted}件`);
-      openDetail(selectedId);
-    } catch (err) {
-      toast.error(err.response?.data?.message || '同期に失敗しました');
+      toast.dismiss(t);
+      toast.error(err.response?.data?.message || '一括同期に失敗しました');
     } finally {
       setSyncing(false);
     }
@@ -189,6 +159,25 @@ export default function CustomerMasterPage() {
                 : <span className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">FAX CRM 連携 未設定</span>}
             </p>
           </div>
+          {canEdit && (
+            <div className="flex flex-wrap gap-1">
+              <button onClick={() => bulkSync('push')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+                className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300"
+                title="一覧の全社を callcenter → fax-crm に送信">
+                一括 送信
+              </button>
+              <button onClick={() => bulkSync('pull')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+                className="text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-300"
+                title="一覧の全社を fax-crm → callcenter に取込">
+                一括 取込
+              </button>
+              <button onClick={() => bulkSync('both')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                title="一覧の全社を双方向同期">
+                一括 双方向同期
+              </button>
+            </div>
+          )}
         </div>
 
         {/* フィルタバー */}
@@ -266,6 +255,7 @@ export default function CustomerMasterPage() {
                       <th className="px-2 py-1.5 text-right">NG</th>
                       <th className="px-2 py-1.5 text-right">案件</th>
                       <th className="px-2 py-1.5 text-left">最終</th>
+                      <th className="px-2 py-1.5 text-left">同期</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -283,6 +273,24 @@ export default function CustomerMasterPage() {
                         <td className="px-2 py-1.5 text-[10px] text-gray-500">
                           {c.last_result && <span className="block">{RESULT_LABEL[c.last_result] || c.last_result}</span>}
                           <span>{fmtDate(c.last_call_at)}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-[10px]">
+                          {(c.last_synced_to_faxcrm_at || c.last_synced_from_faxcrm_at) ? (
+                            <div className="space-y-0.5">
+                              {c.last_synced_to_faxcrm_at && (
+                                <div className="text-blue-700" title={`送信: ${fmtDateTime(c.last_synced_to_faxcrm_at)}`}>
+                                  <span className="inline-block w-4 text-center">↑</span>{fmtDate(c.last_synced_to_faxcrm_at)}
+                                </div>
+                              )}
+                              {c.last_synced_from_faxcrm_at && (
+                                <div className="text-orange-700" title={`取込: ${fmtDateTime(c.last_synced_from_faxcrm_at)}`}>
+                                  <span className="inline-block w-4 text-center">↓</span>{fmtDate(c.last_synced_from_faxcrm_at)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">未同期</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -308,25 +316,17 @@ export default function CustomerMasterPage() {
                 <div className="bg-white rounded-lg shadow p-4">
                   <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
                     <h2 className="text-lg font-bold">{detail.company.company_name}</h2>
-                    {canEdit && (
-                      <div className="flex flex-wrap gap-1">
-                        <button onClick={syncToFaxCrm} disabled={syncing || !faxCrmEnabled}
-                          className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300"
-                          title="callcenter の架電履歴を fax-crm に送信（肉付けマージ）">
-                          callcenter から送信
-                        </button>
-                        <button onClick={syncFromFaxCrm} disabled={syncing || !faxCrmEnabled}
-                          className="text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-300"
-                          title="fax-crm の FAX 履歴を callcenter に取込">
-                          callcenter へ取込
-                        </button>
-                        <button onClick={syncBoth} disabled={syncing || !faxCrmEnabled}
-                          className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
-                          title="双方向同期（送信＋取込）">
-                          双方向同期
-                        </button>
-                      </div>
-                    )}
+                    <div className="text-[11px] text-gray-500 text-right">
+                      {detail.company.last_synced_to_faxcrm_at && (
+                        <div className="text-blue-700">送信済: {fmtDateTime(detail.company.last_synced_to_faxcrm_at)}</div>
+                      )}
+                      {detail.company.last_synced_from_faxcrm_at && (
+                        <div className="text-orange-700">取込済: {fmtDateTime(detail.company.last_synced_from_faxcrm_at)}</div>
+                      )}
+                      {!detail.company.last_synced_to_faxcrm_at && !detail.company.last_synced_from_faxcrm_at && (
+                        <span className="text-gray-400">未同期</span>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div><span className="text-gray-500">電話:</span> {detail.company.phone_number || '-'}</div>

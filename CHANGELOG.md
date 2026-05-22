@@ -16,6 +16,11 @@
     - `POST /api/admin/customer-master/:id/sync-from-faxcrm` … fax-crm の FAX 履歴を取得して `company_actions` に取込。`[fax-crm:<id>]` タグで重複スキップ。
     - 「双方向同期」ボタン: 上記2つを連続実行（confirm付き）。
   - 単方向の取込側にも confirm を付与。
+- **顧客マスタ: 一括同期 + 同期状態表示**
+  - 個別の同期ボタンを撤去し、ページ上部に「一括 送信 / 一括 取込 / 一括 双方向同期」を追加（対象は現在の一覧フィルタ結果）。
+  - `POST /api/admin/customer-master/bulk-sync` { ids[], direction: push|pull|both }。最大500社。
+  - companies に `last_synced_to_faxcrm_at` / `last_synced_from_faxcrm_at` カラム追加（idempotent ALTER）。
+  - 一覧テーブルに「同期」列を追加（↑送信日 / ↓取込日 / 未同期）、詳細パネルにも同期日を表示。
 
 
 ### コスト・給与関連

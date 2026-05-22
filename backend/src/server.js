@@ -421,6 +421,9 @@ const runMigrations = async () => {
   try {
     await pool.execute(`ALTER TABLE companies ADD COLUMN industry_category VARCHAR(20) DEFAULT NULL`);
   } catch (e) {}
+  // FAX CRM 同期日時カラム
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_synced_to_faxcrm_at DATETIME NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_synced_from_faxcrm_at DATETIME NULL`); } catch (e) {}
   try {
     await pool.execute('CREATE INDEX idx_companies_category ON companies(industry_category)');
   } catch (e) {}
