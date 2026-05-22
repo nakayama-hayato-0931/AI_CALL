@@ -106,6 +106,8 @@ export default function CallPage() {
   const [contactPersonGender, setContactPersonGender] = useState('');
   const [contactPersonPhone, setContactPersonPhone] = useState('');
   const [contactPersonImpression, setContactPersonImpression] = useState('');
+  // NG理由（NG選択時のみ）
+  const [ngReason, setNgReason] = useState('');
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(null);
 
@@ -318,6 +320,7 @@ export default function CallPage() {
     setContactPersonGender('');
     setContactPersonPhone('');
     setContactPersonImpression('');
+    setNgReason('');
     try {
       // 前回の未保存callがあればキャンセル
       await cancelUnsavedCall();
@@ -359,6 +362,7 @@ export default function CallPage() {
     setContactPersonGender('');
     setContactPersonPhone('');
     setContactPersonImpression('');
+    setNgReason('');
   };
 
   // 自動で次の架電先へ進む（ロック取得まで。架電開始は手動）
@@ -582,6 +586,10 @@ export default function CallPage() {
       toast.error('リコール日時を入力してください');
       return;
     }
+    if (resultCode === 'NG' && !ngReason) {
+      toast.error('NG理由を選択してください');
+      return;
+    }
     const showContactFields = resultCode === 'RECALL' || isPerson;
     const submitEndCall = async (overwrite = false) => {
       return api.put(`/api/calls/${callId}/end`, {
@@ -596,6 +604,7 @@ export default function CallPage() {
         contact_person_gender: showContactFields ? (contactPersonGender || null) : null,
         contact_person_phone: showContactFields ? (contactPersonPhone || null) : null,
         contact_person_impression: showContactFields ? (contactPersonImpression || null) : null,
+        ng_reason: resultCode === 'NG' ? (ngReason || null) : null,
       });
     };
     try {
@@ -1164,6 +1173,28 @@ export default function CallPage() {
                       onChange={(e) => setRecallAt(e.target.value)}
                       className="input"
                     />
+                  </div>
+                )}
+
+                {resultCode === 'NG' && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <label className="input-label text-red-700">NG理由 *</label>
+                    <select
+                      value={ngReason}
+                      onChange={(e) => setNgReason(e.target.value)}
+                      className="input"
+                    >
+                      <option value="">選択してください</option>
+                      <option value="今は募集していない">今は募集していない</option>
+                      <option value="外国人NG">外国人NG</option>
+                      <option value="技人国NG">技人国NG</option>
+                      <option value="特定技能のみ募集中">特定技能のみ募集中</option>
+                      <option value="アルバイトだけ(正社員NG)">アルバイトだけ(正社員NG)</option>
+                      <option value="今忙しい(対応不可)">今忙しい(対応不可)</option>
+                      <option value="ハローワークからしか募集していない">ハローワークからしか募集していない</option>
+                      <option value="決まったところ(ハローワーク以外)からしか募集していない">決まったところ(ハローワーク以外)からしか募集していない</option>
+                      <option value="信用できない(怪しいから)">信用できない(怪しいから)</option>
+                    </select>
                   </div>
                 )}
 

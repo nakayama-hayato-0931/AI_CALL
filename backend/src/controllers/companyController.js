@@ -1083,6 +1083,7 @@ const getCompanyActions = async (req, res, next) => {
               cl.contact_person_gender,
               cl.contact_person_phone,
               cl.contact_person_impression,
+              cl.ng_reason,
               cl.is_person_in_charge,
               u.name AS user_name,
               'call' AS source

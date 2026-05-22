@@ -115,6 +115,7 @@ const endCall = async (req, res, next) => {
     contact_person_gender,
     contact_person_impression,
     contact_person_phone,
+    ng_reason,
   } = req.body;
 
   // バリデーション
@@ -124,6 +125,9 @@ const endCall = async (req, res, next) => {
   }
   if (result_code === 'RECALL' && !recall_at) {
     return ApiResponse.badRequest(res, 'リコールの場合はrecall_atが必須です');
+  }
+  if (result_code === 'NG' && !ng_reason) {
+    return ApiResponse.badRequest(res, 'NGの場合はNG理由を選択してください');
   }
 
   try {
@@ -216,7 +220,8 @@ const endCall = async (req, res, next) => {
           contact_person_name = ?,
           contact_person_gender = ?,
           contact_person_impression = ?,
-          contact_person_phone = ?
+          contact_person_phone = ?,
+          ng_reason = ?
          WHERE id = ?`,
         [
           result_code,
@@ -229,6 +234,7 @@ const endCall = async (req, res, next) => {
           contact_person_gender || null,
           contact_person_impression || null,
           contact_person_phone || null,
+          result_code === 'NG' ? (ng_reason || null) : null,
           id,
         ]
       );

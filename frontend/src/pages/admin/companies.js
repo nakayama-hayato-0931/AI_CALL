@@ -884,7 +884,12 @@ export default function AdminCompanies() {
                                     </span>
                                   </td>
                                   <td className="px-2 py-1.5 text-xs">{a.user_name || '-'}</td>
-                                  <td className="px-2 py-1.5 text-xs">{a.result || '-'}</td>
+                                  <td className="px-2 py-1.5 text-xs">
+                                    {a.result || '-'}
+                                    {a.result === 'NG' && a.ng_reason && (
+                                      <div className="text-[10px] text-red-600 mt-0.5">{a.ng_reason}</div>
+                                    )}
+                                  </td>
                                   <td className="px-2 py-1.5 text-xs text-gray-500 max-w-xs truncate">{a.memo || '-'}</td>
                                   <td className="px-2 py-1.5 text-center">
                                     {!isCall && (
