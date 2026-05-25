@@ -1106,8 +1106,42 @@ const getCompanyActions = async (req, res, next) => {
       [id]
     );
 
-    // マージしてソート
-    const merged = [...actions, ...calls].sort((a, b) => {
+    // fax-crm 側の contact_events も統合 (FAX送信履歴・受電報告)
+    //   失敗しても他のソースは表示するので fail-soft
+    let faxEvents = [];
+    try {
+      const faxCrmClient = require('../services/faxCrmClient');
+      if (faxCrmClient.isEnabled()) {
+        const r = await faxCrmClient.getFaxHistory(id);
+        if (r.ok && Array.isArray(r.events)) {
+          // fax-crm の event_type を action_type にマップ
+          const EVENT_TYPE_LABEL = {
+            send: 'FAX送信', response_inquiry: '受電(問合せ)', response_order: '受電(発注)',
+            refusal: '拒否', invalid_number: '番号無効',
+            project: '案件化', ng: 'NG', recall: 'リコール',
+            material_sent: '資料送付', other: 'その他',
+          };
+          faxEvents = r.events.map((e) => ({
+            id: e.id,
+            company_id: id,
+            action_date: (e.occurred_at || '').slice(0, 10),
+            action_type: EVENT_TYPE_LABEL[e.event_type] || e.event_type || 'FAX',
+            user_id: null,
+            user_name: e.operator_name || null,
+            result: e.result_label || null,
+            memo: e.memo || null,
+            created_at: e.occurred_at,
+            source: 'fax-crm',
+          }));
+        }
+      }
+    } catch (e) {
+      // fax-crm 取得失敗は無視 (ログのみ)
+      try { require('../utils/logger').warn(`[getCompanyActions] fax-crm fetch失敗: ${e.message}`); } catch (_) {}
+    }
+
+    // マージしてソート (calls / manual company_actions / fax-crm events 全て)
+    const merged = [...actions, ...calls, ...faxEvents].sort((a, b) => {
       const ad = new Date(a.created_at || a.action_date).getTime();
       const bd = new Date(b.created_at || b.action_date).getTime();
       return bd - ad;
