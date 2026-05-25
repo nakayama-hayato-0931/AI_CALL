@@ -18,7 +18,7 @@
  *
  * 冪等性: 既存の取込と同じく `[fax-crm:<source_event_id>]` タグで重複スキップ。
  */
-const pool = require('../config/database');
+const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 
