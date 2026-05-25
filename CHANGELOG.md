@@ -33,6 +33,16 @@
   - `PATCH /api/admin/customer-master/:id`（fax_number / phone_number / company_name / address を任意で更新）。
   - 顧客マスタ詳細パネルで FAX番号をインライン編集可能（管理者・マネージャー）。
   - fax-crm への push payload に `fax_number` を含めるよう拡張。
+- **fax-crm からのリアルタイム webhook 受け口**
+  - 新ルート `/api/integrations/faxcrm/*`（JWT 認証ではなく `X-Webhook-Secret` ヘッダで認証）。
+  - エンドポイント:
+    - `POST /api/integrations/faxcrm/event` — 単発イベント
+    - `POST /api/integrations/faxcrm/events` — `{ events: [...] }` でバルク
+    - `GET  /api/integrations/faxcrm/health` — ヘルスチェック
+  - 受信時に `company_actions` に upsert（`[fax-crm:<id>]` タグで冪等化）+ `companies.last_synced_from_faxcrm_at` を更新。
+  - 環境変数 `FAX_CRM_WEBHOOK_SECRET` を新設（fax-crm 側でこの値を `X-Webhook-Secret` に載せて POST）。
+  - rate-limit の skip 対象に `/api/integrations/faxcrm/*` を追加。
+  - これで fax-crm 側で FAX 送信した瞬間に callcenter のタイムラインに反映される双方向リアルタイム同期が完成。
 
 
 ### コスト・給与関連

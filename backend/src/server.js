@@ -47,6 +47,7 @@ const adminRoutes = require('./routes/admin');
 const requestRoutes = require('./routes/requests');
 const scriptRoutes = require('./routes/scripts');
 const analyticsRoutes = require('./routes/analytics');
+const integrationsRoutes = require('./routes/integrations');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -88,6 +89,8 @@ const limiter = rateLimit({
   skip: (req) => {
     const p = req.path;
     if (p === '/auth/operators' || p === '/companies/operators' || p === '/calls/operators') return true;
+    // fax-crm からの webhook はヘッダ認証付きなのでレート制限から除外
+    if (p.startsWith('/integrations/faxcrm')) return true;
     // サービスアカウント（fax-crm 同期など）はレート制限から除外
     if (isServiceAccountReq(req)) return true;
     return false;
@@ -129,6 +132,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/scripts', scriptRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
