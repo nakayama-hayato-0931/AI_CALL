@@ -64,18 +64,34 @@ export default function IndustryAnalysisPage() {
   const [months, setMonths] = useState(6);
   const [selectedMetric, setSelectedMetric] = useState('projectRate');
   const [viewMode, setViewMode] = useState('rate'); // 'rate' | 'count'
-  const [groupBy, setGroupBy] = useState('industry'); // 'industry' | 'region'
+  const [groupBy, setGroupBy] = useState('industry'); // 'industry' | 'region' | 'both'
   const [drillModal, setDrillModal] = useState(null); // { industry, month, type, label, loading, data }
 
-  const openDrilldown = async (industry, month, metric) => {
+  const openDrilldown = async (industry, month, metric, region) => {
     const drilldownType = metric.drilldownType;
+    const labelParts = [industry];
+    if (region) labelParts.push(region);
+    labelParts.push(month ? fmtMonth(month) : '期間合計');
+    labelParts.push(metric.label);
     setDrillModal({
-      industry, month, type: drilldownType,
-      label: `${industry} - ${fmtMonth(month)} ${metric.label}`,
+      industry, region, month, type: drilldownType,
+      label: labelParts.join(' - '),
       loading: true, data: null,
     });
     try {
-      const params = new URLSearchParams({ industry, month, type: drilldownType, group_by: groupBy });
+      const params = new URLSearchParams({ industry, type: drilldownType, group_by: groupBy });
+      if (region) params.set('region', region);
+      if (month) {
+        params.set('month', month);
+      } else if (data?.months?.length) {
+        // matrix モード: 表示中の月リスト全期間
+        const first = data.months[0];
+        const last = data.months[data.months.length - 1];
+        const [ly, lm] = last.split('-').map(Number);
+        const lastDay = new Date(ly, lm, 0).getDate();
+        params.set('date_from', `${first}-01`);
+        params.set('date_to', `${last}-${String(lastDay).padStart(2, '0')}`);
+      }
       const { data: res } = await api.get(`/api/analytics/industry-period-detail?${params}`);
       if (res.success) {
         setDrillModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
@@ -115,9 +131,11 @@ export default function IndustryAnalysisPage() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold">{groupBy === 'region' ? '地域別分析' : '業種別分析'}</h1>
+            <h1 className="text-2xl font-bold">{groupBy === 'region' ? '地域別分析' : groupBy === 'both' ? '業種×地域 マトリクス' : '業種別分析'}</h1>
             <p className="text-sm text-gray-500 mt-1">
-              {groupBy === 'region' ? '都道府県' : '業種カテゴリ'} × 月別の転換率比較。案件は獲得日（created_at）、内定は内定日（naitei_date）ベース。
+              {groupBy === 'both'
+                ? '業種カテゴリ × 都道府県/地域 の指標マトリクス（直近期間の合算）。'
+                : `${groupBy === 'region' ? '都道府県' : '業種カテゴリ'} × 月別の転換率比較。案件は獲得日（created_at）、内定は内定日（naitei_date）ベース。`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -147,6 +165,10 @@ export default function IndustryAnalysisPage() {
               onClick={() => setGroupBy('region')}
               className={`px-3 py-1.5 rounded-md text-sm font-medium ${groupBy === 'region' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >地域別</button>
+            <button
+              onClick={() => setGroupBy('both')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${groupBy === 'both' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >両方</button>
           </div>
           <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
             <button
@@ -160,8 +182,8 @@ export default function IndustryAnalysisPage() {
           </div>
         </div>
 
-        {/* 指標切替（率モード時のみ） */}
-        {viewMode === 'rate' && (
+        {/* 指標切替（率モードまたは両方マトリクス時に表示） */}
+        {(viewMode === 'rate' || groupBy === 'both') && (
           <div className="flex flex-wrap gap-1 bg-gray-50 p-1.5 rounded-lg mb-4 border border-gray-200">
             {METRICS.map(m => (
               <button
@@ -182,8 +204,143 @@ export default function IndustryAnalysisPage() {
 
         {loading ? (
           <div className="text-center py-12 text-gray-500">読み込み中...</div>
-        ) : !data || data.industries.length === 0 ? (
+        ) : !data || (data.industries?.length || 0) === 0 ? (
           <div className="text-center py-12 text-gray-500">データがありません</div>
+        ) : groupBy === 'both' ? (
+          /* ===== 業種×地域 マトリクス ===== */
+          (() => {
+            const inds = data.industries || [];
+            const regs = data.regions || [];
+            const cellMap = new Map();
+            for (const c of (data.cells || [])) cellMap.set(`${c.industry}|${c.region}`, c);
+            const m = currentMetric;
+            const getMetricValue = (cell) => {
+              if (!cell) return null;
+              if (m.kind === 'count') return Number(cell[m.countKey]) || 0;
+              const num = Number(cell[m.num]) || 0;
+              const den = Number(cell[m.den]) || 0;
+              return { value: cell[m.key], num, den };
+            };
+            // 行（業種）合計
+            const rowTotal = (i) => {
+              const agg = { projectCount: 0, callCount: 0, naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 };
+              for (const r of regs) {
+                const c = cellMap.get(`${i}|${r}`);
+                if (!c) continue;
+                agg.projectCount += c.projectCount;
+                agg.callCount += c.callCount;
+                agg.naiteiCount += c.naiteiCount;
+                agg.interviewDoneCount += c.interviewDoneCount;
+                agg.lostCount += c.lostCount;
+                agg.barashiCount += c.barashiCount;
+              }
+              return agg;
+            };
+            const colTotal = (r) => {
+              const agg = { projectCount: 0, callCount: 0, naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 };
+              for (const i of inds) {
+                const c = cellMap.get(`${i}|${r}`);
+                if (!c) continue;
+                agg.projectCount += c.projectCount;
+                agg.callCount += c.callCount;
+                agg.naiteiCount += c.naiteiCount;
+                agg.interviewDoneCount += c.interviewDoneCount;
+                agg.lostCount += c.lostCount;
+                agg.barashiCount += c.barashiCount;
+              }
+              return agg;
+            };
+            const grandTotal = (() => {
+              const agg = { projectCount: 0, callCount: 0, naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 };
+              for (const c of (data.cells || [])) {
+                agg.projectCount += c.projectCount; agg.callCount += c.callCount;
+                agg.naiteiCount += c.naiteiCount; agg.interviewDoneCount += c.interviewDoneCount;
+                agg.lostCount += c.lostCount; agg.barashiCount += c.barashiCount;
+              }
+              return agg;
+            })();
+            const fmtAgg = (agg) => {
+              if (m.kind === 'count') {
+                const v = agg[m.countKey] || 0;
+                return v > 0 ? `${v}件` : <span className="text-gray-300">-</span>;
+              }
+              const num = agg[m.num] || 0;
+              const den = agg[m.den] || 0;
+              const rate = den > 0 ? Math.round(num / den * 1000) / 10 : 0;
+              return den > 0
+                ? <span className={`inline-block px-2 py-0.5 rounded ${colorForMetric(selectedMetric, rate)}`} title={`${num} / ${den}`}>{rate}%</span>
+                : <span className="text-gray-300">-</span>;
+            };
+            return (
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-4 py-3 border-b bg-gray-50">
+                  <h2 className="font-bold text-base">{m.label}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{m.desc} ・ 業種(行) × 地域(列) のマトリクス（直近{months}ヶ月合算）</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs">
+                      <tr>
+                        <th className="px-3 py-2 text-left sticky left-0 bg-gray-50 z-10">業種＼地域</th>
+                        {regs.map(r => (
+                          <th key={r} className="px-3 py-2 text-center whitespace-nowrap">{r}</th>
+                        ))}
+                        <th className="px-3 py-2 text-center bg-blue-50 whitespace-nowrap">合計</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inds.map(i => (
+                        <tr key={i} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium sticky left-0 bg-white">{i}</td>
+                          {regs.map(r => {
+                            const cell = cellMap.get(`${i}|${r}`);
+                            if (!cell) return <td key={r} className="px-3 py-2 text-center text-gray-300">-</td>;
+                            if (m.kind === 'count') {
+                              const v = Number(cell[m.countKey]) || 0;
+                              return (
+                                <td key={r} className="px-3 py-2 text-center">
+                                  {v > 0 ? (
+                                    <button onClick={() => openDrilldown(i, null, m, r)}
+                                      className="inline-block px-2 py-0.5 rounded font-semibold cursor-pointer text-blue-700 hover:bg-blue-50 underline decoration-dotted underline-offset-4"
+                                      title="クリックで明細">{v}件</button>
+                                  ) : <span className="text-gray-300">-</span>}
+                                </td>
+                              );
+                            }
+                            const num = Number(cell[m.num]) || 0;
+                            const den = Number(cell[m.den]) || 0;
+                            const v = cell[m.key];
+                            const canClick = num > 0 && den > 0;
+                            return (
+                              <td key={r} className="px-3 py-2 text-center">
+                                {den > 0 ? (
+                                  canClick ? (
+                                    <button onClick={() => openDrilldown(i, null, m, r)}
+                                      className={`inline-block px-2 py-0.5 rounded font-semibold cursor-pointer hover:ring-2 hover:ring-blue-300 ${colorForMetric(selectedMetric, v)}`}
+                                      title={`${num} / ${den} — クリックで明細`}>{v}%</button>
+                                  ) : (
+                                    <span className={`inline-block px-2 py-0.5 rounded font-semibold ${colorForMetric(selectedMetric, v)}`}>{v}%</span>
+                                  )
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2 text-center bg-blue-50/40 font-bold">{fmtAgg(rowTotal(i))}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-blue-300 bg-blue-50/70 font-bold text-blue-900">
+                        <td className="px-3 py-2 sticky left-0 bg-blue-50/70">合計</td>
+                        {regs.map(r => (
+                          <td key={r} className="px-3 py-2 text-center">{fmtAgg(colTotal(r))}</td>
+                        ))}
+                        <td className="px-3 py-2 text-center bg-blue-100">{fmtAgg(grandTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()
         ) : viewMode === 'rate' ? (
           /* 率モード: 単一指標 × 業種×月 のマトリクス */
           <div className="bg-white rounded-lg shadow overflow-hidden">

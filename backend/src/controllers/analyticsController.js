@@ -1908,7 +1908,8 @@ const getWaitingContactDetail = async (req, res, next) => {
 const getIndustryMonthlyAnalysis = async (req, res, next) => {
   try {
     const months = Math.min(24, Math.max(1, parseInt(req.query.months, 10) || 6));
-    const groupBy = req.query.group_by === 'region' ? 'region' : 'industry';
+    const gbq = req.query.group_by;
+    const groupBy = gbq === 'region' ? 'region' : (gbq === 'both' ? 'both' : 'industry');
     const now = new Date();
     const monthList = [];
     for (let i = months - 1; i >= 0; i--) {
@@ -1946,6 +1947,102 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     )`;
     const REGION_EXPR = `COALESCE(NULLIF(c.region, ''), '(未設定)')`;
     const CAT = groupBy === 'region' ? REGION_EXPR : INDUSTRY_CAT;
+
+    // ===== group_by=both: 業種×地域 マトリクス =====
+    if (groupBy === 'both') {
+      const rangeFrom = monthList[0].dateFrom;
+      const rangeTo = monthList[monthList.length - 1].dateTo;
+      const [projAll2] = await pool.query(
+        `SELECT
+           ${INDUSTRY_CAT} AS industry_cat,
+           ${REGION_EXPR}  AS region_cat,
+           COUNT(*) AS project_count,
+           CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) AS naitei_count,
+           CAST(SUM(CASE WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI') THEN 1 ELSE 0 END) AS SIGNED) AS interview_done_count,
+           CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) AS lost_count,
+           CAST(SUM(CASE WHEN p.status = 'BARASHI' THEN 1 ELSE 0 END) AS SIGNED) AS barashi_count
+         FROM projects p
+         LEFT JOIN companies c ON p.company_id = c.id
+         WHERE p.is_prospect = 0 AND p.is_legacy = 0
+           AND DATE(p.created_at) BETWEEN ? AND ?
+         GROUP BY ${INDUSTRY_CAT}, ${REGION_EXPR}`,
+        [rangeFrom, rangeTo]
+      );
+      const [callAll2] = await pool.query(
+        `SELECT
+           ${INDUSTRY_CAT} AS industry_cat,
+           ${REGION_EXPR}  AS region_cat,
+           COUNT(*) AS call_count
+         FROM calls cl
+         LEFT JOIN companies c ON cl.company_id = c.id
+         WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
+           AND DATE(cl.call_started_at) BETWEEN ? AND ?
+         GROUP BY ${INDUSTRY_CAT}, ${REGION_EXPR}`,
+        [rangeFrom, rangeTo]
+      );
+      const SHOW = new Set(['飲食','製造','小売','建設','宿泊']);
+      const normInd = (c) => SHOW.has(c) ? c : 'その他';
+      const REGION_ORDER_B = [
+        '北海道','東北','関東','中部','近畿','中国','四国','九州','沖縄','(未設定)',
+        '青森県','岩手県','宮城県','秋田県','山形県','福島県',
+        '茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県',
+        '新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県',
+        '三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県',
+        '鳥取県','島根県','岡山県','広島県','山口県',
+        '徳島県','香川県','愛媛県','高知県',
+        '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県',
+      ];
+      const INDUSTRY_ORDER_B = ['飲食','製造','小売','建設','宿泊','その他'];
+      const cellMap = new Map();
+      const regionSet = new Set();
+      const industrySet2 = new Set(INDUSTRY_ORDER_B);
+      const getCell = (i, r) => {
+        const k = `${i}|${r}`;
+        let v = cellMap.get(k);
+        if (!v) {
+          v = { industry: i, region: r, projectCount: 0, callCount: 0,
+            naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 };
+          cellMap.set(k, v);
+        }
+        return v;
+      };
+      for (const r of projAll2) {
+        const i = normInd(r.industry_cat);
+        const rg = r.region_cat || '(未設定)';
+        regionSet.add(rg);
+        const cell = getCell(i, rg);
+        cell.projectCount += Number(r.project_count) || 0;
+        cell.naiteiCount += Number(r.naitei_count) || 0;
+        cell.interviewDoneCount += Number(r.interview_done_count) || 0;
+        cell.lostCount += Number(r.lost_count) || 0;
+        cell.barashiCount += Number(r.barashi_count) || 0;
+      }
+      for (const r of callAll2) {
+        const i = normInd(r.industry_cat);
+        const rg = r.region_cat || '(未設定)';
+        regionSet.add(rg);
+        const cell = getCell(i, rg);
+        cell.callCount += Number(r.call_count) || 0;
+      }
+      for (const cell of cellMap.values()) {
+        cell.projectRate         = cell.callCount > 0 ? Math.round(cell.projectCount / cell.callCount * 1000) / 10 : 0;
+        cell.naiteiPerProject    = cell.projectCount > 0 ? Math.round(cell.naiteiCount / cell.projectCount * 1000) / 10 : 0;
+        cell.interviewPerProject = cell.projectCount > 0 ? Math.round(cell.interviewDoneCount / cell.projectCount * 1000) / 10 : 0;
+        cell.naiteiPerInterview  = cell.interviewDoneCount > 0 ? Math.round(cell.naiteiCount / cell.interviewDoneCount * 1000) / 10 : 0;
+        cell.lostPerProject      = cell.projectCount > 0 ? Math.round(cell.lostCount / cell.projectCount * 1000) / 10 : 0;
+        cell.barashiPerProject   = cell.projectCount > 0 ? Math.round(cell.barashiCount / cell.projectCount * 1000) / 10 : 0;
+      }
+      const orderIdx = (arr, v) => { const i = arr.indexOf(v); return i === -1 ? 999 : i; };
+      const industries2 = [...industrySet2].sort((a, b) => orderIdx(INDUSTRY_ORDER_B, a) - orderIdx(INDUSTRY_ORDER_B, b));
+      const regions2 = [...regionSet].sort((a, b) => orderIdx(REGION_ORDER_B, a) - orderIdx(REGION_ORDER_B, b));
+      return ApiResponse.success(res, {
+        groupBy: 'both',
+        months: monthList.map(m => m.ym),
+        industries: industries2,
+        regions: regions2,
+        cells: [...cellMap.values()],
+      });
+    }
 
     // 業種別月別データを1回のクエリで取得
     // projects: created_at（案件獲得日）月でグループ化
@@ -2177,20 +2274,28 @@ const getQualityIndustryDetail = async (req, res, next) => {
  */
 const getIndustryPeriodDetail = async (req, res, next) => {
   try {
-    const { industry, month, type } = req.query;
-    const groupBy = req.query.group_by === 'region' ? 'region' : 'industry';
-    if (!industry || !month || !type) {
-      return ApiResponse.badRequest(res, 'industry, month, type が必要です');
+    const { industry, month, type, region: regionParam, date_from, date_to } = req.query;
+    const gbq = req.query.group_by;
+    const groupBy = gbq === 'region' ? 'region' : (gbq === 'both' ? 'both' : 'industry');
+    if (!industry || !type) {
+      return ApiResponse.badRequest(res, 'industry, type が必要です');
     }
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      return ApiResponse.badRequest(res, 'month の形式が不正です');
+    if (!month && !(date_from && date_to)) {
+      return ApiResponse.badRequest(res, 'month または date_from/date_to が必要です');
     }
-    const [yStr, mStr] = month.split('-');
-    const y = parseInt(yStr, 10);
-    const m = parseInt(mStr, 10);
-    const lastDay = new Date(y, m, 0).getDate();
-    const dateFrom = `${month}-01`;
-    const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+    let dateFrom, dateTo;
+    if (month) {
+      if (!/^\d{4}-\d{2}$/.test(month)) return ApiResponse.badRequest(res, 'month の形式が不正です');
+      const [yStr, mStr] = month.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const lastDay = new Date(y, m, 0).getDate();
+      dateFrom = `${month}-01`;
+      dateTo = `${month}-${String(lastDay).padStart(2, '0')}`;
+    } else {
+      dateFrom = date_from;
+      dateTo = date_to;
+    }
 
     // CATEGORY_SQL: industry_category 優先、不整合時は industry テキストから判定（業種別分析と同じロジック）
     const INDUSTRY_CAT = `(
@@ -2212,8 +2317,12 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     )`;
     const REGION_EXPR = `COALESCE(NULLIF(c.region, ''), '(未設定)')`;
     const CAT = groupBy === 'region' ? REGION_EXPR : INDUSTRY_CAT;
-    const industryWhere = `${CAT} = ?`;
-    const industryParams = [industry];
+    // group_by=both のときは industry と region 両方で絞る
+    const useBoth = groupBy === 'both' && !!regionParam;
+    const industryWhere = useBoth
+      ? `${INDUSTRY_CAT} = ? AND ${REGION_EXPR} = ?`
+      : `${CAT} = ?`;
+    const industryParams = useBoth ? [industry, regionParam] : [industry];
 
     if (type === 'call') {
       // コール明細
