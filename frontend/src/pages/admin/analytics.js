@@ -225,7 +225,7 @@ export default function AnalyticsPage() {
           // 各週
           const weeks = getWeeksInMonth(ym);
           const weekResults = await Promise.all(weeks.map(async w => {
-            const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo };
+            const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
             const [c, q] = await Promise.all([
               api.get('/api/analytics/cpa-all', { params: p }),
               api.get('/api/analytics/quality-all', { params: p }),
@@ -243,7 +243,7 @@ export default function AnalyticsPage() {
         const weeks = getWeeksInMonth(selectedMonth);
         const settled = await Promise.allSettled(
           weeks.map(async (w) => {
-            const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo };
+            const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
             const [cpaRes, qualRes] = await Promise.all([
               api.get('/api/analytics/cpa-all', { params }),
               api.get('/api/analytics/quality-all', { params }),
@@ -984,6 +984,68 @@ export default function AnalyticsPage() {
         /* ========== 月別・累計: 案件質 ========== */
         qualData && renderQualTable(qualData, '案件質向上 - 全員比較', `${qualData.dateFrom} 〜 ${qualData.dateTo}`)
       )}
+
+      {/* 追加コスト一覧 (集計範囲内のもの) */}
+      {!loading && tab === 'cpa' && (() => {
+        // 表示中のデータから extraCostBreakdown を集約
+        const breakdown = [];
+        const seen = new Set();
+        const collect = (data) => {
+          if (!data?.team?.extraCostBreakdown) return;
+          for (const r of data.team.extraCostBreakdown) {
+            const key = `${r.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            breakdown.push(r);
+          }
+        };
+        if (periodMode === 'compare') {
+          for (const row of compareData) if (row.isMonth) collect(row.cpa);
+        } else if (periodMode === 'weekly') {
+          // 週別表示でも月内分は表示しておく（合計には含まれないため別枠で説明）
+          for (const w of weeklyData) collect(w.cpa);
+        } else {
+          collect(cpaData);
+        }
+        if (breakdown.length === 0) return null;
+        const total = breakdown.reduce((s, r) => s + Number(r.amount || 0), 0);
+        return (
+          <div className="card mt-5 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 bg-amber-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-amber-900">追加コスト（コンサル料等）</h2>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  月別/累計の「全体」コストにのみ加算されます。週・任意期間の行には加算されません。
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-[11px] text-amber-700">合計</div>
+                <div className="text-base font-bold text-amber-900">¥{total.toLocaleString()}</div>
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs">
+                <tr>
+                  <th className="text-left py-2 px-4 font-semibold text-gray-700">対象月</th>
+                  <th className="text-left py-2 px-4 font-semibold text-gray-700">区分</th>
+                  <th className="text-right py-2 px-4 font-semibold text-gray-700">金額</th>
+                  <th className="text-left py-2 px-4 font-semibold text-gray-700">メモ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {breakdown.map(r => (
+                  <tr key={r.id} className="border-t border-gray-100">
+                    <td className="py-2 px-4 text-gray-700">{r.period_ym}</td>
+                    <td className="py-2 px-4 text-gray-700">{r.category || '-'}</td>
+                    <td className="py-2 px-4 text-right font-medium text-gray-900">¥{Number(r.amount || 0).toLocaleString()}</td>
+                    <td className="py-2 px-4 text-gray-500 text-xs">{r.memo || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* 手動補正モーダル */}
       {kpiModal && (

@@ -920,17 +920,24 @@ const getCpaAll = async (req, res, next) => {
     } catch (e) { /* table may not exist yet */ }
 
     // 月次追加コスト（コンサル料など、特定オペレーターに紐付かない費用）
-    // チーム合計にのみ加算
+    // チーム合計にのみ加算。週リクエストや任意期間では二重計上を避けるため
+    //  - include_extra=0 で明示的にスキップ
+    //  - 既定は: 月リクエスト("monthly"/"cumulative") では加算、custom では加算しない
     let extraCostSum = 0;
     const extraCostBreakdown = [];
+    const includeExtraParam = req.query.include_extra;
+    const includeExtra = includeExtraParam === undefined
+      ? (period !== 'custom')      // 既定: 月別/累計のときのみ加算
+      : (includeExtraParam !== '0');
     try {
       const [extraRows] = await pool.query(
         "SELECT id, period_ym, category, amount, memo FROM monthly_extra_costs WHERE period_ym BETWEEN ? AND ?",
         [ymStart, ymEnd]
       );
       for (const r of extraRows) {
-        extraCostSum += Number(r.amount) || 0;
+        // breakdown は常に返す（フロントで「追加コスト」枠表示するため）
         extraCostBreakdown.push({ id: r.id, period_ym: r.period_ym, category: r.category, amount: Number(r.amount) || 0, memo: r.memo });
+        if (includeExtra) extraCostSum += Number(r.amount) || 0;
       }
     } catch (e) { /* table may not exist yet */ }
 
@@ -1184,6 +1191,7 @@ const getCpaAll = async (req, res, next) => {
       }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
       extraCost: extraCostSum,
       extraCostBreakdown,
+      extraCostIncluded: includeExtra,
     };
 
     return ApiResponse.success(res, { dateFrom, dateTo, team, operators });

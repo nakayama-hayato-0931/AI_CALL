@@ -43,6 +43,11 @@
   - 環境変数 `FAX_CRM_WEBHOOK_SECRET` を新設（fax-crm 側でこの値を `X-Webhook-Secret` に載せて POST）。
   - rate-limit の skip 対象に `/api/integrations/faxcrm/*` を追加。
   - これで fax-crm 側で FAX 送信した瞬間に callcenter のタイムラインに反映される双方向リアルタイム同期が完成。
+- **CPA分析: 追加コストの加算ルール修正**
+  - `getCpaAll` に `include_extra` クエリパラメータを追加（既定: `period === 'custom'` のときのみ加算しない）。
+  - フロント側 (analytics.js) の週フェッチ・任意期間フェッチに `include_extra=0` を付与。
+  - これで 5月の各週行に 5月分の追加コスト (例: ¥150,000) が二重計上される問題を修正。
+  - CPA 分析画面下に「追加コスト」枠を新設（対象月・区分・金額・メモを一覧表示、合計付き）。
 
 
 ### コスト・給与関連
