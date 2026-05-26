@@ -206,11 +206,17 @@ export default function IndustryAnalysisPage() {
           <div className="text-center py-12 text-gray-500">読み込み中...</div>
         ) : !data || (data.industries?.length || 0) === 0 ? (
           <div className="text-center py-12 text-gray-500">データがありません</div>
+        ) : (groupBy !== 'both' && data.groupBy === 'both') ? (
+          <div className="text-center py-12 text-gray-500">読み込み中...</div>
         ) : groupBy === 'both' ? (
           /* ===== 業種×地域 マトリクス ===== */
           (() => {
-            const inds = data.industries || [];
-            const regs = data.regions || [];
+            // 直前の groupBy のレスポンスが残っていることがあるため、ガード
+            if (data.groupBy !== 'both' || !Array.isArray(data.cells)) {
+              return <div className="text-center py-12 text-gray-500">読み込み中...</div>;
+            }
+            const inds = (data.industries || []).filter(x => typeof x === 'string');
+            const regs = (data.regions || []).filter(x => typeof x === 'string');
             const cellMap = new Map();
             for (const c of (data.cells || [])) cellMap.set(`${c.industry}|${c.region}`, c);
             const m = currentMetric;
