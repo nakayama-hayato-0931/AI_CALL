@@ -871,10 +871,29 @@ const lockCallTarget = async (req, res, next) => {
       const lockedAt = new Date(company.locked_at);
       const elapsedMs = now - lockedAt;
       if (elapsedMs < LOCK_TIMEOUT_MINUTES * 60 * 1000) {
+        // 保持者の名前を取得して 409 に含める
+        let lockerName = null;
+        try {
+          const [u] = await conn.execute(
+            'SELECT name, email FROM users WHERE id = ? LIMIT 1',
+            [company.locked_by_user_id]
+          );
+          if (u.length > 0) lockerName = u[0].name || u[0].email;
+        } catch (_e) { /* ignore */ }
         await conn.rollback();
+        const elapsedMin = Math.floor(elapsedMs / 60000);
+        const msg = lockerName
+          ? `この企業は${lockerName}が対応中です（${elapsedMin}分前から）`
+          : 'この企業は他のオペレーターが対応中です';
         return res.status(409).json({
           success: false,
-          message: 'この企業は他のオペレーターが対応中です',
+          message: msg,
+          lockedBy: {
+            userId: company.locked_by_user_id,
+            name: lockerName,
+            lockedAt: company.locked_at,
+            elapsedMinutes: elapsedMin,
+          },
         });
       }
     }

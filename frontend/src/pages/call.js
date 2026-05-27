@@ -294,7 +294,7 @@ export default function CallPage() {
         toast.success(`${data.data.company.company_name} をピックアップ`);
       } catch (err) {
         if (err.response?.status === 409) {
-          toast.error('この企業は他のオペレーターが対応中です');
+          toast.error(err.response?.data?.message || 'この企業は他のオペレーターが対応中です');
         } else if (err.response?.status === 404) {
           toast.error('企業が見つかりませんでした');
         } else {
@@ -398,7 +398,7 @@ export default function CallPage() {
       setCallHistory(data.data.callHistory || []);
     } catch (err) {
       if (err.response?.status === 409) {
-        toast.error('この企業は他のオペレーターが対応中です');
+        toast.error(err.response?.data?.message || 'この企業は他のオペレーターが対応中です');
         // 失敗したので選択解除
         setCompany(null);
         setSelectedTargetId(null);

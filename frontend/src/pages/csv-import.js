@@ -149,7 +149,7 @@ export default function CallListPage() {
       router.push(`/call?pickup=${company.id}`);
     } catch (err) {
       if (err.response?.status === 409) {
-        toast.error('この企業は他のオペレーターが対応中です');
+        toast.error(err.response?.data?.message || 'この企業は他のオペレーターが対応中です');
         fetchCompanies(pagination.page || 1); // リスト更新
       } else {
         toast.error('ピックアップに失敗しました');
