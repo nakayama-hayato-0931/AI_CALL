@@ -632,16 +632,23 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td className="table-cell text-right">
-                        <button
-                          onClick={() => openAdminWorkHoursModal(op)}
-                          className="inline-flex items-center gap-1 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer group"
-                          title={`${op.name}の稼働時間を編集`}
-                        >
-                          <span>{workH !== '-' ? `${workH}h` : '-'}</span>
-                          <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => openAdminWorkHoursModal(op)}
+                            className="inline-flex items-center gap-1 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer group"
+                            title={`${op.name}の稼働時間を編集`}
+                          >
+                            <span>{workH !== '-' ? `${workH}h` : '-'}</span>
+                            <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          {kpiPeriod !== 'daily' && (
+                            <span className="text-[10px] text-gray-500" title="稼働日数">
+                              {Number(op.work_days) > 0 ? `${op.work_days}日` : '-'}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {[
                         { key: 'call_count', val: op.total_calls, color: targetColor(phNum(op.total_calls), 18), suffix: ph(op.total_calls) + '/h' },
@@ -687,7 +694,8 @@ export default function DashboardPage() {
                     effective_connections: acc.effective_connections + Number(op.effective_connections || 0),
                     person_connections: acc.person_connections + Number(op.person_connections || 0),
                     projects: acc.projects + Number(op.projects || 0),
-                  }), { work_minutes: 0, total_calls: 0, recall_gained: 0, recall_done: 0, effective_connections: 0, person_connections: 0, projects: 0 });
+                    work_days: acc.work_days + Number(op.work_days || 0),
+                  }), { work_minutes: 0, total_calls: 0, recall_gained: 0, recall_done: 0, effective_connections: 0, person_connections: 0, projects: 0, work_days: 0 });
                   const twh = t.work_minutes > 0 ? t.work_minutes / 60 : 0;
                   const totalWorkH = twh > 0 ? twh.toFixed(1) : '-';
                   const tph = (val) => twh > 0 ? (val / twh).toFixed(1) : '-';
@@ -696,7 +704,16 @@ export default function DashboardPage() {
                   return (
                     <tr className="border-t-2 border-gray-200 bg-gray-50/60 font-semibold">
                       <td className="table-cell text-gray-700">合計</td>
-                      <td className="table-cell text-right">{totalWorkH !== '-' ? `${totalWorkH}h` : '-'}</td>
+                      <td className="table-cell text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <span>{totalWorkH !== '-' ? `${totalWorkH}h` : '-'}</span>
+                          {kpiPeriod !== 'daily' && (
+                            <span className="text-[10px] text-gray-500" title="稼働日数(延べ)">
+                              {Number(t.work_days) > 0 ? `${t.work_days}日` : '-'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="table-cell text-right">{t.total_calls} <span className="text-[10px] text-gray-400 font-normal">{tph(t.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{t.recall_gained} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_gained)}/h</span></td>
                       <td className="table-cell text-right">{t.recall_done} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_done)}/h</span></td>

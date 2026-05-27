@@ -301,17 +301,22 @@ const getAllOperatorPerformance = async (req, res, next) => {
 
       try {
         const [whRows] = await pool.query(
-          `SELECT SUM(
-             TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
-             - COALESCE(break_minutes, 0)
-           ) as total_minutes
+          `SELECT
+             SUM(
+               TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i'))
+               - COALESCE(break_minutes, 0)
+             ) as total_minutes,
+             COUNT(DISTINCT date) as work_days
            FROM work_hours
-           WHERE user_id = ? AND date BETWEEN ? AND ?`,
+           WHERE user_id = ? AND date BETWEEN ? AND ?
+             AND start_time IS NOT NULL AND end_time IS NOT NULL`,
           [op.user_id, dateFrom, dateTo]
         );
         op.work_minutes = whRows[0]?.total_minutes || 0;
+        op.work_days = whRows[0]?.work_days || 0;
       } catch (e) {
         op.work_minutes = 0;
+        op.work_days = 0;
       }
 
       // 案件数: projectsテーブルから直接カウント（手動追加案件も含む）
