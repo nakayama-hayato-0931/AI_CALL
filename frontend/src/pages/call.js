@@ -280,16 +280,26 @@ export default function CallPage() {
 
     const loadPickedCompany = async () => {
       try {
-        // 既にロック済みなので企業情報を取得するだけ
-        const { data } = await api.get(`/api/companies/${pickupId}`);
+        // 前のロックが残っていれば解除
+        if (selectedTargetId && selectedTargetId !== parseInt(pickupId, 10)) {
+          await api.post(`/api/companies/${selectedTargetId}/unlock`).catch(() => {});
+        }
+        // 過去架電画面などからの遷移ではロック未取得 → ここで取得
+        const { data } = await api.post(`/api/companies/${pickupId}/lock`);
         setCompany(data.data.company);
         setCallHistory(data.data.callHistory || []);
         setSelectedTargetId(parseInt(pickupId, 10));
         setReason('pickup');
         resetForm();
-        toast.success(`${data.data.company.company_name} をピックアップ済み`);
+        toast.success(`${data.data.company.company_name} をピックアップ`);
       } catch (err) {
-        toast.error('ピックアップした企業の読み込みに失敗しました');
+        if (err.response?.status === 409) {
+          toast.error('この企業は他のオペレーターが対応中です');
+        } else if (err.response?.status === 404) {
+          toast.error('企業が見つかりませんでした');
+        } else {
+          toast.error('ピックアップした企業の読み込みに失敗しました');
+        }
       }
       // URLからpickupパラメータを削除（再読み込み防止）
       router.replace('/call', undefined, { shallow: true });
