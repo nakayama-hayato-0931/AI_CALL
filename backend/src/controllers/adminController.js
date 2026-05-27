@@ -1303,18 +1303,18 @@ async function getCustomerMasterList(req, res, next) {
     // 結果/担当/期間のいずれかが指定された場合は、その条件に一致する架電が
     // 1件以上ある企業のみに絞り込む
     if (callConds.length > 0) {
-      where += ` AND EXISTS (SELECT 1 FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ${callWhereSub})`;
+      where += ` AND EXISTS (SELECT 1 FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP' ${callWhereSub})`;
     }
 
     const [rows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.fax_number, c.industry, c.region, c.address, c.industry_category,
               c.created_at, c.last_called_at,
               c.last_synced_to_faxcrm_at, c.last_synced_from_faxcrm_at,
-              (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL) AS call_count,
+              (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP') AS call_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG') AS ng_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'PROJECT') AS project_count,
-              (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) AS last_result,
-              (SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL ORDER BY cl.call_started_at DESC LIMIT 1) AS last_call_at,
+              (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP' ORDER BY cl.call_started_at DESC LIMIT 1) AS last_result,
+              (SELECT cl.call_started_at FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP' ORDER BY cl.call_started_at DESC LIMIT 1) AS last_call_at,
               (SELECT cl.ng_reason FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG' ORDER BY cl.call_started_at DESC LIMIT 1) AS last_ng_reason,
               (SELECT COUNT(*) FROM company_actions ca WHERE ca.company_id = c.id) AS manual_action_count
        FROM companies c
@@ -1377,7 +1377,7 @@ async function getCustomerMasterDetail(req, res, next) {
               u.name AS operator_name
        FROM calls cl
        LEFT JOIN users u ON cl.user_id = u.id
-       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL
+       WHERE cl.company_id = ? AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
        ORDER BY cl.call_started_at DESC LIMIT 200`,
       [id]
     );
