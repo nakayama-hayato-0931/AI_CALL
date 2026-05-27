@@ -1373,6 +1373,7 @@ async function getCustomerMasterDetail(req, res, next) {
               cl.contact_person_name, cl.contact_person_gender, cl.contact_person_phone, cl.contact_person_impression,
               cl.ng_reason,
               cl.call_type,
+              cl.transcript,
               u.name AS operator_name
        FROM calls cl
        LEFT JOIN users u ON cl.user_id = u.id
@@ -1445,6 +1446,7 @@ async function getCustomerMasterDetail(req, res, next) {
         contact_person_phone: c.contact_person_phone,
         contact_person_impression: c.contact_person_impression,
         call_type: c.call_type,
+        transcript: c.transcript,
         ref_id: c.id,
       });
     }

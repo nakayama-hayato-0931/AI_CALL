@@ -58,6 +58,7 @@ export default function CustomerMasterPage() {
   const [editingFax, setEditingFax] = useState(false);
   const [faxInput, setFaxInput] = useState('');
   const [savingFax, setSavingFax] = useState(false);
+  const [expandedTranscripts, setExpandedTranscripts] = useState({}); // { [timeline_idx]: true }
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
@@ -509,6 +510,19 @@ export default function CustomerMasterPage() {
                               <div className="text-gray-600">印象: {e.contact_person_impression}</div>
                             )}
                             {e.memo && <div className="text-gray-600 mt-0.5 whitespace-pre-wrap">{e.memo}</div>}
+                            {e.kind === 'call' && e.transcript && (
+                              <div className="mt-1.5">
+                                <button
+                                  onClick={() => setExpandedTranscripts(prev => ({ ...prev, [i]: !prev[i] }))}
+                                  className="text-[11px] text-blue-600 hover:text-blue-800 underline decoration-dotted underline-offset-2"
+                                >
+                                  {expandedTranscripts[i] ? '文字起こしを閉じる' : '文字起こしを表示'}
+                                </button>
+                                {expandedTranscripts[i] && (
+                                  <pre className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-700 whitespace-pre-wrap max-h-64 overflow-y-auto">{e.transcript}</pre>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
