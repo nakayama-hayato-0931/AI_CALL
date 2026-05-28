@@ -1295,6 +1295,7 @@ export default function CallPage() {
                       <option value="ハローワークからしか募集していない">ハローワークからしか募集していない</option>
                       <option value="決まったところ(ハローワーク以外)からしか募集していない">決まったところ(ハローワーク以外)からしか募集していない</option>
                       <option value="信用できない(怪しいから)">信用できない(怪しいから)</option>
+                      <option value="対面面接のみ(遠方で直接は行けない)">対面面接のみ(遠方で直接は行けない)</option>
                     </select>
                   </div>
                 )}
