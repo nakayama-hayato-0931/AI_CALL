@@ -43,7 +43,7 @@ export default function CustomerMasterPage() {
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
-    search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '',
+    search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '', show_excluded: '',
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -121,6 +121,52 @@ export default function CustomerMasterPage() {
   };
 
   const canEdit = user && ['admin', 'manager', 'editor'].includes(user.role);
+
+  const addToNgList = async () => {
+    if (!selectedId || !detail) return;
+    if (typeof window === 'undefined') return;
+    const reason = window.prompt(
+      `「${detail.company.company_name}」を NG リストに追加します。\n理由（任意。後で見直し可能）:`,
+      ''
+    );
+    // prompt returns null when cancelled
+    if (reason === null) return;
+    try {
+      const { data } = await api.patch(`/api/admin/customer-master/${selectedId}`, {
+        exclusion_flag: 1,
+        exclusion_reason: reason || null,
+      });
+      if (data.success) {
+        toast.success('NGリストに追加しました');
+        openDetail(selectedId);
+        fetchList();
+      } else {
+        toast.error(data.message || '更新失敗');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'NGリスト追加に失敗しました');
+    }
+  };
+
+  const removeFromNgList = async () => {
+    if (!selectedId || !detail) return;
+    if (typeof window !== 'undefined' && !window.confirm(`「${detail.company.company_name}」を NG リストから外しますか？`)) return;
+    try {
+      const { data } = await api.patch(`/api/admin/customer-master/${selectedId}`, {
+        exclusion_flag: 0,
+        exclusion_reason: null,
+      });
+      if (data.success) {
+        toast.success('NGリストから外しました');
+        openDetail(selectedId);
+        fetchList();
+      } else {
+        toast.error(data.message || '更新失敗');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || '更新に失敗しました');
+    }
+  };
 
   const saveFax = async () => {
     if (!selectedId) return;
@@ -265,6 +311,16 @@ export default function CustomerMasterPage() {
                 className="border rounded px-2 py-1 text-sm w-32" />
             </div>
 
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">NGリスト</label>
+              <select value={filters.show_excluded} onChange={e => updateFilter('show_excluded', e.target.value)}
+                className="border rounded px-2 py-1 text-sm">
+                <option value="">除外</option>
+                <option value="1">含めて表示</option>
+                <option value="only">NGリストのみ</option>
+              </select>
+            </div>
+
             <button type="button" onClick={clearAll}
               className="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50">クリア</button>
           </div>
@@ -304,7 +360,12 @@ export default function CustomerMasterPage() {
                         onClick={() => openDetail(c.id)}
                         className={`border-t cursor-pointer ${selectedId === c.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                         <td className="px-2 py-1.5">
-                          <div className="font-medium text-gray-900 truncate max-w-[180px]" title={c.company_name}>{c.company_name}</div>
+                          <div className="font-medium text-gray-900 truncate max-w-[180px] flex items-center gap-1" title={c.company_name}>
+                            {Number(c.exclusion_flag) === 1 && (
+                              <span className="inline-block px-1 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold flex-shrink-0" title={c.exclusion_reason || 'NGリスト'}>NG</span>
+                            )}
+                            <span className="truncate">{c.company_name}</span>
+                          </div>
                           <div className="text-[10px] text-gray-400">{c.phone_number || ''}</div>
                         </td>
                         <td className="px-2 py-1.5 text-right">{c.call_count || 0}</td>
@@ -380,16 +441,42 @@ export default function CustomerMasterPage() {
                 {/* 顧客基本情報 */}
                 <div className="bg-white rounded-lg shadow p-4">
                   <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
-                    <h2 className="text-lg font-bold">{detail.company.company_name}</h2>
-                    <div className="text-[11px] text-gray-500 text-right">
-                      {detail.company.last_synced_to_faxcrm_at && (
-                        <div className="text-blue-700">送信済: {fmtDateTime(detail.company.last_synced_to_faxcrm_at)}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-lg font-bold">{detail.company.company_name}</h2>
+                      {Number(detail.company.exclusion_flag) === 1 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-bold"
+                              title={detail.company.exclusion_reason || ''}>
+                          NGリスト
+                          {detail.company.exclusion_reason && (
+                            <span className="font-normal text-red-600 text-[11px]">／ {detail.company.exclusion_reason}</span>
+                          )}
+                        </span>
                       )}
-                      {detail.company.last_synced_from_faxcrm_at && (
-                        <div className="text-orange-700">取込済: {fmtDateTime(detail.company.last_synced_from_faxcrm_at)}</div>
-                      )}
-                      {!detail.company.last_synced_to_faxcrm_at && !detail.company.last_synced_from_faxcrm_at && (
-                        <span className="text-gray-400">未同期</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-[11px] text-gray-500 text-right">
+                        {detail.company.last_synced_to_faxcrm_at && (
+                          <div className="text-blue-700">送信済: {fmtDateTime(detail.company.last_synced_to_faxcrm_at)}</div>
+                        )}
+                        {detail.company.last_synced_from_faxcrm_at && (
+                          <div className="text-orange-700">取込済: {fmtDateTime(detail.company.last_synced_from_faxcrm_at)}</div>
+                        )}
+                        {!detail.company.last_synced_to_faxcrm_at && !detail.company.last_synced_from_faxcrm_at && (
+                          <span className="text-gray-400">未同期</span>
+                        )}
+                      </div>
+                      {canEdit && (
+                        Number(detail.company.exclusion_flag) === 1 ? (
+                          <button onClick={removeFromNgList}
+                            className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50">
+                            NGリスト解除
+                          </button>
+                        ) : (
+                          <button onClick={addToNgList}
+                            className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700">
+                            NGリストに追加
+                          </button>
+                        )
                       )}
                     </div>
                   </div>

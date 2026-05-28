@@ -1278,6 +1278,7 @@ async function getCustomerMasterList(req, res, next) {
       industry,
       date_from,
       date_to,
+      show_excluded,
     } = req.query;
     const params = [];
     const lim = Math.min(200, Math.max(10, parseInt(limit, 10) || 50));
@@ -1294,7 +1295,11 @@ async function getCustomerMasterList(req, res, next) {
       ? `AND ${callConds.join(' AND ')}`
       : '';
 
-    let where = "c.exclusion_flag = 0";
+    // show_excluded='1' なら NGリストを含めて取得、'only' なら NG リストのみ
+    let where;
+    if (show_excluded === 'only') where = 'c.exclusion_flag = 1';
+    else if (show_excluded === '1') where = '1=1';
+    else where = 'c.exclusion_flag = 0';
     if (search) {
       where += " AND (c.company_name LIKE ? OR c.phone_number LIKE ?)";
       const s = `%${search}%`;
@@ -1315,6 +1320,7 @@ async function getCustomerMasterList(req, res, next) {
       `SELECT c.id, c.company_name, c.phone_number, c.fax_number, c.industry, c.region, c.address, c.industry_category,
               c.created_at, c.last_called_at,
               c.last_synced_to_faxcrm_at, c.last_synced_from_faxcrm_at,
+              c.exclusion_flag, c.exclusion_reason,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP') AS call_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'NG') AS ng_count,
               (SELECT COUNT(*) FROM calls cl WHERE cl.company_id = c.id AND cl.result_code = 'PROJECT') AS project_count,
@@ -1534,13 +1540,16 @@ async function getCustomerMasterDetail(req, res, next) {
 async function updateCustomerMaster(req, res) {
   try {
     const { id } = req.params;
-    const { fax_number, phone_number, company_name, address } = req.body || {};
+    const { fax_number, phone_number, company_name, address,
+            exclusion_flag, exclusion_reason } = req.body || {};
     const sets = [];
     const params = [];
-    if (fax_number !== undefined)    { sets.push('fax_number = ?');    params.push(fax_number || null); }
-    if (phone_number !== undefined)  { sets.push('phone_number = ?');  params.push(phone_number || null); }
-    if (company_name !== undefined)  { sets.push('company_name = ?');  params.push(company_name || null); }
-    if (address !== undefined)       { sets.push('address = ?');       params.push(address || null); }
+    if (fax_number !== undefined)      { sets.push('fax_number = ?');       params.push(fax_number || null); }
+    if (phone_number !== undefined)    { sets.push('phone_number = ?');     params.push(phone_number || null); }
+    if (company_name !== undefined)    { sets.push('company_name = ?');     params.push(company_name || null); }
+    if (address !== undefined)         { sets.push('address = ?');          params.push(address || null); }
+    if (exclusion_flag !== undefined)  { sets.push('exclusion_flag = ?');   params.push(exclusion_flag ? 1 : 0); }
+    if (exclusion_reason !== undefined){ sets.push('exclusion_reason = ?'); params.push(exclusion_reason || null); }
     if (sets.length === 0) return ApiResponse.error(res, '更新項目が指定されていません', 400);
     params.push(id);
     const [r] = await pool.execute(
