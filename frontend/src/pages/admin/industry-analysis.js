@@ -65,6 +65,7 @@ export default function IndustryAnalysisPage() {
   const [selectedMetric, setSelectedMetric] = useState('projectRate');
   const [viewMode, setViewMode] = useState('rate'); // 'rate' | 'count'
   const [groupBy, setGroupBy] = useState('industry'); // 'industry' | 'region' | 'both'
+  const [bothMonth, setBothMonth] = useState('all');   // 'all' or 'YYYY-MM'（両方モードの月切替）
   const [drillModal, setDrillModal] = useState(null); // { industry, month, type, label, loading, data }
 
   const openDrilldown = async (industry, month, metric, region) => {
@@ -109,6 +110,9 @@ export default function IndustryAnalysisPage() {
     }
     if (user) fetchData();
   }, [user, months, groupBy]);
+
+  // groupBy / months 変化時は月選択をリセット
+  useEffect(() => { setBothMonth('all'); }, [groupBy, months]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -217,8 +221,12 @@ export default function IndustryAnalysisPage() {
             }
             const inds = (data.industries || []).filter(x => typeof x === 'string');
             const regs = (data.regions || []).filter(x => typeof x === 'string');
+            // 月選択に応じて使う cell 配列を切替
+            const activeCells = (bothMonth !== 'all' && data.cellsByMonth?.[bothMonth])
+              ? data.cellsByMonth[bothMonth]
+              : (data.cells || []);
             const cellMap = new Map();
-            for (const c of (data.cells || [])) cellMap.set(`${c.industry}|${c.region}`, c);
+            for (const c of activeCells) cellMap.set(`${c.industry}|${c.region}`, c);
             const m = currentMetric;
             const getMetricValue = (cell) => {
               if (!cell) return null;
@@ -280,8 +288,28 @@ export default function IndustryAnalysisPage() {
             return (
               <div className="bg-white rounded-lg shadow overflow-hidden">
                 <div className="px-4 py-3 border-b bg-gray-50">
-                  <h2 className="font-bold text-base">{m.label}</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">{m.desc} ・ 業種(行) × 地域(列) のマトリクス（直近{months}ヶ月合算）</p>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h2 className="font-bold text-base">{m.label}</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {m.desc} ・ 業種(行) × 地域(列) ・ {bothMonth === 'all' ? `直近${months}ヶ月合算` : `${fmtMonth(bothMonth)}のみ`}
+                      </p>
+                    </div>
+                    {(data.months || []).length > 0 && (
+                      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                        <button
+                          onClick={() => setBothMonth('all')}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${bothMonth === 'all' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >全期間</button>
+                        {data.months.map(ym => (
+                          <button key={ym}
+                            onClick={() => setBothMonth(ym)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium ${bothMonth === ym ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                          >{fmtMonth(ym)}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
@@ -306,7 +334,7 @@ export default function IndustryAnalysisPage() {
                               return (
                                 <td key={r} className="px-3 py-2 text-center">
                                   {v > 0 ? (
-                                    <button onClick={() => openDrilldown(i, null, m, r)}
+                                    <button onClick={() => openDrilldown(i, bothMonth !== 'all' ? bothMonth : null, m, r)}
                                       className="inline-block px-2 py-0.5 rounded font-semibold cursor-pointer text-blue-700 hover:bg-blue-50 underline decoration-dotted underline-offset-4"
                                       title="クリックで明細">{v}件</button>
                                   ) : <span className="text-gray-300">-</span>}
@@ -321,7 +349,7 @@ export default function IndustryAnalysisPage() {
                               <td key={r} className="px-3 py-2 text-center">
                                 {den > 0 ? (
                                   canClick ? (
-                                    <button onClick={() => openDrilldown(i, null, m, r)}
+                                    <button onClick={() => openDrilldown(i, bothMonth !== 'all' ? bothMonth : null, m, r)}
                                       className={`inline-block px-2 py-0.5 rounded font-semibold cursor-pointer hover:ring-2 hover:ring-blue-300 ${colorForMetric(selectedMetric, v)}`}
                                       title={`${num} / ${den} — クリックで明細`}>{v}%</button>
                                   ) : (

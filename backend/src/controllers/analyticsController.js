@@ -1954,6 +1954,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       const rangeTo = monthList[monthList.length - 1].dateTo;
       const [projAll2] = await pool.query(
         `SELECT
+           DATE_FORMAT(p.created_at, '%Y-%m') AS ym,
            ${INDUSTRY_CAT} AS industry_cat,
            ${REGION_EXPR}  AS region_cat,
            COUNT(*) AS project_count,
@@ -1965,11 +1966,12 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          LEFT JOIN companies c ON p.company_id = c.id
          WHERE p.is_prospect = 0 AND p.is_legacy = 0
            AND DATE(p.created_at) BETWEEN ? AND ?
-         GROUP BY ${INDUSTRY_CAT}, ${REGION_EXPR}`,
+         GROUP BY DATE_FORMAT(p.created_at, '%Y-%m'), ${INDUSTRY_CAT}, ${REGION_EXPR}`,
         [rangeFrom, rangeTo]
       );
       const [callAll2] = await pool.query(
         `SELECT
+           DATE_FORMAT(cl.call_started_at, '%Y-%m') AS ym,
            ${INDUSTRY_CAT} AS industry_cat,
            ${REGION_EXPR}  AS region_cat,
            COUNT(*) AS call_count
@@ -1977,7 +1979,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          LEFT JOIN companies c ON cl.company_id = c.id
          WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
            AND DATE(cl.call_started_at) BETWEEN ? AND ?
-         GROUP BY ${INDUSTRY_CAT}, ${REGION_EXPR}`,
+         GROUP BY DATE_FORMAT(cl.call_started_at, '%Y-%m'), ${INDUSTRY_CAT}, ${REGION_EXPR}`,
         [rangeFrom, rangeTo]
       );
       const SHOW = new Set(['飲食','製造','小売','建設','宿泊']);
@@ -1993,44 +1995,65 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
         '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県',
       ];
       const INDUSTRY_ORDER_B = ['飲食','製造','小売','建設','宿泊','その他'];
-      const cellMap = new Map();
+      // cellMap: 期間合計 / monthlyCellMap: 月別
+      const cellMap = new Map();          // key=`${industry}|${region}`
+      const monthlyCellMap = new Map();   // key=`${ym}|${industry}|${region}`
       const regionSet = new Set();
       const industrySet2 = new Set(INDUSTRY_ORDER_B);
+      const emptyCounts = () => ({
+        projectCount: 0, callCount: 0,
+        naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0,
+      });
       const getCell = (i, r) => {
         const k = `${i}|${r}`;
         let v = cellMap.get(k);
-        if (!v) {
-          v = { industry: i, region: r, projectCount: 0, callCount: 0,
-            naiteiCount: 0, interviewDoneCount: 0, lostCount: 0, barashiCount: 0 };
-          cellMap.set(k, v);
-        }
+        if (!v) { v = { industry: i, region: r, ...emptyCounts() }; cellMap.set(k, v); }
+        return v;
+      };
+      const getMonthlyCell = (ym, i, r) => {
+        const k = `${ym}|${i}|${r}`;
+        let v = monthlyCellMap.get(k);
+        if (!v) { v = { ym, industry: i, region: r, ...emptyCounts() }; monthlyCellMap.set(k, v); }
         return v;
       };
       for (const r of projAll2) {
         const i = normInd(r.industry_cat);
         const rg = r.region_cat || '(未設定)';
         regionSet.add(rg);
-        const cell = getCell(i, rg);
-        cell.projectCount += Number(r.project_count) || 0;
-        cell.naiteiCount += Number(r.naitei_count) || 0;
-        cell.interviewDoneCount += Number(r.interview_done_count) || 0;
-        cell.lostCount += Number(r.lost_count) || 0;
-        cell.barashiCount += Number(r.barashi_count) || 0;
+        const c1 = getCell(i, rg);
+        const c2 = getMonthlyCell(r.ym, i, rg);
+        const proj = Number(r.project_count) || 0;
+        const nai = Number(r.naitei_count) || 0;
+        const inv = Number(r.interview_done_count) || 0;
+        const lost = Number(r.lost_count) || 0;
+        const bar = Number(r.barashi_count) || 0;
+        c1.projectCount += proj; c1.naiteiCount += nai; c1.interviewDoneCount += inv; c1.lostCount += lost; c1.barashiCount += bar;
+        c2.projectCount += proj; c2.naiteiCount += nai; c2.interviewDoneCount += inv; c2.lostCount += lost; c2.barashiCount += bar;
       }
       for (const r of callAll2) {
         const i = normInd(r.industry_cat);
         const rg = r.region_cat || '(未設定)';
         regionSet.add(rg);
-        const cell = getCell(i, rg);
-        cell.callCount += Number(r.call_count) || 0;
+        const cc = Number(r.call_count) || 0;
+        getCell(i, rg).callCount += cc;
+        getMonthlyCell(r.ym, i, rg).callCount += cc;
       }
-      for (const cell of cellMap.values()) {
+      const computeRates = (cell) => {
         cell.projectRate         = cell.callCount > 0 ? Math.round(cell.projectCount / cell.callCount * 1000) / 10 : 0;
         cell.naiteiPerProject    = cell.projectCount > 0 ? Math.round(cell.naiteiCount / cell.projectCount * 1000) / 10 : 0;
         cell.interviewPerProject = cell.projectCount > 0 ? Math.round(cell.interviewDoneCount / cell.projectCount * 1000) / 10 : 0;
         cell.naiteiPerInterview  = cell.interviewDoneCount > 0 ? Math.round(cell.naiteiCount / cell.interviewDoneCount * 1000) / 10 : 0;
         cell.lostPerProject      = cell.projectCount > 0 ? Math.round(cell.lostCount / cell.projectCount * 1000) / 10 : 0;
         cell.barashiPerProject   = cell.projectCount > 0 ? Math.round(cell.barashiCount / cell.projectCount * 1000) / 10 : 0;
+      };
+      for (const cell of cellMap.values()) computeRates(cell);
+      for (const cell of monthlyCellMap.values()) computeRates(cell);
+      // ym -> [cells]
+      const cellsByMonth = {};
+      for (const m of monthList) cellsByMonth[m.ym] = [];
+      for (const cell of monthlyCellMap.values()) {
+        if (cellsByMonth[cell.ym]) cellsByMonth[cell.ym].push(cell);
+        else cellsByMonth[cell.ym] = [cell];
       }
       const orderIdx = (arr, v) => { const i = arr.indexOf(v); return i === -1 ? 999 : i; };
       const industries2 = [...industrySet2].sort((a, b) => orderIdx(INDUSTRY_ORDER_B, a) - orderIdx(INDUSTRY_ORDER_B, b));
@@ -2041,6 +2064,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
         industries: industries2,
         regions: regions2,
         cells: [...cellMap.values()],
+        cellsByMonth,
       });
     }
 
