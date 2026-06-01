@@ -41,6 +41,17 @@ function endpoint(path) {
  * 汎用 contact_events POST
  * @returns {Promise<{ok: boolean, status?: number, body?: any, error?: string}>}
  */
+function authHeaders() {
+  const h = {};
+  // fax-crm 側の /api/contact-events 用 webhook secret
+  // callcenter の FAX_CRM_WEBHOOK_SECRET は元々 callcenter 受け口用に作ったが、
+  // 同じ値を fax-crm の CALLCENTER_WEBHOOK_SECRET に揃えてあるので流用する。
+  if (process.env.FAX_CRM_WEBHOOK_SECRET) {
+    h['X-Webhook-Secret'] = process.env.FAX_CRM_WEBHOOK_SECRET;
+  }
+  return h;
+}
+
 async function postContactEvent(payload) {
   if (!isEnabled()) {
     return { ok: false, skipped: true, reason: 'FAX_CRM_API_URL not set' };
@@ -50,7 +61,7 @@ async function postContactEvent(payload) {
   try {
     const resp = await fetch(endpoint('/api/contact-events'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
@@ -113,7 +124,7 @@ async function getFaxHistory(companyId) {
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS);
   try {
     const url = endpoint(`/api/contact-events?external_callcenter_id=${encodeURIComponent(companyId)}&channel=fax`);
-    const resp = await fetch(url, { signal: ctrl.signal });
+    const resp = await fetch(url, { signal: ctrl.signal, headers: authHeaders() });
     if (!resp.ok) return { ok: false, status: resp.status, events: [] };
     const text = await resp.text();
     let body;
@@ -144,7 +155,7 @@ async function triggerFaxCrmSyncPush({ unlinkedOnly = true, limit = 0 } = {}) {
     params.set('limit', String(limit));
     const resp = await fetch(endpoint(`/api/customers/sync/push?${params}`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: '{}',
       signal: ctrl.signal,
     });
