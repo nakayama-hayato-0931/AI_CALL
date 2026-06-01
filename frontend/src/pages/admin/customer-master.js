@@ -190,16 +190,31 @@ export default function CustomerMasterPage() {
 
   const bulkSync = async (direction) => {
     if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
-    if (list.length === 0) { toast.error('対象の顧客がありません'); return; }
+    if (total === 0) { toast.error('対象の顧客がありません'); return; }
     const label = direction === 'push' ? 'callcenter → fax-crm 送信'
       : direction === 'pull' ? 'fax-crm → callcenter 取込'
       : '双方向同期';
-    if (typeof window !== 'undefined' && !window.confirm(`現在表示中の ${list.length} 社に対して「${label}」を実行します。\nよろしいですか？`)) return;
+    if (typeof window !== 'undefined' && !window.confirm(
+      `現在のフィルタにマッチする 全${total} 社に対して「${label}」を実行します。\n` +
+      `件数が多い場合は数分以上かかることがあります。\nよろしいですか？`
+    )) return;
     setSyncing(true);
-    const t = toast.loading(`一括同期 実行中... (${list.length}社)`);
+    const t = toast.loading(`一括同期 実行中... (全${total}社)`);
     try {
-      const ids = list.map(c => c.id);
-      const { data } = await api.post('/api/admin/customer-master/bulk-sync', { ids, direction });
+      // ids ではなく filters を送り、サーバ側で対象 ID を全件抽出
+      const { data } = await api.post('/api/admin/customer-master/bulk-sync', {
+        direction,
+        apply_to_all: true,
+        filters: {
+          search: filters.search || undefined,
+          result: filters.result || undefined,
+          user_id: filters.user_id || undefined,
+          industry: filters.industry || undefined,
+          date_from: filters.date_from || undefined,
+          date_to: filters.date_to || undefined,
+          show_excluded: filters.show_excluded || undefined,
+        },
+      }, { timeout: 30 * 60 * 1000 }); // 30分タイムアウト
       toast.dismiss(t);
       if (data.success) {
         toast.success(data.message || '一括同期 完了');
@@ -243,17 +258,17 @@ export default function CustomerMasterPage() {
           </div>
           {canEdit && (
             <div className="flex flex-wrap gap-1">
-              <button onClick={() => bulkSync('push')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+              <button onClick={() => bulkSync('push')} disabled={syncing || !faxCrmEnabled || total === 0}
                 className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300"
                 title="一覧の全社を callcenter → fax-crm に送信">
                 一括 送信
               </button>
-              <button onClick={() => bulkSync('pull')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+              <button onClick={() => bulkSync('pull')} disabled={syncing || !faxCrmEnabled || total === 0}
                 className="text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-300"
                 title="一覧の全社を fax-crm → callcenter に取込">
                 一括 取込
               </button>
-              <button onClick={() => bulkSync('both')} disabled={syncing || !faxCrmEnabled || list.length === 0}
+              <button onClick={() => bulkSync('both')} disabled={syncing || !faxCrmEnabled || total === 0}
                 className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
                 title="一覧の全社を双方向同期">
                 一括 双方向同期

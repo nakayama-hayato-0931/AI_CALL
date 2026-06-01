@@ -1685,19 +1685,62 @@ async function syncCustomerFromFaxCrm(req, res) {
 
 /**
  * POST /api/admin/customer-master/bulk-sync
- * body: { ids: [int], direction: 'push'|'pull'|'both' }
+ * body: {
+ *   direction: 'push'|'pull'|'both',
+ *   ids?: [int],          // 明示指定 (任意)
+ *   filters?: {           // フィルタ指定 (任意, ids 指定時より優先度低)
+ *     search, result, user_id, industry, date_from, date_to, show_excluded
+ *   },
+ *   apply_to_all?: true,  // ids 未指定 + filters あり時は filter にマッチする全社を対象
+ * }
  */
 async function bulkSyncCustomers(req, res) {
   try {
     if (!faxCrmClient.isEnabled()) {
       return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
     }
-    const { ids, direction = 'both' } = req.body || {};
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return ApiResponse.error(res, 'ids が空です', 400);
+    const { ids, direction = 'both', filters, apply_to_all } = req.body || {};
+    let target = [];
+    if (Array.isArray(ids) && ids.length > 0) {
+      // 明示指定: 上限 10000
+      target = ids.slice(0, 10000);
+    } else if (apply_to_all || filters) {
+      // フィルタ指定: getCustomerMasterList と同じ条件で id 一覧を作る
+      const f = filters || {};
+      const params = [];
+      const callConds = [];
+      if (f.result)   { callConds.push('cl.result_code = ?'); params.push(f.result); }
+      if (f.user_id)  { callConds.push('cl.user_id = ?'); params.push(f.user_id); }
+      if (f.date_from){ callConds.push('DATE(cl.call_started_at) >= ?'); params.push(f.date_from); }
+      if (f.date_to)  { callConds.push('DATE(cl.call_started_at) <= ?'); params.push(f.date_to); }
+      const callWhereSub = callConds.length ? `AND ${callConds.join(' AND ')}` : '';
+      let where;
+      if (f.show_excluded === 'only')      where = 'c.exclusion_flag = 1';
+      else if (f.show_excluded === '1')    where = '1=1';
+      else                                  where = 'c.exclusion_flag = 0';
+      if (f.search) {
+        where += ' AND (c.company_name LIKE ? OR c.phone_number LIKE ?)';
+        const s = `%${f.search}%`;
+        params.push(s, s);
+      }
+      if (f.industry) {
+        where += ' AND (c.industry LIKE ? OR c.industry_category = ?)';
+        params.push(`%${f.industry}%`, f.industry);
+      }
+      if (callConds.length > 0) {
+        where += ` AND EXISTS (SELECT 1 FROM calls cl WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL AND cl.result_code != 'SKIP' ${callWhereSub})`;
+      }
+      const [rows] = await pool.query(
+        `SELECT c.id FROM companies c WHERE ${where} ORDER BY c.id ASC LIMIT 50000`,
+        params
+      );
+      target = rows.map(r => r.id);
+    } else {
+      return ApiResponse.error(res, 'ids または filters を指定してください', 400);
     }
-    const MAX = 500;
-    const target = ids.slice(0, MAX);
+    if (target.length === 0) {
+      return ApiResponse.error(res, '対象の顧客がありません', 400);
+    }
 
     let pushedTotal = 0, pulledTotal = 0;
     let okCount = 0, failCount = 0;
