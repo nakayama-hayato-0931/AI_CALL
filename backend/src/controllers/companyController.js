@@ -179,6 +179,8 @@ const createCompany = async (req, res, next) => {
     );
 
     logger.info(`企業作成: ${company_name} (ID: ${result.insertId})`);
+    // Phase 2: fax-crm DB にシャドー書き込み (fire-and-forget)
+    try { require('../services/faxCrmDbWriter').shadowUpsertById(result.insertId); } catch (_e) {}
     return ApiResponse.created(res, { id: result.insertId }, '企業を作成しました');
   } catch (err) {
     next(err);
@@ -213,6 +215,8 @@ const updateCompany = async (req, res, next) => {
       return ApiResponse.notFound(res, '企業が見つかりません');
     }
 
+    // Phase 2: fax-crm DB にシャドー書き込み (fire-and-forget)
+    try { require('../services/faxCrmDbWriter').shadowUpsertById(id); } catch (_e) {}
     return ApiResponse.success(res, null, '企業情報を更新しました');
   } catch (err) {
     next(err);

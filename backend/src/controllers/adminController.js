@@ -1558,6 +1558,8 @@ async function updateCustomerMaster(req, res) {
       params
     );
     if (r.affectedRows === 0) return ApiResponse.notFound(res, '顧客が見つかりません');
+    // Phase 2: fax-crm DB にシャドー書き込み (fire-and-forget)
+    try { require('../services/faxCrmDbWriter').shadowUpsertById(id); } catch (_e) {}
     return ApiResponse.success(res, { id: Number(id) }, '更新しました');
   } catch (err) {
     logger.error(`[updateCustomerMaster] ${err.message}`);
