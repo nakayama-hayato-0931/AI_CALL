@@ -453,6 +453,45 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN fax_number VARCHAR(50) DEFAULT NULL`); } catch (e) {}
   // NGリスト除外理由（exclusion_flag=1 にした理由のメモ）
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN exclusion_reason VARCHAR(255) DEFAULT NULL`); } catch (e) {}
+
+  // ============================================================
+  // Phase 1: 統合顧客マスタ準備 (UNIFIED_CUSTOMER_SCHEMA.md)
+  //   方針: callcenter MySQL を共有DBに採択 (2026-06-01)
+  //   - companies に fax-crm 由来カラムを追加（読み書きはまだ無し、スキーマ準備のみ）
+  //   - fax_customer_ext テーブル新設（fax-crm 固有カラム置き場）
+  // ============================================================
+  // 1) companies に fax-crm 互換カラムを追加
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN prefecture VARCHAR(20) DEFAULT NULL COMMENT 'fax-crm互換: 都道府県 (region は広域)'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN city VARCHAR(100) DEFAULT NULL COMMENT 'fax-crm互換: 市区町村'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN postal_code VARCHAR(10) DEFAULT NULL COMMENT 'fax-crm互換: 郵便番号'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN url VARCHAR(500) DEFAULT NULL COMMENT 'fax-crm互換: 会社URL'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN employee_count INT DEFAULT NULL COMMENT 'fax-crm互換: 従業員数'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN representative VARCHAR(100) DEFAULT NULL COMMENT 'fax-crm互換: 代表者名'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN note TEXT DEFAULT NULL COMMENT 'fax-crm互換: 補足メモ (comment とは別)'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN is_blacklisted TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'fax-crm互換: ブラックリスト (exclusion_flag とは別軸)'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN blacklisted_reason VARCHAR(255) DEFAULT NULL COMMENT 'fax-crm互換: ブラックリスト理由'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN source_file VARCHAR(255) DEFAULT NULL COMMENT 'fax-crm互換: 取込元ファイル名'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN imported_at DATETIME DEFAULT NULL COMMENT 'fax-crm互換: 取込日時'`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN external_faxcrm_id BIGINT UNSIGNED DEFAULT NULL COMMENT 'fax-crm 側 customers.id への逆参照'`); } catch (e) {}
+  try { await pool.execute(`CREATE UNIQUE INDEX uk_companies_external_faxcrm ON companies(external_faxcrm_id)`); } catch (e) {}
+  try { await pool.execute(`CREATE INDEX idx_companies_prefecture ON companies(prefecture)`); } catch (e) {}
+  try { await pool.execute(`CREATE INDEX idx_companies_blacklisted ON companies(is_blacklisted)`); } catch (e) {}
+
+  // 2) fax-crm 固有カラム (FAX送信集計の最新値など。companies と 1:1)
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS fax_customer_ext (
+      company_id           INT UNSIGNED NOT NULL PRIMARY KEY COMMENT 'companies.id への外部キー (1:1)',
+      send_count           INT          NOT NULL DEFAULT 0   COMMENT 'FAX送信回数累計',
+      last_sent_at         DATETIME     DEFAULT NULL          COMMENT '最終FAX送信日時',
+      last_pc_number       VARCHAR(20)  DEFAULT NULL          COMMENT '最終送信PC番号',
+      last_result          VARCHAR(40)  DEFAULT NULL          COMMENT '最終FAX結果ラベル',
+      response_count       INT          NOT NULL DEFAULT 0   COMMENT '応答(受電報告)回数',
+      created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_fcc_ext_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      INDEX idx_fcc_ext_last_sent (last_sent_at)
+    ) ENGINE=InnoDB COMMENT='fax-crm 固有カラム (companies との 1:1 拡張)'`);
+  } catch (e) { logger.warn(`[Migration] fax_customer_ext CREATE: ${e.message}`); }
   try {
     await pool.execute('CREATE INDEX idx_companies_category ON companies(industry_category)');
   } catch (e) {}
