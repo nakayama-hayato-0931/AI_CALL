@@ -188,6 +188,32 @@ export default function CustomerMasterPage() {
     }
   };
 
+  const importMissingFromFaxCrm = async () => {
+    if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
+    if (typeof window !== 'undefined' && !window.confirm(
+      'fax-crm に存在するが callcenter に未連携の顧客を一括取込します。\n' +
+      '件数が多い場合は数十分〜数時間かかることがあります。\nよろしいですか？'
+    )) return;
+    setSyncing(true);
+    const t = toast.loading('fax-crmから未連携顧客を取込中...');
+    try {
+      const { data } = await api.post(
+        '/api/admin/customer-master/import-missing-from-faxcrm',
+        {}, { timeout: 24 * 60 * 60 * 1000 }
+      );
+      toast.dismiss(t);
+      if (data.success) {
+        toast.success(data.message || '取込完了', { duration: 15000 });
+        fetchList();
+      } else {
+        toast.error(data.message || '取込失敗');
+      }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err.response?.data?.message || '取込に失敗しました');
+    } finally { setSyncing(false); }
+  };
+
   const bulkSync = async (direction) => {
     if (!faxCrmEnabled) { toast.error('FAX CRM 連携が無効です'); return; }
     if (total === 0) { toast.error('対象の顧客がありません'); return; }
@@ -272,6 +298,11 @@ export default function CustomerMasterPage() {
                 className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
                 title="一覧の全社を双方向同期">
                 一括 双方向同期
+              </button>
+              <button onClick={importMissingFromFaxCrm} disabled={syncing || !faxCrmEnabled}
+                className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300"
+                title="fax-crm 側にあって callcenter 側に居ない顧客を一括作成">
+                fax-crmから不足顧客を取込
               </button>
             </div>
           )}

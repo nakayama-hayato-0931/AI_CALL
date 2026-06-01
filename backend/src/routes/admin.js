@@ -34,6 +34,7 @@ const {
   syncCustomerFromFaxCrm,
   bulkSyncCustomers,
   updateCustomerMaster,
+  importMissingFromFaxCrm,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -120,5 +121,6 @@ router.patch('/customer-master/:id', requireEditor, updateCustomerMaster);
 router.post('/customer-master/:id/sync-to-faxcrm', requireEditor, syncCustomerToFaxCrm);
 router.post('/customer-master/:id/sync-from-faxcrm', requireEditor, syncCustomerFromFaxCrm);
 router.post('/customer-master/bulk-sync', requireEditor, bulkSyncCustomers);
+router.post('/customer-master/import-missing-from-faxcrm', requireEditor, importMissingFromFaxCrm);
 
 module.exports = router;

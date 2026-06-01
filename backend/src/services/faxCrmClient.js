@@ -127,10 +127,44 @@ async function getFaxHistory(companyId) {
   }
 }
 
+/**
+ * fax-crm の /api/customers/sync/push を呼ぶ
+ * fax-crm 側に居て callcenter に居ない顧客を一括作成させる用途。
+ * @param {object} opts { unlinkedOnly?: boolean, limit?: number }
+ * @returns {Promise<{ok, status?, body?, error?}>}
+ */
+async function triggerFaxCrmSyncPush({ unlinkedOnly = true, limit = 0 } = {}) {
+  if (!isEnabled()) return { ok: false, skipped: true, reason: 'FAX_CRM_API_URL 未設定' };
+  // 数時間レベルの可能性があるので timeout は長め
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 24 * 60 * 60 * 1000); // 24h
+  try {
+    const params = new URLSearchParams();
+    if (unlinkedOnly) params.set('unlinked_only', '1');
+    params.set('limit', String(limit));
+    const resp = await fetch(endpoint(`/api/customers/sync/push?${params}`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: ctrl.signal,
+    });
+    const text = await resp.text();
+    let body;
+    try { body = JSON.parse(text); } catch (_e) { body = text; }
+    if (!resp.ok) return { ok: false, status: resp.status, body };
+    return { ok: true, status: resp.status, body };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 module.exports = {
   isEnabled,
   postContactEvent,
   notifyCallResult,
   getFaxHistory,
+  triggerFaxCrmSyncPush,
   RESULT_CODE_TO_EVENT_TYPE,
 };

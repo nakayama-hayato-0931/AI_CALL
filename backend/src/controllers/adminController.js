@@ -1258,6 +1258,7 @@ module.exports = {
   syncCustomerFromFaxCrm,
   bulkSyncCustomers,
   updateCustomerMaster,
+  importMissingFromFaxCrm,
 };
 
 const faxCrmClient = require('../services/faxCrmClient');
@@ -1679,6 +1680,29 @@ async function syncCustomerFromFaxCrm(req, res) {
     return ApiResponse.success(res, r, `${r.inserted}件の FAX 履歴を取込しました（既存スキップ: ${r.skipped}件）`);
   } catch (err) {
     logger.error(`[syncCustomerFromFaxCrm] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * POST /api/admin/customer-master/import-missing-from-faxcrm
+ * fax-crm に存在するが callcenter に未連携の顧客を一括取込
+ * (fax-crm 側の /api/customers/sync/push?unlinked_only=1&limit=0 を呼ぶプロキシ)
+ */
+async function importMissingFromFaxCrm(req, res) {
+  try {
+    if (!faxCrmClient.isEnabled()) {
+      return ApiResponse.error(res, 'FAX CRM 連携が無効です（FAX_CRM_API_URL 未設定）', 400);
+    }
+    const r = await faxCrmClient.triggerFaxCrmSyncPush({ unlinkedOnly: true, limit: 0 });
+    if (!r.ok) {
+      return ApiResponse.error(res, `fax-crm 取込失敗: ${r.error || r.status || 'unknown'}`, 502);
+    }
+    const stats = r.body?.data || r.body || {};
+    return ApiResponse.success(res, stats,
+      `未連携取込 完了: ${stats.created || 0}件作成 / ${stats.updated || 0}件更新 / ${stats.errors || 0}件エラー`);
+  } catch (err) {
+    logger.error(`[importMissingFromFaxCrm] ${err.message}`);
     return ApiResponse.error(res, err.message, 500);
   }
 }
