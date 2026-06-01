@@ -121,6 +121,18 @@ router.patch('/customer-master/:id', requireEditor, updateCustomerMaster);
 router.post('/customer-master/:id/sync-to-faxcrm', requireEditor, syncCustomerToFaxCrm);
 router.post('/customer-master/:id/sync-from-faxcrm', requireEditor, syncCustomerFromFaxCrm);
 router.post('/customer-master/bulk-sync', requireEditor, bulkSyncCustomers);
+
+// fax-crm DB シャドー接続確認 (Phase 2)
+router.get('/customer-master/faxcrm-shadow-status', requireManager, async (req, res) => {
+  try {
+    const faxDb = require('../../config/faxCrmDb');
+    const writer = require('../controllers/../services/faxCrmDbWriter');
+    const status = await faxDb.ping();
+    return res.json({ success: true, data: { ...status, writer_enabled: writer.isEnabled() } });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
 router.post('/customer-master/import-missing-from-faxcrm', requireEditor, importMissingFromFaxCrm);
 
 module.exports = router;
