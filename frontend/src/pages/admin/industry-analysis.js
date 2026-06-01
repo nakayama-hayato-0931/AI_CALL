@@ -621,6 +621,9 @@ export default function IndustryAnalysisPage() {
                         <th className="text-left px-2 py-1.5">案件獲得日</th>
                         <th className="text-left px-2 py-1.5">面接日</th>
                         <th className="text-left px-2 py-1.5">内定日</th>
+                        <th className="text-right px-2 py-1.5">内定人数</th>
+                        <th className="text-right px-2 py-1.5">初回入金</th>
+                        <th className="text-right px-2 py-1.5">見込売上</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -639,9 +642,22 @@ export default function IndustryAnalysisPage() {
                           <td className="px-2 py-1">{p.created_at ? new Date(p.created_at).toLocaleDateString('ja-JP') : '-'}</td>
                           <td className="px-2 py-1">{p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}</td>
                           <td className="px-2 py-1">{p.naitei_date ? new Date(p.naitei_date).toLocaleDateString('ja-JP') : '-'}</td>
+                          <td className="px-2 py-1 text-right">{Number(p.hires_count) > 0 ? `${p.hires_count}名` : '-'}</td>
+                          <td className="px-2 py-1 text-right text-emerald-700">{Number(p.initial_payment) > 0 ? `¥${Number(p.initial_payment).toLocaleString()}` : '-'}</td>
+                          <td className="px-2 py-1 text-right text-blue-700">{Number(p.expected_revenue) > 0 ? `¥${Number(p.expected_revenue).toLocaleString()}` : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
+                    {drillModal.data.totals && (
+                      <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
+                        <tr>
+                          <td colSpan={9} className="px-2 py-1.5 text-right text-gray-700">合計 ({drillModal.data.count}件)</td>
+                          <td className="px-2 py-1.5 text-right">{Number(drillModal.data.totals.hires) || 0}名</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-700">¥{Number(drillModal.data.totals.initial || 0).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-700">¥{Number(drillModal.data.totals.expected || 0).toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 )}
               </div>
