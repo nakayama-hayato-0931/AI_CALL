@@ -631,9 +631,13 @@ export default function IndustryAnalysisPage() {
                         <tr key={p.id} className="border-t hover:bg-gray-50">
                           <td className="px-2 py-1">{p.job_number || '-'}</td>
                           <td className="px-2 py-1">
-                            <a href={`/admin/projects?focus=${p.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                              {p.company_name || '-'}
-                            </a>
+                            {p.company_id ? (
+                              <a href={`/admin/customer-master?id=${p.company_id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {p.company_name || '-'}
+                              </a>
+                            ) : (
+                              <span>{p.company_name || '-'}</span>
+                            )}
                           </td>
                           <td className="px-2 py-1 text-gray-500">{p.industry || '-'}</td>
                           <td className="px-2 py-1">{p.status || '-'}</td>

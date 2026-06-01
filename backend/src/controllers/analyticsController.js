@@ -2388,7 +2388,7 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date, p.interview_date,
+      `SELECT p.id, p.company_id, p.job_number, p.status, p.created_at, p.naitei_date, p.interview_date,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
               c.industry, ${CAT} AS industry_cat,
               ou.name AS owner_name, su.name AS sales_name,

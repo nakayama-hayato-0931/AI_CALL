@@ -74,6 +74,16 @@ export default function CustomerMasterPage() {
   // フィルタが変わったら 1 ページ目に戻す
   useEffect(() => { setPage(1); }, [filters, pageSize]);
 
+  // ?id= クエリがあれば自動的に詳細を開く (業種別分析等からの遷移用)
+  useEffect(() => {
+    if (!router.isReady) return;
+    const qid = router.query.id;
+    if (qid && Number(qid) && Number(qid) !== selectedId) {
+      openDetail(Number(qid));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.id]);
+
   const fetchOperators = async () => {
     try {
       const { data } = await api.get('/api/admin/users');
