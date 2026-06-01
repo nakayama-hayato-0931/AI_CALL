@@ -2260,17 +2260,28 @@ const getQualityIndustryDetail = async (req, res, next) => {
       [status, ...params]
     );
 
-    // 明細も取得
+    // 明細も取得（内定人数 / 初回入金 / 見込売上 を含む）
     const detailParams = [status, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
     const [detailRows] = await pool.query(
-      `SELECT p.id, p.job_number, p.status, p.created_at, p.naitei_date,
+      `SELECT p.id, p.company_id, p.job_number, p.status, p.created_at, p.naitei_date,
               ${CAT} AS industry_cat,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
-              ou.name AS owner_name, su.name AS sales_name
+              ou.name AS owner_name, su.name AS sales_name,
+              COALESCE(ph.hires_count, 0)         AS hires_count,
+              COALESCE(ph.initial_payment_sum, 0) AS initial_payment,
+              COALESCE(ph.expected_revenue_sum, 0) AS expected_revenue
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users ou ON p.owner_user_id = ou.id
        LEFT JOIN users su ON p.sales_user_id = su.id
+       LEFT JOIN (
+         SELECT project_id,
+                COUNT(*)                          AS hires_count,
+                SUM(COALESCE(initial_payment, 0)) AS initial_payment_sum,
+                SUM(COALESCE(expected_revenue, 0)) AS expected_revenue_sum
+           FROM project_hires
+          GROUP BY project_id
+       ) ph ON ph.project_id = p.id
        WHERE p.is_prospect = 0
          AND p.status = ?
          AND ${dateCol} BETWEEN ? AND ?
@@ -2280,10 +2291,16 @@ const getQualityIndustryDetail = async (req, res, next) => {
     );
 
     const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
+    const totals = detailRows.reduce((s, r) => ({
+      hires:    s.hires    + (Number(r.hires_count) || 0),
+      initial:  s.initial  + (Number(r.initial_payment) || 0),
+      expected: s.expected + (Number(r.expected_revenue) || 0),
+    }), { hires: 0, initial: 0, expected: 0 });
     return ApiResponse.success(res, {
       status, dateFrom, dateTo, total,
       industries: rows.map(r => ({ industry: r.industry_cat, count: Number(r.cnt) })),
       projects: detailRows.map(r => ({ ...r, industry: r.industry_cat })),
+      totals,
     });
   } catch (err) {
     logger.error(`[getQualityIndustryDetail] ${err.message}`);
