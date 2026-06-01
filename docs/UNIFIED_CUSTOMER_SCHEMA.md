@@ -145,7 +145,12 @@ CREATE TABLE fax_customer_ext (
 - メリット: 設計上きれい
 - デメリット: 運用が複雑
 
-**推奨は B**。
+**採択: fax-crm の MySQL を共有 DB として使う** (2026-06-01 決定)
+
+理由:
+- fax-crm 側の `customers` テーブルが既に「マスタ的」設計（fax_number UNIQUE / external_callcenter_id UNIQUE / 拡張カラム多数）になっている
+- callcenter の `companies` は callcenter-specific なフィールド (`locked_*`, `priority_*`, `is_special`) が多く、これらは拡張テーブルに移すのが自然
+- callcenter の 83k 行を fax-crm に移動する方が、fax-crm の数十万〜想定150万行を callcenter に移すより小さいデータ移動で済む
 
 ---
 
