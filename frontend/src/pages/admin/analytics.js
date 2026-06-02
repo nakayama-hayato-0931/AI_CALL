@@ -213,27 +213,33 @@ export default function AnalyticsPage() {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
           monthList.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
         }
-        for (const ym of monthList) {
-          const [y, m] = ym.split('-').map(Number);
-          // 月合計
+        // 全月を並列取得（従来は月ループが直列で、6ヶ月分を順番待ちしていた）
+        const monthBlocks = await Promise.all(monthList.map(async (ym) => {
+          const m = Number(ym.split('-')[1]);
           const monthParams = { period: 'monthly', date: `${ym}-15` };
-          const [cM, qM] = await Promise.all([
+          const weeks = getWeeksInMonth(ym);
+          // 月合計(cpa,quality) + 各週(cpa,quality) を一括並列
+          const responses = await Promise.all([
             api.get('/api/analytics/cpa-all', { params: monthParams }),
             api.get('/api/analytics/quality-all', { params: monthParams }),
+            ...weeks.flatMap(w => {
+              const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
+              return [
+                api.get('/api/analytics/cpa-all', { params: p }),
+                api.get('/api/analytics/quality-all', { params: p }),
+              ];
+            }),
           ]);
-          rows.push({ label: `${m}月`, isMonth: true, ym, cpa: cM.data.data, qual: qM.data.data });
-          // 各週
-          const weeks = getWeeksInMonth(ym);
-          const weekResults = await Promise.all(weeks.map(async w => {
-            const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
-            const [c, q] = await Promise.all([
-              api.get('/api/analytics/cpa-all', { params: p }),
-              api.get('/api/analytics/quality-all', { params: p }),
-            ]);
-            return { label: w.label, isMonth: false, ym, cpa: c.data.data, qual: q.data.data };
-          }));
-          rows.push(...weekResults);
-        }
+          const [cM, qM, ...weekPairs] = responses;
+          const block = [{ label: `${m}月`, isMonth: true, ym, cpa: cM.data.data, qual: qM.data.data }];
+          weeks.forEach((w, wi) => {
+            const c = weekPairs[wi * 2];
+            const q = weekPairs[wi * 2 + 1];
+            block.push({ label: w.label, isMonth: false, ym, cpa: c.data.data, qual: q.data.data });
+          });
+          return block;
+        }));
+        monthBlocks.forEach(block => rows.push(...block));
         setCompareData(rows);
         setCpaData(null);
         setQualData(null);
