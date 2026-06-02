@@ -292,10 +292,13 @@ const getAllOperatorPerformance = async (req, res, next) => {
     const avgDurMap = new Map();
     try {
       const ctFilter = call_type === 'sales' ? "AND call_type = 'sales'" : "AND call_type = 'operator'";
+      // 実通話時間(actual_duration_seconds: スプレッドシートG/H由来)を優先し、
+      // 未取得の通話は操作時刻差分にフォールバック
       const [avgRows] = await pool.query(
-        `SELECT user_id, ROUND(AVG(TIMESTAMPDIFF(SECOND, call_started_at, call_ended_at))) AS avg_sec
+        `SELECT user_id, ROUND(AVG(COALESCE(actual_duration_seconds, TIMESTAMPDIFF(SECOND, call_started_at, call_ended_at)))) AS avg_sec
            FROM calls
-          WHERE call_ended_at IS NOT NULL AND result_code IS NOT NULL AND result_code != 'SKIP'
+          WHERE result_code IS NOT NULL AND result_code != 'SKIP'
+            AND (actual_duration_seconds IS NOT NULL OR call_ended_at IS NOT NULL)
             AND DATE(call_started_at) BETWEEN ? AND ? ${ctFilter}
           GROUP BY user_id`,
         [dateFrom, dateTo]

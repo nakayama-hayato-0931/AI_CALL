@@ -380,6 +380,8 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE calls ADD COLUMN contact_person_phone VARCHAR(30) DEFAULT NULL`); } catch (e) {}
   // NG理由（result_code='NG' のとき選択）
   try { await pool.execute(`ALTER TABLE calls ADD COLUMN ng_reason VARCHAR(100) DEFAULT NULL`); } catch (e) {}
+  // スプレッドシート(G/H列)由来の実通話時間（秒）。架電結果ログ表示時に取得・保存し、ダッシュボード集計に使う
+  try { await pool.execute(`ALTER TABLE calls ADD COLUMN actual_duration_seconds INT DEFAULT NULL`); } catch (e) {}
   // callsテーブルのインデックス追加（パフォーマンス改善）
   try { await pool.execute('CREATE INDEX idx_calls_started_at ON calls(call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_started ON calls(user_id, call_started_at)'); } catch (e) {}

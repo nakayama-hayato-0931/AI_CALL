@@ -604,6 +604,16 @@ const getCalls = async (req, res, next) => {
         const d = durationMap.get(row.id);
         if (d != null) row.sheet_duration_seconds = d;
       }
+      // DBにも保存（ダッシュボードのオペレーター別平均通話時間の集計に使う）
+      if (durationMap.size > 0) {
+        setImmediate(async () => {
+          try {
+            for (const [callId, sec] of durationMap) {
+              await pool.execute('UPDATE calls SET actual_duration_seconds = ? WHERE id = ?', [sec, callId]);
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
     } catch (e) {
       if (e.message !== 'timeout') logger.warn('通話時間取得エラー:', e.message);
     }
