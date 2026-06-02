@@ -791,6 +791,56 @@ const refreshTranscriptsBulk = async (req, res, next) => {
 };
 
 /**
+ * POST /api/calls/backfill-durations
+ * 過去通話の actual_duration_seconds をスプレッドシート(G/H列)から一括取得・保存
+ * （ダッシュボードのオペレーター別平均通話時間を実通話時間に揃えるための一回実行用）
+ * body: { date_from?, date_to?, user_id? } 未指定なら全期間・全員
+ */
+const backfillDurations = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id } = req.body || {};
+    const whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "c.actual_duration_seconds IS NULL"];
+    const params = [];
+    if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
+    if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
+    if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
+
+    const [rows] = await pool.query(
+      `SELECT c.id, c.call_started_at, co.phone_number
+       FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+       WHERE ${whereClauses.join(' AND ')} AND co.phone_number IS NOT NULL`,
+      params
+    );
+    if (rows.length === 0) {
+      return ApiResponse.success(res, { target: 0, updated: 0 }, '対象の通話がありません（全て取得済み）');
+    }
+
+    let durationMap;
+    try {
+      durationMap = await findDurationsBatch(rows);
+    } catch (gsErr) {
+      logger.error(`通話時間シート取得エラー: ${gsErr.message}`);
+      return ApiResponse.error(res, `Google Sheetsへのアクセスに失敗: ${gsErr.message}`, 502);
+    }
+
+    let updated = 0;
+    const entries = Array.from(durationMap.entries());
+    for (let i = 0; i < entries.length; i += 10) {
+      const batch = entries.slice(i, i + 10);
+      await Promise.all(batch.map(([id, sec]) =>
+        pool.execute('UPDATE calls SET actual_duration_seconds = ? WHERE id = ?', [sec, id]).catch(() => {})
+      ));
+      updated += batch.length;
+    }
+    logger.info(`通話時間一括取得: ${updated}/${rows.length}件保存`);
+    return ApiResponse.success(res, { target: rows.length, updated }, `${updated}件の実通話時間を保存しました（対象 ${rows.length}件）`);
+  } catch (err) {
+    logger.error(`通話時間一括取得エラー: ${err.message}`);
+    return ApiResponse.error(res, `一括取得失敗: ${err.sqlMessage || err.message}`, 500);
+  }
+};
+
+/**
  * GET /api/calls/:id/transcript
  * 文字起こしテキストを取得（展開時にlazy load）
  */
@@ -805,4 +855,4 @@ const getCallTranscript = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, getCallTranscript };
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, getCallTranscript };

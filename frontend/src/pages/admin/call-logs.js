@@ -39,6 +39,7 @@ export default function AdminCallLogsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [refreshingBulk, setRefreshingBulk] = useState(false);
+  const [backfillingDur, setBackfillingDur] = useState(false);
 
   // フィルター
   const [viewMode, setViewMode] = useState('daily');
@@ -269,6 +270,29 @@ export default function AdminCallLogsPage() {
           {refreshingBulk ? (
             <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>取得中...</>
           ) : 'ログ一括取得'}
+        </button>
+        <button
+          onClick={async () => {
+            if (!window.confirm('過去の全通話について、スプレッドシートの架電開始/終了時刻から実通話時間を一括取得して保存します。\n（ダッシュボードの平均通話時間に反映されます）\n件数が多い場合は数分かかることがあります。実行しますか？')) return;
+            setBackfillingDur(true);
+            try {
+              // body 空 = 全期間・全オペレーター対象（actual_duration 未取得分のみ）
+              const { data } = await api.post('/api/calls/backfill-durations', {}, { timeout: 10 * 60 * 1000 });
+              const r = data.data || {};
+              toast.success(`実通話時間 一括取得 完了: ${r.updated ?? 0}件保存（対象 ${r.target ?? 0}件）`, { duration: 12000 });
+              fetchCalls();
+            } catch (err) {
+              toast.error(`取得に失敗しました: ${err.response?.data?.message || err.message}`);
+            } finally {
+              setBackfillingDur(false);
+            }
+          }}
+          disabled={backfillingDur}
+          className="text-xs px-3 py-1.5 rounded-lg border border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+        >
+          {backfillingDur ? (
+            <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>取得中...</>
+          ) : '通話時間を一括取得(過去分)'}
         </button>
       </div>
 
