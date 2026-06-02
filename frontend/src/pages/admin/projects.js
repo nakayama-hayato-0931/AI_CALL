@@ -451,6 +451,11 @@ export default function AdminProjects() {
         </div>
       </div>
 
+      {/* 該当件数 */}
+      <div className="mb-3 text-sm text-gray-600">
+        該当 <span className="font-bold text-gray-900">{pagination.total ?? 0}</span> 件
+      </div>
+
       {/* テーブル */}
       <div className="card overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="overflow-x-auto overflow-y-auto flex-1">
