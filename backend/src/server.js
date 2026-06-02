@@ -498,7 +498,7 @@ const runMigrations = async () => {
   // industry_category 一括再計算（v2: 製造/加工キーワードを広めに）
   try {
     const [flag] = await pool.query(
-      "SELECT setting_value FROM system_settings WHERE setting_key = 'industry_category_v2_applied'"
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'industry_category_v3_applied'"
     );
     if (flag.length === 0) {
       logger.info(`[Migration] industry_category v2 一括再計算開始`);
@@ -515,6 +515,7 @@ const runMigrations = async () => {
           WHEN industry LIKE '%金融%' OR industry LIKE '%銀行%' OR industry LIKE '%保険%' OR industry LIKE '%証券%' THEN '金融'
           WHEN industry LIKE '%不動産%' THEN '不動産'
           WHEN industry LIKE '%美容%' OR industry LIKE '%エステ%' OR industry LIKE '%理容%' OR industry LIKE '%サロン%' THEN '美容'
+          WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
           WHEN industry LIKE '%飲食店%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
           WHEN industry LIKE '%サービス%' THEN 'サービス'
           ELSE 'その他'
@@ -522,7 +523,7 @@ const runMigrations = async () => {
         WHERE industry IS NOT NULL AND industry != ''
       `);
       await pool.execute(
-        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('industry_category_v2_applied', 'true')"
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('industry_category_v3_applied', 'true')"
       );
       logger.info(`[Migration] industry_category v2 再計算完了`);
     }

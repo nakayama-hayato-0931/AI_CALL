@@ -246,12 +246,13 @@ const CATEGORY_SQL_EXPR = `
     WHEN c.industry LIKE '%金融%' OR c.industry LIKE '%銀行%' OR c.industry LIKE '%保険%' OR c.industry LIKE '%証券%' THEN '金融'
     WHEN c.industry LIKE '%不動産%' THEN '不動産'
     WHEN c.industry LIKE '%美容%' OR c.industry LIKE '%エステ%' OR c.industry LIKE '%理容%' OR c.industry LIKE '%サロン%' THEN '美容'
+    WHEN c.industry LIKE '%清掃%' OR c.industry LIKE '%クリーニング%' OR c.industry LIKE '%ビルメンテ%' OR c.industry LIKE '%ビル管理%' OR c.industry LIKE '%ハウスクリーニング%' THEN '清掃'
     WHEN c.industry LIKE '%飲食店%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%' OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%' OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%' OR c.industry LIKE '%食堂%' OR c.industry LIKE '%ダイニング%' OR c.industry LIKE '%そば%' OR c.industry LIKE '%うどん%' OR c.industry LIKE '%菓子%' THEN '飲食'
     WHEN c.industry LIKE '%サービス%' THEN 'サービス'
     ELSE 'その他'
   END
 `;
-const CATEGORY_NAMES_SQL = "('飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス')";
+const CATEGORY_NAMES_SQL = "('飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス')";
 
 const industryRegionFilterSQL = `
   AND (
@@ -312,7 +313,7 @@ const getNextCallTarget = async (req, res, next) => {
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
-    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
+    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
         // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
@@ -522,7 +523,7 @@ const getCallList = async (req, res, next) => {
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
     let modeFilterParams = [];
-    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
+    const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
         // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ

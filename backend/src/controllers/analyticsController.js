@@ -1930,13 +1930,14 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     // region: c.region（都道府県）。NULL/空は '(未設定)'
     const INDUSTRY_CAT = `(
       CASE
-        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
+        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊','清掃') THEN c.industry_category
         WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
              OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
         WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
         WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
              OR c.industry LIKE '%リフォーム%' THEN '建設'
         WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        WHEN c.industry LIKE '%清掃%' OR c.industry LIKE '%クリーニング%' OR c.industry LIKE '%ビルメンテ%' OR c.industry LIKE '%ビル管理%' OR c.industry LIKE '%ハウスクリーニング%' THEN '清掃'
         WHEN c.industry LIKE '%飲食%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
              OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
              OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'
@@ -1982,7 +1983,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          GROUP BY DATE_FORMAT(cl.call_started_at, '%Y-%m'), ${INDUSTRY_CAT}, ${REGION_EXPR}`,
         [rangeFrom, rangeTo]
       );
-      const SHOW = new Set(['飲食','製造','小売','建設','宿泊']);
+      const SHOW = new Set(['飲食','製造','小売','建設','宿泊','清掃']);
       const normInd = (c) => SHOW.has(c) ? c : 'その他';
       const REGION_ORDER_B = [
         '北海道','東北','関東','中部','近畿','中国','四国','九州','沖縄','(未設定)',
@@ -1994,7 +1995,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
         '徳島県','香川県','愛媛県','高知県',
         '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県',
       ];
-      const INDUSTRY_ORDER_B = ['飲食','製造','小売','建設','宿泊','その他'];
+      const INDUSTRY_ORDER_B = ['飲食','製造','小売','建設','宿泊','清掃','その他'];
       // cellMap: 期間合計 / monthlyCellMap: 月別
       const cellMap = new Map();          // key=`${industry}|${region}`
       const monthlyCellMap = new Map();   // key=`${ym}|${industry}|${region}`
@@ -2103,7 +2104,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
 
     // 業種モード: 飲食/製造/小売/建設/宿泊 + その他
     // 地域モード: そのまま採用
-    const SHOW_CATEGORIES = new Set(['飲食', '製造', '小売', '建設', '宿泊']);
+    const SHOW_CATEGORIES = new Set(['飲食', '製造', '小売', '建設', '宿泊', '清掃']);
     const normalizeIndustry = groupBy === 'region'
       ? (cat) => cat || '(未設定)'
       : (cat) => SHOW_CATEGORIES.has(cat) ? cat : 'その他';
@@ -2111,7 +2112,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     // 業種一覧
     const industrySet = groupBy === 'region'
       ? new Set() // 地域モードは実データから収集
-      : new Set(['飲食', '製造', '小売', '建設', '宿泊', 'その他']);
+      : new Set(['飲食', '製造', '小売', '建設', '宿泊', '清掃', 'その他']);
     if (groupBy === 'region') {
       for (const r of projAll) industrySet.add(normalizeIndustry(r.industry_cat));
       for (const r of callAll) industrySet.add(normalizeIndustry(r.industry_cat));
@@ -2158,7 +2159,7 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
       '福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県',
       '(未設定)',
     ];
-    const INDUSTRY_ORDER = ['飲食','製造','小売','建設','宿泊','その他'];
+    const INDUSTRY_ORDER = ['飲食','製造','小売','建設','宿泊','清掃','その他'];
     const CATEGORY_ORDER = groupBy === 'region' ? REGION_ORDER : INDUSTRY_ORDER;
     const industries = [...industrySet].sort((a, b) => {
       const ia = CATEGORY_ORDER.indexOf(a);
@@ -2341,13 +2342,14 @@ const getIndustryPeriodDetail = async (req, res, next) => {
     // CATEGORY_SQL: industry_category 優先、不整合時は industry テキストから判定（業種別分析と同じロジック）
     const INDUSTRY_CAT = `(
       CASE
-        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊') THEN c.industry_category
+        WHEN c.industry_category IN ('飲食','製造','小売','建設','宿泊','清掃') THEN c.industry_category
         WHEN c.industry LIKE '%小売%' OR c.industry LIKE '%卸売%' OR c.industry LIKE '%スーパー%' OR c.industry LIKE '%コンビニ%'
              OR c.industry LIKE '%ショッピング%' OR c.industry LIKE '%商社%' OR c.industry LIKE '%物販%' THEN '小売'
         WHEN c.industry LIKE '%製造%' OR c.industry LIKE '%メーカー%' OR c.industry LIKE '%加工%' THEN '製造'
         WHEN c.industry LIKE '%建設%' OR c.industry LIKE '%工事%' OR c.industry LIKE '%建築%' OR c.industry LIKE '%土木%'
              OR c.industry LIKE '%リフォーム%' THEN '建設'
         WHEN c.industry LIKE '%宿泊%' OR c.industry LIKE '%ホテル%' OR c.industry LIKE '%旅館%' OR c.industry LIKE '%民宿%' THEN '宿泊'
+        WHEN c.industry LIKE '%清掃%' OR c.industry LIKE '%クリーニング%' OR c.industry LIKE '%ビルメンテ%' OR c.industry LIKE '%ビル管理%' OR c.industry LIKE '%ハウスクリーニング%' THEN '清掃'
         WHEN c.industry LIKE '%飲食%' OR c.industry LIKE '%グルメ%' OR c.industry LIKE '%レストラン%' OR c.industry LIKE '%居酒屋%'
              OR c.industry LIKE '%ラーメン%' OR c.industry LIKE '%カフェ%' OR c.industry LIKE '%喫茶店%' OR c.industry LIKE '%寿司%'
              OR c.industry LIKE '%焼肉%' OR c.industry LIKE '%和食%' OR c.industry LIKE '%中華%' OR c.industry LIKE '%洋食%'

@@ -11,7 +11,7 @@ const TABS = [
   { value: 'area', label: 'ルール設定' },
 ];
 
-const INDUSTRIES = ['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'];
+const INDUSTRIES = ['飲食', '製造', '小売', '建設', '宿泊', '清掃', '農業', '介護'];
 
 // 都道府県の地方グループ（北から順）
 const REGION_GROUPS = [
