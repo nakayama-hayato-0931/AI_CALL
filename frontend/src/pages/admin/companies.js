@@ -949,8 +949,10 @@ export default function AdminCompanies() {
           <>
             <div className="card p-4 mb-4 bg-blue-50 border-blue-100 flex items-start justify-between gap-4">
               <p className="text-sm text-blue-800">
-                自動ピックアップのゴールデンタイムを設定します。設定された時間帯では、該当業種の企業が優先的にピックアップされます。
-                優先度の数値が高いほど優先されます。
+                <span className="font-bold">この設定は架電候補の「並び順（優先度）」を決めます。</span>
+                設定した時間帯では該当業種の企業が架電候補の上位に来ます（数値が高いほど優先）。除外はしません。
+                <br />
+                <span className="text-blue-600">※ どの業種・地域を架電対象にするか（絞り込み）は「ルール設定」タブで設定します。</span>
               </p>
               <button
                 onClick={handleAiSuggest}
@@ -1021,25 +1023,9 @@ export default function AdminCompanies() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">
-                        <div className="text-[10px] text-gray-400 font-normal mb-0.5">自動対象</div>
-                        時間
-                      </th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">時間</th>
                       {INDUSTRIES.map(ind => (
                         <th key={ind} className="px-3 py-2 text-center text-gray-600 font-semibold">
-                          <div className="mb-1">
-                            <input
-                              type="checkbox"
-                              checked={!!aiSelectedIndustries[ind]}
-                              onChange={e => {
-                                const newMap = { ...aiSelectedIndustries, [ind]: e.target.checked };
-                                setAiSelectedIndustries(newMap);
-                                updateAutoPickupIndustries(newMap);
-                              }}
-                              className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
-                              title={`${ind}を自動ピックアップ対象にする（AI自動設定対象も兼ねる）`}
-                            />
-                          </div>
                           {ind}
                         </th>
                       ))}
@@ -1071,63 +1057,6 @@ export default function AdminCompanies() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-            {/* 自動ピックアップ対象 都道府県 */}
-            <div className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-700">自動ピックアップ対象 都道府県</h3>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    チェックを外した都道府県の企業は自動モードでピックアップされなくなります。
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => togglePrefAll(true)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
-                  <button onClick={() => togglePrefAll(false)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
-                </div>
-              </div>
-              <div className="p-4 space-y-3">
-                {REGION_GROUPS.map(group => {
-                  const groupEnabledCount = group.prefs.filter(p => autoPickupPrefs[p]).length;
-                  const allOn = groupEnabledCount === group.prefs.length;
-                  const someOn = groupEnabledCount > 0 && groupEnabledCount < group.prefs.length;
-                  return (
-                    <div key={group.name} className="border border-gray-100 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={allOn}
-                            ref={el => { if (el) el.indeterminate = someOn; }}
-                            onChange={() => toggleRegion(group.name)}
-                            className="w-4 h-4 accent-blue-600 cursor-pointer"
-                          />
-                          {group.name}
-                          <span className="text-[11px] font-normal text-gray-400">
-                            ({groupEnabledCount}/{group.prefs.length})
-                          </span>
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-2 pl-6">
-                        {group.prefs.map(p => (
-                          <label key={p} className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
-                            autoPickupPrefs[p] ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
-                          }`}>
-                            <input
-                              type="checkbox"
-                              checked={!!autoPickupPrefs[p]}
-                              onChange={() => togglePrefecture(p)}
-                              className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
-                            />
-                            {p}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
@@ -1228,9 +1157,12 @@ export default function AdminCompanies() {
         <>
           <div className="card p-4 mb-4 bg-blue-50 border-blue-100 space-y-3">
             <p className="text-sm text-blue-800">
-              業種キーワードごとに架電可能な都道府県を設定します。キーワードは企業の「業種」に部分一致で判定されます。
-              職種にNGワードが含まれる場合は除外されます（例: 飲食店でも職種が事務なら除外）。
-              ルール未設定時は全企業が表示されます。管理者画面では常に全企業が閲覧できます。
+              <span className="font-bold">このタブの設定はすべて「架電対象の絞り込み（除外）」です。</span>
+              下記4種は AND 条件で適用され、どれか1つでも対象外なら架電候補に出ません:
+              <br />
+              ① 自動ピックアップ業種　② 自動ピックアップ都道府県　③ 業種×地域ルール　④ NGワード
+              <br />
+              <span className="text-blue-600">※ いずれも未設定なら全企業が対象。時間帯による優先順位は「架電時間」タブで設定します（こちらは除外ではなく並び順）。</span>
             </p>
             {/* 1列目: ルール適用系 */}
             <div className="flex flex-wrap items-center gap-2">
@@ -1370,9 +1302,101 @@ export default function AdminCompanies() {
             </div>
           </div>
 
-          {/* ルール追加フォーム */}
+          {/* ① 自動ピックアップ対象 業種 */}
+          <div className="card overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">① 自動ピックアップ対象 業種</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  チェックを外した業種は自動モードでピックアップされません（AI自動設定の分析対象も兼ねます）。
+                </p>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = true; }); setAiSelectedIndustries(m); updateAutoPickupIndustries(m); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = false; }); setAiSelectedIndustries(m); updateAutoPickupIndustries(m); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+              </div>
+            </div>
+            <div className="p-4 flex flex-wrap gap-2">
+              {INDUSTRIES.map(ind => (
+                <label key={ind} className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                  aiSelectedIndustries[ind] ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={!!aiSelectedIndustries[ind]}
+                    onChange={e => {
+                      const newMap = { ...aiSelectedIndustries, [ind]: e.target.checked };
+                      setAiSelectedIndustries(newMap);
+                      updateAutoPickupIndustries(newMap);
+                    }}
+                    className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
+                  />
+                  {ind}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* ② 自動ピックアップ対象 都道府県 */}
+          <div className="card overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">② 自動ピックアップ対象 都道府県</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  チェックを外した都道府県の企業は自動モードでピックアップされません。
+                </p>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => togglePrefAll(true)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+                <button onClick={() => togglePrefAll(false)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
+              {REGION_GROUPS.map(group => {
+                const groupEnabledCount = group.prefs.filter(p => autoPickupPrefs[p]).length;
+                const allOn = groupEnabledCount === group.prefs.length;
+                const someOn = groupEnabledCount > 0 && groupEnabledCount < group.prefs.length;
+                return (
+                  <div key={group.name} className="border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={allOn}
+                          ref={el => { if (el) el.indeterminate = someOn; }}
+                          onChange={() => toggleRegion(group.name)}
+                          className="w-4 h-4 accent-blue-600 cursor-pointer"
+                        />
+                        {group.name}
+                        <span className="text-[11px] font-normal text-gray-400">
+                          ({groupEnabledCount}/{group.prefs.length})
+                        </span>
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pl-6">
+                      {group.prefs.map(p => (
+                        <label key={p} className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                          autoPickupPrefs[p] ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={!!autoPickupPrefs[p]}
+                            onChange={() => togglePrefecture(p)}
+                            className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
+                          />
+                          {p}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ③ 業種×地域ルール 追加フォーム */}
           <div className="card p-5 mb-6">
-            <h3 className="text-sm font-bold text-gray-700 mb-4">ルール追加</h3>
+            <h3 className="text-sm font-bold text-gray-700 mb-4">③ 業種×地域ルール 追加</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-4">
 
               {/* 業種キーワード入力 */}
