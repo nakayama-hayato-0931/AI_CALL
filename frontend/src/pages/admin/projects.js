@@ -71,6 +71,8 @@ export default function AdminProjects() {
   const [ownerId, setOwnerId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [docScreening, setDocScreening] = useState(''); // ''|required|not_required
+  const [interviewKind, setInterviewKind] = useState(''); // ''|in_person|online
   const [myOnly, setMyOnly] = useState(false);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -135,7 +137,7 @@ export default function AdminProjects() {
 
   useEffect(() => {
     if (user) fetchProjects();
-  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, sortBy, sortOrder, page, activeTab, search, callType]);
+  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, docScreening, interviewKind, sortBy, sortOrder, page, activeTab, search, callType]);
 
   const fetchOperators = async () => {
     try {
@@ -182,6 +184,8 @@ export default function AdminProjects() {
       if (selectedSalesUser) params.append('sales_user_id', selectedSalesUser);
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
+      if (docScreening) params.append('doc_screening', docScreening);
+      if (interviewKind) params.append('interview_kind', interviewKind);
       if (search) params.append('search', search);
       if (callType && activeTab !== 'legacy') params.append('call_type', callType);
       const { data } = await api.get(`/api/projects?${params}`);
@@ -429,6 +433,22 @@ export default function AdminProjects() {
             期間クリア
           </button>
         )}
+        <div>
+          <label className="input-label">書類選考</label>
+          <select className="input text-sm" value={docScreening} onChange={e => { setDocScreening(e.target.value); setPage(1); }}>
+            <option value="">すべて</option>
+            <option value="required">あり</option>
+            <option value="not_required">なし</option>
+          </select>
+        </div>
+        <div>
+          <label className="input-label">面接形式</label>
+          <select className="input text-sm" value={interviewKind} onChange={e => { setInterviewKind(e.target.value); setPage(1); }}>
+            <option value="">すべて</option>
+            <option value="in_person">対面</option>
+            <option value="online">オンライン</option>
+          </select>
+        </div>
       </div>
 
       {/* テーブル */}

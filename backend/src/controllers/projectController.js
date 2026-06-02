@@ -91,6 +91,23 @@ const getProjects = async (req, res, next) => {
       params.push(call_type);
     }
 
+    // 書類選考の有無フィルタ
+    //   required=あり / not_required=なし（未選択・NULLも「なし」に含める）
+    const { doc_screening, interview_kind } = req.query;
+    if (doc_screening === 'required') {
+      whereClauses.push("p.document_screening = 'required'");
+    } else if (doc_screening === 'not_required') {
+      whereClauses.push("(p.document_screening IS NULL OR p.document_screening = '' OR p.document_screening = 'not_required')");
+    }
+
+    // 対面の有無フィルタ
+    //   in_person=対面 / online=オンライン
+    if (interview_kind === 'in_person') {
+      whereClauses.push("p.interview_type = 'in_person'");
+    } else if (interview_kind === 'online') {
+      whereClauses.push("p.interview_type = 'online'");
+    }
+
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     // ソート
