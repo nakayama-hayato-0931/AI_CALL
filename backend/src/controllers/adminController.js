@@ -1414,9 +1414,10 @@ async function getCustomerMasterDetail(req, res, next) {
       [id]
     );
 
-    // 案件
+    // 案件（面接情報含む）
     const [projects] = await pool.query(
       `SELECT p.id, p.status, p.created_at, p.naitei_date, p.job_number,
+              p.interview_date, p.interview_type, p.interview_attendees, p.document_screening,
               u.name AS owner_name, su.name AS sales_name
        FROM projects p
        LEFT JOIN users u ON p.owner_user_id = u.id
@@ -1425,6 +1426,31 @@ async function getCustomerMasterDetail(req, res, next) {
        ORDER BY p.created_at DESC`,
       [id]
     );
+
+    // 各案件の合格者（内定者）情報を取得して紐付け
+    if (projects.length > 0) {
+      const projIds = projects.map(p => p.id);
+      try {
+        const [hires] = await pool.query(
+          `SELECT id, project_id, registration_number, course, initial_payment, expected_revenue, is_cancelled
+             FROM project_hires
+            WHERE project_id IN (${projIds.map(() => '?').join(',')})
+            ORDER BY id ASC`,
+          projIds
+        );
+        const byProject = new Map();
+        for (const h of hires) {
+          if (!byProject.has(h.project_id)) byProject.set(h.project_id, []);
+          byProject.get(h.project_id).push(h);
+        }
+        for (const p of projects) {
+          p.hires = byProject.get(p.id) || [];
+        }
+      } catch (e) {
+        // project_hires が無い場合などは空配列
+        for (const p of projects) p.hires = [];
+      }
+    }
 
     // FAX CRM から FAX 履歴を取得（任意。失敗してもエラーにしない）
     let faxHistory = [];

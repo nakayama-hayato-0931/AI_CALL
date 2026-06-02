@@ -36,6 +36,22 @@ const KIND_BADGE = {
   fax: { label: 'FAX', cls: 'bg-orange-100 text-orange-800' },
 };
 
+// 案件ステータス表示ラベル
+const PROJECT_STATUS_LABEL = {
+  NEW: '新規', MAIL_SENT: 'メール送信済', INTERVIEW_SET: '面接設定', MENSETSU_KAKUTEI: '面接確定',
+  INTERVIEW_DONE: '面接済', WAITING_RESULT: '結果待ち', KEKKA_MACHI: '結果待ち',
+  NAITEI: '内定', NAITEI_TORIKESHI: '内定取消', FUGOKAKU: '不合格',
+  HIRED: '採用', LOST: '失注', BARASHI: 'バラシ', HORYU: '保留',
+  BOSHUCHU: '募集中', SHORUI_CHU: '書類選考中', SHORUI_OCHI: '書類落ち',
+  KISON_NASHI: '既存なし', MODOSHI: '戻し', MODORI: '戻り',
+};
+const INTERVIEW_TYPE_LABEL = {
+  online: 'オンライン', in_person: '対面', offline: '対面', phone: '電話', web: 'Web',
+};
+const DOC_SCREENING_LABEL = {
+  not_required: 'なし', required: 'あり', passed: '通過', failed: '不通過', pending: '選考中',
+};
+
 export default function CustomerMasterPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -591,18 +607,47 @@ export default function CustomerMasterPage() {
                   </div>
                 )}
 
-                {/* 案件 */}
+                {/* 案件（面接情報・合格者含む） */}
                 {detail.projects && detail.projects.length > 0 && (
                   <div className="bg-white rounded-lg shadow p-4">
                     <h3 className="text-sm font-bold text-emerald-700 mb-2">案件 ({detail.projects.length}件)</h3>
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {detail.projects.map(p => (
-                        <div key={p.id} className="flex flex-wrap items-center gap-2 text-xs bg-emerald-50 rounded px-2 py-1">
-                          <span className="font-medium">{p.job_number || `#${p.id}`}</span>
-                          <span className="px-1.5 py-0.5 bg-white rounded text-[10px]">{p.status}</span>
-                          <span className="text-gray-500">{fmtDate(p.created_at)}</span>
-                          {p.owner_name && <span className="text-gray-500">OP: {p.owner_name}</span>}
-                          {p.sales_name && <span className="text-gray-500">営業: {p.sales_name}</span>}
+                        <div key={p.id} className="border border-emerald-100 bg-emerald-50/40 rounded p-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">{p.job_number || `#${p.id}`}</span>
+                            <span className="px-1.5 py-0.5 bg-white rounded text-[10px] font-medium">{PROJECT_STATUS_LABEL[p.status] || p.status || '-'}</span>
+                            <span className="text-gray-500">獲得: {fmtDate(p.created_at)}</span>
+                            {p.owner_name && <span className="text-gray-500">OP: {p.owner_name}</span>}
+                            {p.sales_name && <span className="text-gray-500">営業: {p.sales_name}</span>}
+                          </div>
+                          {/* 面接情報 */}
+                          {(p.interview_date || p.naitei_date || p.interview_type || p.interview_attendees || p.document_screening) && (
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-gray-600">
+                              {p.interview_date && <span>面接日: {fmtDateTime(p.interview_date)}</span>}
+                              {p.interview_type && <span>形式: {INTERVIEW_TYPE_LABEL[p.interview_type] || p.interview_type}</span>}
+                              {Number(p.interview_attendees) > 0 && <span>面接人数: {p.interview_attendees}名</span>}
+                              {p.document_screening && <span>書類選考: {DOC_SCREENING_LABEL[p.document_screening] || p.document_screening}</span>}
+                              {p.naitei_date && <span className="text-emerald-700 font-medium">内定日: {fmtDate(p.naitei_date)}</span>}
+                            </div>
+                          )}
+                          {/* 合格者（内定者） */}
+                          {p.hires && p.hires.length > 0 && (
+                            <div className="mt-1.5 border-t border-emerald-200 pt-1.5">
+                              <div className="text-[11px] font-semibold text-emerald-800 mb-0.5">合格者 ({p.hires.length}名)</div>
+                              <div className="space-y-0.5">
+                                {p.hires.map(h => (
+                                  <div key={h.id} className="flex flex-wrap gap-x-3 text-[11px]">
+                                    <span className="font-medium">{h.registration_number || '(登録番号なし)'}</span>
+                                    {h.course && <span className="text-gray-500">{h.course}</span>}
+                                    {Number(h.initial_payment) > 0 && <span className="text-emerald-700">初回入金: ¥{Number(h.initial_payment).toLocaleString()}</span>}
+                                    {Number(h.expected_revenue) > 0 && <span className="text-blue-700">見込売上: ¥{Number(h.expected_revenue).toLocaleString()}</span>}
+                                    {Number(h.is_cancelled) === 1 && <span className="text-red-500">(取消)</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
