@@ -120,13 +120,23 @@ const getTranscriptIndex = async () => {
   if (!transcriptSheetId) return new Map();
 
   logger.info('Transcriptシートデータ取得開始...');
+  // A:H まで取得（G列=架電開始時間, H列=架電終了時間 から通話時間を算出）
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: transcriptSheetId,
-    range: 'シート1!A:C',
+    range: 'シート1!A:H',
   });
 
   const rows = response.data.values;
   if (!rows || rows.length <= 1) return new Map();
+
+  // JST文字列を ms にパース
+  const parseJst = (s) => {
+    if (!s) return 0;
+    const str = String(s);
+    return (str.includes('T') || str.includes('Z'))
+      ? new Date(str).getTime()
+      : new Date(str.replace(/\s/, 'T') + '+09:00').getTime();
+  };
 
   // 電話番号でインデックス化
   const index = new Map();
@@ -134,11 +144,20 @@ const getTranscriptIndex = async () => {
     const phone = normalize(rows[i][0] || '');
     const transcript = rows[i][1] || '';
     const time = rows[i][2] || '';
-    if (!phone || !transcript) continue;
+    const startRaw = rows[i][6] || ''; // G列: 架電開始時間
+    const endRaw = rows[i][7] || '';   // H列: 架電終了時間
+    if (!phone) continue;
     if (!index.has(phone)) index.set(phone, []);
-    // シートの時刻はJST（UTC+9）なので、タイムゾーンを明示してパース
-    const parsedTime = time ? new Date(time.replace(/\s/, 'T') + '+09:00').getTime() : 0;
-    index.get(phone).push({ transcript, time: parsedTime });
+    // マッチング用時刻: C列優先、無ければG列（架電開始）
+    const parsedTime = parseJst(time) || parseJst(startRaw);
+    // 通話時間 = H - G（秒）
+    const startMs = parseJst(startRaw);
+    const endMs = parseJst(endRaw);
+    let durationSec = null;
+    if (startMs && endMs && endMs >= startMs) {
+      durationSec = Math.round((endMs - startMs) / 1000);
+    }
+    index.get(phone).push({ transcript, time: parsedTime, durationSec });
   }
 
   transcriptCache = { index, fetchedAt: Date.now() };
@@ -163,7 +182,7 @@ const findTranscript = async (phoneNumber, callStartedAt) => {
     if (!entries) return null;
 
     for (const entry of entries) {
-      if (entry.time && Math.abs(callTime - entry.time) <= 5 * 60 * 1000) {
+      if (entry.time && Math.abs(callTime - entry.time) <= 5 * 60 * 1000 && entry.transcript) {
         return entry.transcript;
       }
     }
@@ -171,6 +190,37 @@ const findTranscript = async (phoneNumber, callStartedAt) => {
   } catch (err) {
     logger.error('Transcript検索エラー:', err);
     return null;
+  }
+};
+
+/**
+ * 複数通話の通話時間（秒）をスプレッドシートのG/H列から一括取得
+ * 電話番号 + 開始時刻(±5分) でマッチした行の durationSec を返す
+ * @returns {Promise<Map<callId, number>>} 通話時間（秒）
+ */
+const findDurationsBatch = async (calls) => {
+  try {
+    const index = await getTranscriptIndex();
+    const results = new Map();
+    for (const call of calls) {
+      const phone = normalize(call.phone_number);
+      const entries = index.get(phone);
+      if (!entries) continue;
+      const ts = String(call.call_started_at);
+      const callTime = ts.includes('T') || ts.includes('Z')
+        ? new Date(call.call_started_at).getTime()
+        : new Date(ts.replace(' ', 'T') + '+09:00').getTime();
+      for (const entry of entries) {
+        if (entry.durationSec != null && entry.time && Math.abs(callTime - entry.time) <= 5 * 60 * 1000) {
+          results.set(call.id, entry.durationSec);
+          break;
+        }
+      }
+    }
+    return results;
+  } catch (err) {
+    logger.error('通話時間一括検索エラー:', err);
+    return new Map();
   }
 };
 
@@ -204,4 +254,4 @@ const findTranscriptsBatch = async (calls) => {
   }
 };
 
-module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch };
+module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch };

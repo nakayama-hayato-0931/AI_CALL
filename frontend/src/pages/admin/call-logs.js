@@ -120,11 +120,18 @@ export default function AdminCallLogsPage() {
     setPage(1);
   };
 
-  const calcDuration = (start, end) => {
-    if (!start || !end) return '-';
-    const sec = Math.round((new Date(end) - new Date(start)) / 1000);
+  const fmtSec = (sec) => {
+    if (sec == null || isNaN(sec)) return '-';
     if (sec < 60) return `${sec}秒`;
     return `${Math.floor(sec / 60)}分${sec % 60}秒`;
+  };
+
+  // 通話時間: スプレッドシート由来(G/H列)があればそれを優先、無ければ操作時刻差分
+  const calcDuration = (call) => {
+    if (call && call.sheet_duration_seconds != null) return fmtSec(call.sheet_duration_seconds);
+    const start = call?.call_started_at, end = call?.call_ended_at;
+    if (!start || !end) return '-';
+    return fmtSec(Math.round((new Date(end) - new Date(start)) / 1000));
   };
 
   const formatDateTime = (dt) => {
@@ -327,7 +334,7 @@ export default function AdminCallLogsPage() {
                           <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>{badge.label}</span>
                         </td>
                         <td className="table-cell text-gray-500 text-xs">
-                          {calcDuration(call.call_started_at, call.call_ended_at)}
+                          {calcDuration(call)}
                         </td>
                         <td className="table-cell text-center">
                           {call.is_effective_connection ? <span className="text-emerald-600 font-bold text-lg">●</span> : <span className="text-gray-300 text-xs">-</span>}

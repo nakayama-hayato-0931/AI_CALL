@@ -5,7 +5,7 @@
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
-const { findTranscript, findTranscriptsBatch } = require('../services/googleSheetsService');
+const { findTranscript, findTranscriptsBatch, findDurationsBatch } = require('../services/googleSheetsService');
 const faxCrmClient = require('../services/faxCrmClient');
 
 /**
@@ -591,6 +591,21 @@ const getCalls = async (req, res, next) => {
         }
         // タイムアウト時はそのまま返す（次回リロードで取得済みになる）
       }
+    }
+
+    // 通話時間: スプレッドシートのG列(開始)/H列(終了)から算出して付与
+    // （call_started_at/ended_at はオペレーターの操作時刻なので実通話時間と異なるため）
+    try {
+      const durationMap = await Promise.race([
+        findDurationsBatch(rows),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+      ]);
+      for (const row of rows) {
+        const d = durationMap.get(row.id);
+        if (d != null) row.sheet_duration_seconds = d;
+      }
+    } catch (e) {
+      if (e.message !== 'timeout') logger.warn('通話時間取得エラー:', e.message);
     }
 
     return ApiResponse.success(res, {
