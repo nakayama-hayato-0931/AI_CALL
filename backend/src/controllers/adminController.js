@@ -287,8 +287,25 @@ const getAllOperatorPerformance = async (req, res, next) => {
       [dateFrom, dateTo]
     );
 
+    // 平均通話時間（秒）を一括取得（ai_evaluations を JOIN しない素の calls で算出）
+    //   call_ended_at - call_started_at の平均。SKIP・未終了は除外。
+    const avgDurMap = new Map();
+    try {
+      const ctFilter = call_type === 'sales' ? "AND call_type = 'sales'" : "AND call_type = 'operator'";
+      const [avgRows] = await pool.query(
+        `SELECT user_id, ROUND(AVG(TIMESTAMPDIFF(SECOND, call_started_at, call_ended_at))) AS avg_sec
+           FROM calls
+          WHERE call_ended_at IS NOT NULL AND result_code IS NOT NULL AND result_code != 'SKIP'
+            AND DATE(call_started_at) BETWEEN ? AND ? ${ctFilter}
+          GROUP BY user_id`,
+        [dateFrom, dateTo]
+      );
+      for (const r of avgRows) avgDurMap.set(r.user_id, Number(r.avg_sec) || 0);
+    } catch (e) { /* ignore */ }
+
     // リコール消化数と稼働時間を各オペレーターに追加
     for (const op of rows) {
+      op.avg_call_seconds = avgDurMap.get(op.user_id) || 0;
       try {
         const [recallRows] = await pool.query(
           `SELECT COUNT(*) as cnt FROM recall_tasks WHERE user_id = ? AND status = 'completed' AND DATE(updated_at) BETWEEN ? AND ?`,

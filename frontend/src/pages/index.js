@@ -591,6 +591,7 @@ export default function DashboardPage() {
                 <tr className="bg-gray-50/80 border-b border-gray-200">
                   <th className="table-header text-left">オペレーター</th>
                   <th className="table-header text-right">稼働</th>
+                  <th className="table-header text-right">平均通話</th>
                   <th className="table-header text-right">コール</th>
                   <th className="table-header text-right">リコール獲得</th>
                   <th className="table-header text-right">リコール消化</th>
@@ -650,6 +651,11 @@ export default function DashboardPage() {
                           )}
                         </div>
                       </td>
+                      <td className="table-cell text-right text-gray-600">
+                        {Number(op.avg_call_seconds) > 0
+                          ? (op.avg_call_seconds < 60 ? `${op.avg_call_seconds}秒` : `${Math.floor(op.avg_call_seconds / 60)}分${op.avg_call_seconds % 60}秒`)
+                          : '-'}
+                      </td>
                       {[
                         { key: 'call_count', val: op.total_calls, color: targetColor(phNum(op.total_calls), 18), suffix: ph(op.total_calls) + '/h' },
                         { key: 'recall_gained', val: op.recall_gained || 0, color: '', suffix: ph(op.recall_gained || 0) + '/h' },
@@ -701,6 +707,15 @@ export default function DashboardPage() {
                   const tph = (val) => twh > 0 ? (val / twh).toFixed(1) : '-';
                   const totalConv = t.total_calls > 0 ? ((t.projects / t.total_calls) * 100).toFixed(1) : '-';
                   const totalProjEff = t.projects > 0 && twh > 0 ? (twh / t.projects).toFixed(1) : '-';
+                  const totalAvgSec = (() => {
+                    let sumDur = 0, sumCalls = 0;
+                    for (const op of perfData.operators) {
+                      const calls = Number(op.total_calls) || 0;
+                      sumDur += (Number(op.avg_call_seconds) || 0) * calls;
+                      sumCalls += calls;
+                    }
+                    return sumCalls > 0 ? Math.round(sumDur / sumCalls) : 0;
+                  })();
                   return (
                     <tr className="border-t-2 border-gray-200 bg-gray-50/60 font-semibold">
                       <td className="table-cell text-gray-700">合計</td>
@@ -713,6 +728,9 @@ export default function DashboardPage() {
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="table-cell text-right text-gray-600">
+                        {totalAvgSec > 0 ? (totalAvgSec < 60 ? `${totalAvgSec}秒` : `${Math.floor(totalAvgSec / 60)}分${totalAvgSec % 60}秒`) : '-'}
                       </td>
                       <td className="table-cell text-right">{t.total_calls} <span className="text-[10px] text-gray-400 font-normal">{tph(t.total_calls)}/h</span></td>
                       <td className="table-cell text-right">{t.recall_gained} <span className="text-[10px] text-gray-400 font-normal">{tph(t.recall_gained)}/h</span></td>
