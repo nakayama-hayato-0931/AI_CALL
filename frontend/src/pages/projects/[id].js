@@ -501,7 +501,6 @@ export default function ProjectDetailPage() {
             <div className={`card p-5 ${form.status === 'NAITEI' ? 'ring-2 ring-blue-400 bg-blue-50/30' : ''}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">🎉</span>
                   <h2 className="text-sm font-bold text-gray-800">内定者情報</h2>
                   {hires.length > 0 && (
                     <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">{hires.length}名</span>
@@ -607,7 +606,6 @@ export default function ProjectDetailPage() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
               <div className="flex items-center gap-2">
-                <span className="text-xl">🎉</span>
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">内定者情報の入力</h2>
                   <p className="text-xs text-gray-500 mt-0.5">{project?.company_name}</p>

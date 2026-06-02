@@ -621,7 +621,6 @@ export default function SalesProjects() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
               <div className="flex items-center gap-2">
-                <span className="text-xl">🎉</span>
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">内定者情報の入力</h2>
                   <p className="text-xs text-gray-500 mt-0.5">{hireModal.companyName}</p>

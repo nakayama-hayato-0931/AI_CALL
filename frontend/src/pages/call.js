@@ -466,7 +466,7 @@ export default function CallPage() {
       }
 
       if (!nextTarget || !lockData) {
-        toast('全候補が他のオペレーターと競合しています', { icon: '🔄' });
+        toast('全候補が他のオペレーターと競合しています');
         setCompany(null);
         setSelectedTargetId(null);
         await fetchCallList();
@@ -558,7 +558,7 @@ export default function CallPage() {
 
       if (!nextTarget || !lockData) {
         // 全候補が競合していた → リスト再取得のみ
-        toast('全候補が他のオペレーターと競合しています。再取得します...', { icon: '🔄' });
+        toast('全候補が他のオペレーターと競合しています。再取得します...');
         await fetchCallList();
         return;
       }
@@ -605,7 +605,7 @@ export default function CallPage() {
   const handleStartCall = async () => {
     if (!company) return;
     if (selecting) {
-      toast('選択処理中です。完了までお待ちください', { icon: '⏳' });
+      toast('選択処理中です。完了までお待ちください');
       return;
     }
     // 念のため: company.id と selectedTargetId が一致しているか確認
@@ -745,7 +745,7 @@ export default function CallPage() {
       } else if (wasAutoMode && wasPaused) {
         // 一時停止中: 次の架電先に進むが架電はしない
         await autoAdvanceToNext(prevId);
-        toast('一時停止中です。再開ボタンで自動架電を再開できます。', { icon: '⏸️' });
+        toast('一時停止中です。再開ボタンで自動架電を再開できます。');
       } else {
         // 手動モード: 次の架電先に進むだけ（架電開始は手動）
         await autoAdvanceToNext(prevId);
@@ -1152,9 +1152,9 @@ export default function CallPage() {
                   <div className="mt-2 flex flex-col items-center gap-2">
                     <div className="flex items-center gap-2">
                       {autoPaused ? (
-                        <span className="text-[11px] text-amber-600 font-medium bg-amber-50 px-2.5 py-1 rounded-full">⏸️ 一時停止中</span>
+                        <span className="text-[11px] text-amber-600 font-medium bg-amber-50 px-2.5 py-1 rounded-full">一時停止中</span>
                       ) : (
-                        <span className="text-[11px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded-full">🔄 自動架電モード</span>
+                        <span className="text-[11px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded-full">自動架電モード</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -1176,10 +1176,10 @@ export default function CallPage() {
                             onClick={() => {
                               setAutoPaused(true);
                               autoPausedRef.current = true;
-                              toast('一時停止しました', { icon: '⏸️' });
+                              toast('一時停止しました');
                             }}
                             className="text-[11px] text-amber-600 hover:bg-amber-50 px-2.5 py-1.5 rounded-full transition-colors font-medium border border-amber-200"
-                          >⏸ 一時停止</button>
+                          >一時停止</button>
                         )
                       )}
                       <button

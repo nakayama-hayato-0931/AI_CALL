@@ -970,7 +970,7 @@ export default function AdminCompanies() {
               <div className="card mb-4 border-2 border-purple-200 overflow-hidden">
                 <div className="px-5 py-3 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100 flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-purple-800">🤖 AI分析結果</h3>
+                    <h3 className="text-sm font-bold text-purple-800">AI分析結果</h3>
                     <p className="text-[11px] text-purple-600 mt-0.5">{aiSuggestion.summary}</p>
                   </div>
                   <div className="flex gap-2">
@@ -1365,7 +1365,7 @@ export default function AdminCompanies() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
                   <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                ⚡緊急クリーンアップ
+                緊急クリーンアップ
               </button>
             </div>
           </div>

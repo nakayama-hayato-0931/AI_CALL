@@ -180,7 +180,7 @@ export default function AdminEvaluations() {
         setEvalProgress({ done: totalEvaluated, total: totalEvaluated, current: '完了!' });
         toast.success(`${totalEvaluated}件の評価を実行しました`);
       } else {
-        toast('この日の未評価の通話はありません', { icon: 'ℹ️' });
+        toast('この日の未評価の通話はありません');
       }
       fetchEvaluations();
     } catch (err) {
@@ -202,7 +202,7 @@ export default function AdminEvaluations() {
       const { data } = await directApi.post(`/api/ai/admin/evaluations/${evalId}/suggest-scripts`, {});
       const sug = data.data.suggestions || [];
       if (sug.length === 0) {
-        toast('この通話からはスクリプト提案がありませんでした', { icon: 'ℹ️' });
+        toast('この通話からはスクリプト提案がありませんでした');
         setSuggestingId(null);
         return;
       }
