@@ -45,13 +45,18 @@ const startCall = async (req, res, next) => {
       });
     }
 
-    // 前回の未完了通話（result_code=NULL）を削除（すぐ切った通話）
-    const [stale] = await pool.execute(
-      'DELETE FROM calls WHERE user_id = ? AND result_code IS NULL',
-      [userId]
+    // 同一企業の未完了通話(result_code=NULL)があれば再利用して枠を重複させない。
+    //   別企業の未完了は削除せず残し、架電結果ログから後で結果入力できるようにする。
+    const [existingUnsaved] = await pool.execute(
+      'SELECT id FROM calls WHERE user_id = ? AND company_id = ? AND result_code IS NULL ORDER BY id DESC LIMIT 1',
+      [userId, company_id]
     );
-    if (stale.affectedRows > 0) {
-      logger.info(`未完了通話を削除: user=${userId}, count=${stale.affectedRows}`);
+    if (existingUnsaved.length > 0) {
+      const reuseId = existingUnsaved[0].id;
+      await pool.execute('UPDATE calls SET call_started_at = NOW() WHERE id = ?', [reuseId]);
+      await pool.execute('UPDATE companies SET last_called_at = NOW(), locked_at = NOW() WHERE id = ?', [company_id]);
+      logger.info(`架電開始(未完了枠を再利用): user=${userId}, company=${company_id}, call=${reuseId}`);
+      return ApiResponse.created(res, { callId: reuseId }, '架電を開始しました');
     }
 
     let result;
@@ -479,7 +484,8 @@ const getCalls = async (req, res, next) => {
     const offset = (page - 1) * limit;
     const { user_id, company_id, result_code, date_from, date_to, search, call_type } = req.query;
 
-    let whereClauses = ["c.result_code IS NOT NULL AND c.result_code != 'SKIP'"];
+    // result_code 未入力(NULL)も表示する（架電したが結果未保存の枠）。SKIPのみ除外。
+    let whereClauses = ["(c.result_code IS NULL OR c.result_code != 'SKIP')"];
     let params = [];
 
     // 架電種別フィルタ（営業/オペレーター分離）
@@ -496,7 +502,9 @@ const getCalls = async (req, res, next) => {
       whereClauses.push('c.company_id = ?');
       params.push(company_id);
     }
-    if (result_code) {
+    if (result_code === '__none__') {
+      whereClauses.push('c.result_code IS NULL');
+    } else if (result_code) {
       whereClauses.push('c.result_code = ?');
       params.push(result_code);
     }
@@ -533,6 +541,7 @@ const getCalls = async (req, res, next) => {
     let totalCount = 0;
     for (const r of summaryRows) {
       if (r.result_code) resultSummary[r.result_code] = r.cnt;
+      else resultSummary['__none__'] = r.cnt; // 結果未入力
       totalCount += r.cnt;
     }
 
@@ -648,7 +657,9 @@ const updateCall = async (req, res, next) => {
     if (rows.length === 0) {
       return ApiResponse.notFound(res, '通話が見つかりません');
     }
-    if (rows[0].user_id !== userId) {
+    // 本人、または admin/manager は他人の通話も編集可能（未入力ログの代理入力用）
+    const isManager = ['admin', 'manager'].includes(req.user.role);
+    if (rows[0].user_id !== userId && !isManager) {
       return ApiResponse.forbidden(res, '自分の通話のみ編集できます');
     }
 
@@ -841,6 +852,31 @@ const backfillDurations = async (req, res, next) => {
 };
 
 /**
+ * POST /api/calls/bulk-cancel-unsaved
+ * 結果未入力(result_code IS NULL)の通話ログを一括削除（admin/manager のみ）
+ * body: { date_from?, date_to?, user_id? } 未指定なら全期間・全員
+ */
+const bulkCancelUnsaved = async (req, res, next) => {
+  try {
+    if (!['admin', 'manager'].includes(req.user.role)) {
+      return ApiResponse.forbidden(res, '管理者・マネージャー権限が必要です');
+    }
+    const { date_from, date_to, user_id } = req.body || {};
+    const where = ['result_code IS NULL'];
+    const params = [];
+    if (date_from) { where.push('DATE(call_started_at) >= ?'); params.push(date_from); }
+    if (date_to) { where.push('DATE(call_started_at) <= ?'); params.push(date_to); }
+    if (user_id) { where.push('user_id = ?'); params.push(user_id); }
+    const [r] = await pool.execute(`DELETE FROM calls WHERE ${where.join(' AND ')}`, params);
+    logger.info(`未入力ログ一括削除: ${r.affectedRows}件 (by user=${req.user.id})`);
+    return ApiResponse.success(res, { deleted: r.affectedRows }, `${r.affectedRows}件の未入力ログを削除しました`);
+  } catch (err) {
+    logger.error(`[bulkCancelUnsaved] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+/**
  * GET /api/calls/:id/transcript
  * 文字起こしテキストを取得（展開時にlazy load）
  */
@@ -855,4 +891,4 @@ const getCallTranscript = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, getCallTranscript };
+module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, bulkCancelUnsaved, getCallTranscript };

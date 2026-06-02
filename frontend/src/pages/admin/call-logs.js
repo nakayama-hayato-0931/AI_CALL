@@ -16,16 +16,27 @@ const RESULT_BADGES = {
   INTERESTED: { bg: 'bg-blue-50', text: 'text-blue-700', label: '興味あり' },
   PROJECT: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: '案件化' },
   SKIP: { bg: 'bg-gray-50', text: 'text-gray-400', label: 'SKIP' },
+  __none__: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: '未入力' },
 };
 
 const RESULT_OPTIONS = [
   { value: '', label: '全て' },
+  { value: '__none__', label: '未入力' },
   { value: 'NO_ANSWER', label: '不通' },
   { value: 'NG', label: 'NG' },
   { value: 'RECALL', label: 'リコール' },
   { value: 'INTERESTED', label: '興味あり' },
   { value: 'PROJECT', label: '案件化' },
   { value: 'SKIP', label: 'SKIP' },
+];
+
+// 後入力で選べる結果（SKIP は除く）
+const INPUT_RESULT_OPTIONS = [
+  { value: 'NO_ANSWER', label: '不通' },
+  { value: 'NG', label: 'NG' },
+  { value: 'RECALL', label: 'リコール' },
+  { value: 'INTERESTED', label: '興味あり' },
+  { value: 'PROJECT', label: '案件化' },
 ];
 
 export default function AdminCallLogsPage() {
@@ -40,6 +51,7 @@ export default function AdminCallLogsPage() {
   const [page, setPage] = useState(1);
   const [refreshingBulk, setRefreshingBulk] = useState(false);
   const [backfillingDur, setBackfillingDur] = useState(false);
+  const [cancelingUnsaved, setCancelingUnsaved] = useState(false);
 
   // フィルター
   const [viewMode, setViewMode] = useState('daily');
@@ -85,6 +97,37 @@ export default function AdminCallLogsPage() {
       const { data } = await api.get('/api/calls/operators');
       if (data.success) setOperators(data.data);
     } catch (err) { /* ignore */ }
+  };
+
+  // 未入力ログに結果を後入力（本人 or admin/manager）
+  const saveResult = async (callId, code) => {
+    if (!code) return;
+    try {
+      await api.put(`/api/calls/${callId}/update`, { result_code: code });
+      toast.success('結果を保存しました');
+      fetchCalls();
+    } catch (err) {
+      toast.error(err.response?.data?.message || '保存に失敗しました');
+    }
+  };
+
+  // 結果未入力ログを一括削除（admin/manager）
+  const bulkCancelUnsaved = async () => {
+    if (!window.confirm('表示中の期間の「結果未入力」ログをまとめて削除します。よろしいですか？')) return;
+    setCancelingUnsaved(true);
+    try {
+      const body = {};
+      if (viewMode === 'daily') { body.date_from = date; body.date_to = date; }
+      else if (viewMode === 'range') { body.date_from = dateFrom; body.date_to = dateTo; }
+      if (operatorId) body.user_id = operatorId;
+      const { data } = await api.post('/api/calls/bulk-cancel-unsaved', body);
+      toast.success(data.message || `${data.data?.deleted ?? 0}件削除しました`);
+      fetchCalls();
+    } catch (err) {
+      toast.error(err.response?.data?.message || '削除に失敗しました');
+    } finally {
+      setCancelingUnsaved(false);
+    }
   };
 
   const fetchCalls = async () => {
@@ -294,6 +337,16 @@ export default function AdminCallLogsPage() {
             <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>取得中...</>
           ) : '通話時間を一括取得(過去分)'}
         </button>
+        {['admin', 'manager'].includes(user?.role) && (
+          <button
+            onClick={bulkCancelUnsaved}
+            disabled={cancelingUnsaved}
+            className="text-xs px-3 py-1.5 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+            title="表示中の期間の結果未入力ログを一括削除"
+          >
+            {cancelingUnsaved ? '削除中...' : '未入力ログを一括削除'}
+          </button>
+        )}
       </div>
 
       {/* テーブル */}
@@ -333,7 +386,7 @@ export default function AdminCallLogsPage() {
               </thead>
               <tbody>
                 {calls.map(call => {
-                  const badge = RESULT_BADGES[call.result_code] || { bg: 'bg-gray-100', text: 'text-gray-500', label: call.result_code || '-' };
+                  const badge = RESULT_BADGES[call.result_code || '__none__'] || { bg: 'bg-gray-100', text: 'text-gray-500', label: call.result_code || '-' };
                   const isExpanded = expandedId === call.id;
                   const hasTranscript = call.transcript && call.transcript.trim().length > 0;
 
@@ -355,7 +408,19 @@ export default function AdminCallLogsPage() {
                           {call.phone_number || '-'}
                         </td>
                         <td className="table-cell">
-                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>{badge.label}</span>
+                          {call.result_code ? (
+                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>{badge.label}</span>
+                          ) : (
+                            <select
+                              defaultValue=""
+                              onChange={(e) => saveResult(call.id, e.target.value)}
+                              className="text-[11px] border border-yellow-300 bg-yellow-50 rounded px-1.5 py-0.5 text-yellow-700 cursor-pointer"
+                              title="結果を選択して入力"
+                            >
+                              <option value="">未入力 ▼</option>
+                              {INPUT_RESULT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          )}
                         </td>
                         <td className="table-cell text-gray-500 text-xs">
                           {calcDuration(call)}

@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, getCallTranscript } = require('../controllers/callController');
+const { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, bulkCancelUnsaved, getCallTranscript } = require('../controllers/callController');
 const { authenticate } = require('../middlewares/auth');
 
 // POST /api/calls/:id/cancel-beacon - ページ離脱時のbeacon用（認証不要）
@@ -30,6 +30,9 @@ router.post('/refresh-transcripts-bulk', refreshTranscriptsBulk);
 
 // POST /api/calls/backfill-durations - 過去通話の実通話時間を一括取得・保存
 router.post('/backfill-durations', backfillDurations);
+
+// POST /api/calls/bulk-cancel-unsaved - 結果未入力ログを一括削除
+router.post('/bulk-cancel-unsaved', bulkCancelUnsaved);
 
 // パラメータ付きルート（:id）
 // PUT /api/calls/:id/update - 通話ステータス・メモ更新

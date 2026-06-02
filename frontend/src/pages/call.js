@@ -311,15 +311,9 @@ export default function CallPage() {
   // ページ離脱時にロック解除（ベストエフォート）
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // 未保存のcallをキャンセル
-      const cId = callIdRef.current;
-      if (cId) {
-        navigator.sendBeacon(
-          `/api/calls/${cId}/cancel-beacon`,
-          new Blob([JSON.stringify({})], { type: 'application/json' })
-        );
-      }
-      // ロック解除
+      // 未保存の通話は削除せず残す（架電結果ログから後で結果入力できるようにするため）。
+      //   ※ 以前はここで cancel-beacon を呼んで未完了通話を削除していた。
+      // ロック解除のみ行う
       const id = selectedIdRef.current;
       if (id) {
         navigator.sendBeacon(
@@ -385,8 +379,7 @@ export default function CallPage() {
     setContactPersonImpression('');
     setNgReason('');
     try {
-      // 前回の未保存callがあればキャンセル
-      await cancelUnsavedCall();
+      // 前回の未保存通話は削除しない（結果未入力の枠として残し、後でログから入力できるように）
       // 前のロックを解除
       if (selectedTargetId && selectedTargetId !== target.id) {
         await api.post(`/api/companies/${selectedTargetId}/unlock`).catch(() => {});
@@ -614,8 +607,7 @@ export default function CallPage() {
       return;
     }
     try {
-      // 前回の未保存callがあればキャンセル
-      await cancelUnsavedCall();
+      // 前回の未保存通話は削除しない（startCall側で同一企業の枠を再利用する）
       const { data } = await api.post('/api/calls/start', { company_id: company.id, call_type: callType });
       setCallId(data.data.callId);
       setCalling(true);
