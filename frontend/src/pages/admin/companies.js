@@ -109,6 +109,9 @@ export default function AdminCompanies() {
   const [selectedPrefs, setSelectedPrefs] = useState([]);
   const [addingRules, setAddingRules] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  // 編集中の業種名（null なら新規追加モード）。設定済みルールの「編集」で入る。
+  const [editingIndustry, setEditingIndustry] = useState(null);
+  const ruleFormRef = useRef(null);
   // NGワード（全業種共通）
   const [excludeWords, setExcludeWords] = useState([]);
   const [ngKeywordInput, setNgKeywordInput] = useState('');
@@ -378,6 +381,78 @@ export default function AdminCompanies() {
     else if (skipped > 0) toast.error('選択したルールは全て登録済みです');
     setSelectedIndustries([]);
     setSelectedPrefs([]);
+    fetchRules();
+  };
+
+  // --- 設定済みルールを編集モードで読み込む ---
+  const startEditIndustry = (industry, ruleList) => {
+    setEditingIndustry(industry);
+    setSelectedIndustries([industry]);
+    setSelectedPrefs(ruleList.map(r => r.region));
+    setIndustryInput('');
+    // フォームへスクロール
+    setTimeout(() => {
+      ruleFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  // --- 編集モードを抜ける ---
+  const cancelEdit = () => {
+    setEditingIndustry(null);
+    setSelectedIndustries([]);
+    setSelectedPrefs([]);
+    setIndustryInput('');
+  };
+
+  // --- ルール更新（差分適用 or リネーム時は置換）---
+  const handleUpdateRules = async () => {
+    if (selectedIndustries.length === 0 || selectedPrefs.length === 0) {
+      toast.error('業種と地域をそれぞれ1つ以上選択してください'); return;
+    }
+    setAddingRules(true);
+    const orig = editingIndustry;
+    const existing = rules.filter(r => r.industry_name === orig);
+    // 業種キーワードが [orig] のまま変わっていなければ都道府県の差分更新、変わっていれば置換
+    const isRename = !(selectedIndustries.length === 1 && selectedIndustries[0] === orig);
+
+    let toDelete = [];
+    let toAdd = []; // { industry_name, region }
+    if (!isRename) {
+      const existingPrefs = new Set(existing.map(r => r.region));
+      const desiredPrefs = new Set(selectedPrefs);
+      toDelete = existing.filter(r => !desiredPrefs.has(r.region));
+      toAdd = selectedPrefs.filter(p => !existingPrefs.has(p)).map(p => ({ industry_name: orig, region: p }));
+    } else {
+      // 旧業種のルールを全削除して、選択中の業種×地域で作り直す
+      toDelete = existing;
+      for (const ind of selectedIndustries) {
+        for (const p of selectedPrefs) toAdd.push({ industry_name: ind, region: p });
+      }
+    }
+
+    let deleted = 0, added = 0, skipped = 0, failed = 0;
+    for (const r of toDelete) {
+      try { await api.delete(`/api/admin/industry-region-rules/${r.id}`); deleted++; }
+      catch (err) { failed++; }
+    }
+    for (const { industry_name, region } of toAdd) {
+      try {
+        const { data } = await api.post('/api/admin/industry-region-rules', { industry_name, region });
+        if (data.success) added++;
+      } catch (err) {
+        if (err.response?.status === 400) skipped++;
+        else failed++;
+      }
+    }
+    setAddingRules(false);
+    if (failed > 0) {
+      toast.error(`更新中に${failed}件失敗しました（追加${added} / 削除${deleted}）`);
+    } else if (added === 0 && deleted === 0) {
+      toast.success('変更はありませんでした');
+    } else {
+      toast.success(`ルールを更新しました（追加${added} / 削除${deleted}${skipped > 0 ? ` / 既存${skipped}` : ''}）`);
+    }
+    cancelEdit();
     fetchRules();
   };
 
@@ -1394,9 +1469,16 @@ export default function AdminCompanies() {
             </div>
           </div>
 
-          {/* ③ 業種×地域ルール 追加フォーム */}
-          <div className="card p-5 mb-6">
-            <h3 className="text-sm font-bold text-gray-700 mb-4">③ 業種×地域ルール 追加</h3>
+          {/* ③ 業種×地域ルール 追加/編集フォーム */}
+          <div ref={ruleFormRef} className={`card p-5 mb-6 ${editingIndustry ? 'ring-2 ring-blue-400' : ''}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-700">
+                {editingIndustry ? `③ ルールを編集: ${editingIndustry}` : '③ 業種×地域ルール 追加'}
+              </h3>
+              {editingIndustry && (
+                <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">編集中</span>
+              )}
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-4">
 
               {/* 業種キーワード入力 */}
@@ -1520,18 +1602,32 @@ export default function AdminCompanies() {
               </div>
             </div>
 
-            {/* 選択プレビュー + 追加ボタン */}
+            {/* 選択プレビュー + 追加/更新ボタン */}
             <div className="flex items-center justify-between border-t border-gray-100 pt-4">
               <div className="text-xs text-gray-500">
-                {selectedIndustries.length > 0 && selectedPrefs.length > 0
-                  ? `${selectedIndustries.length}キーワード × ${selectedPrefs.length}都道府県 = ${selectedIndustries.length * selectedPrefs.length}件のルールを追加`
-                  : '業種キーワードと地域をそれぞれ選択してください'}
+                {editingIndustry
+                  ? (selectedIndustries.length > 0 && selectedPrefs.length > 0
+                      ? `${editingIndustry} のルールを ${selectedPrefs.length}都道府県に更新`
+                      : '業種キーワードと地域をそれぞれ選択してください')
+                  : (selectedIndustries.length > 0 && selectedPrefs.length > 0
+                      ? `${selectedIndustries.length}キーワード × ${selectedPrefs.length}都道府県 = ${selectedIndustries.length * selectedPrefs.length}件のルールを追加`
+                      : '業種キーワードと地域をそれぞれ選択してください')}
               </div>
-              <button onClick={handleAddRules}
-                disabled={selectedIndustries.length === 0 || selectedPrefs.length === 0 || addingRules}
-                className="btn-primary !py-2.5 px-6 disabled:opacity-50">
-                {addingRules ? '追加中...' : '一括追加'}
-              </button>
+              <div className="flex items-center gap-2">
+                {editingIndustry && (
+                  <button onClick={cancelEdit} disabled={addingRules}
+                    className="btn-secondary !py-2.5 px-5 disabled:opacity-50">
+                    キャンセル
+                  </button>
+                )}
+                <button onClick={editingIndustry ? handleUpdateRules : handleAddRules}
+                  disabled={selectedIndustries.length === 0 || selectedPrefs.length === 0 || addingRules}
+                  className="btn-primary !py-2.5 px-6 disabled:opacity-50">
+                  {editingIndustry
+                    ? (addingRules ? '更新中...' : '更新')
+                    : (addingRules ? '追加中...' : '一括追加')}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1556,8 +1652,10 @@ export default function AdminCompanies() {
                           <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">全国</span>
                         )}
                         <span className="text-xs text-gray-400">{ruleList.length}都道府県</span>
+                        <button onClick={() => startEditIndustry(industry, ruleList)}
+                          className="text-xs text-blue-500 hover:text-blue-700 ml-1">編集</button>
                         <button onClick={() => handleDeleteIndustryRules(industry, ruleList)}
-                          className="text-xs text-red-400 hover:text-red-600 ml-1">一括削除</button>
+                          className="text-xs text-red-400 hover:text-red-600">一括削除</button>
                       </div>
                     </div>
                     {!isAllJapan && (
