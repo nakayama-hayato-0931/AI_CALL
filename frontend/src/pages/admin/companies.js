@@ -134,8 +134,6 @@ export default function AdminCompanies() {
   // ①② は明示保存方式: 編集すると dirty=true、「保存」で確定。
   const [industriesDirty, setIndustriesDirty] = useState(false);
   const [prefsDirty, setPrefsDirty] = useState(false);
-  const [savingIndustries, setSavingIndustries] = useState(false);
-  const [savingPrefs, setSavingPrefs] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
   const [dbStats, setDbStats] = useState(null);
 
@@ -202,31 +200,29 @@ export default function AdminCompanies() {
     if (user && activeTab === 'time') { fetchTimeRules(); loadAutoPickup(); }
   }, [user, activeTab]);
 
-  // ① 業種を保存（明示「保存」ボタン）
+  // ① 業種を保存（楽観的更新: クリック即「未保存」解除、PUTは裏で実行し失敗時のみ戻す）
   const saveAutoPickupIndustries = async () => {
-    setSavingIndustries(true);
+    const snapshot = aiSelectedIndustries;
+    setIndustriesDirty(false);
     try {
-      await api.put('/api/admin/auto-pickup-industries', { industries: aiSelectedIndustries });
-      setIndustriesDirty(false);
+      await api.put('/api/admin/auto-pickup-industries', { industries: snapshot });
       toast.success('自動ピックアップ対象 業種を保存しました');
     } catch (err) {
+      setIndustriesDirty(true);
       toast.error('自動対象業種の保存に失敗しました');
-    } finally {
-      setSavingIndustries(false);
     }
   };
 
-  // ② 都道府県を保存（明示「保存」ボタン）
+  // ② 都道府県を保存（楽観的更新）
   const saveAutoPickupPrefs = async () => {
-    setSavingPrefs(true);
+    const snapshot = autoPickupPrefs;
+    setPrefsDirty(false);
     try {
-      await api.put('/api/admin/auto-pickup-prefectures', { prefectures: autoPickupPrefs });
-      setPrefsDirty(false);
+      await api.put('/api/admin/auto-pickup-prefectures', { prefectures: snapshot });
       toast.success('自動ピックアップ対象 都道府県を保存しました');
     } catch (err) {
+      setPrefsDirty(true);
       toast.error('自動対象都道府県の保存に失敗しました');
-    } finally {
-      setSavingPrefs(false);
     }
   };
 
@@ -1412,9 +1408,9 @@ export default function AdminCompanies() {
                 <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = true; }); setAiSelectedIndustries(m); setIndustriesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
                 <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = false; }); setAiSelectedIndustries(m); setIndustriesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
                 {industriesDirty && <span className="text-[11px] text-amber-600 ml-1">未保存</span>}
-                <button onClick={saveAutoPickupIndustries} disabled={!industriesDirty || savingIndustries}
+                <button onClick={saveAutoPickupIndustries} disabled={!industriesDirty}
                   className="text-[11px] px-3 py-1 rounded font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                  {savingIndustries ? '保存中...' : '保存'}
+                  保存
                 </button>
               </div>
             </div>
@@ -1451,9 +1447,9 @@ export default function AdminCompanies() {
                 <button onClick={() => togglePrefAll(true)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
                 <button onClick={() => togglePrefAll(false)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
                 {prefsDirty && <span className="text-[11px] text-amber-600 ml-1">未保存</span>}
-                <button onClick={saveAutoPickupPrefs} disabled={!prefsDirty || savingPrefs}
+                <button onClick={saveAutoPickupPrefs} disabled={!prefsDirty}
                   className="text-[11px] px-3 py-1 rounded font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                  {savingPrefs ? '保存中...' : '保存'}
+                  保存
                 </button>
               </div>
             </div>
