@@ -52,6 +52,7 @@
 - **既存モックHTMLを流用しない**: `docs/mockups/` 等の古いモックを参照・転用しない。
 - **スキーマ変更**は上記「起動時の冪等 ALTER」パターンで `server.js` に追記する。
 - **DB予約語に注意**: `year_month` は MySQL 8 予約語のためカラム名は `period_ym`。
+- **作業完了ごとに確認なしで `main` へ commit & push する**（main push が Railway 自動デプロイのトリガー。毎回プッシュまで完了させる）。自分の変更ファイルだけをステージし、無関係な未追跡ファイル（`scripts/generate-service-jwt.js` 等）は含めない。コミットメッセージは絵文字なし・`feat()/fix()/perf()` 形式。
 
 ## 6. ローカル起動（概要）
 
