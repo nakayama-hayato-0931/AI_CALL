@@ -131,6 +131,11 @@ export default function AdminCompanies() {
   // map: { 都道府県: true/false }。すべてのキーが未定義なら無制限。
   const [autoPickupPrefs, setAutoPickupPrefs] = useState({});
   const [autoPickupPrefsLoaded, setAutoPickupPrefsLoaded] = useState(false);
+  // ①② は明示保存方式: 編集すると dirty=true、「保存」で確定。
+  const [industriesDirty, setIndustriesDirty] = useState(false);
+  const [prefsDirty, setPrefsDirty] = useState(false);
+  const [savingIndustries, setSavingIndustries] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
   const [dbStats, setDbStats] = useState(null);
 
@@ -158,75 +163,92 @@ export default function AdminCompanies() {
     if (user && activeTab === 'list') fetchIndustryStats();
   }, [user, activeTab, statsActionable]);
 
+  // 自動ピックアップ対象（①業種 / ②都道府県）をサーバーから読み込む。
+  // ①② のUIは「ルール設定(area)」タブにあるが、業種選択は「架電時間(time)」タブの
+  // AI提案でも使うため、両タブ表示時にロードする。
+  const loadAutoPickup = () => {
+    // ① 業種マップ
+    api.get('/api/admin/auto-pickup-industries').then(res => {
+      if (res.data.success) {
+        const map = res.data.data.industries || {};
+        // 保存済みマップがあれば優先、なければデフォルト全部true
+        const merged = INDUSTRIES.reduce((acc, ind) => ({
+          ...acc,
+          [ind]: map[ind] !== undefined ? map[ind] : true,
+        }), {});
+        setAiSelectedIndustries(merged);
+        setAutoPickupLoaded(true);
+        setIndustriesDirty(false);
+      }
+    }).catch(() => {});
+    // ② 都道府県マップ
+    api.get('/api/admin/auto-pickup-prefectures').then(res => {
+      if (res.data.success) {
+        const saved = res.data.data.prefectures || {};
+        // 未設定なら全許可とみなし、UIではデフォルト全部true表示にする
+        const merged = ALL_PREFS.reduce((acc, p) => ({
+          ...acc,
+          [p]: saved[p] !== undefined ? saved[p] : true,
+        }), {});
+        setAutoPickupPrefs(merged);
+        setAutoPickupPrefsLoaded(true);
+        setPrefsDirty(false);
+      }
+    }).catch(() => {});
+  };
+
   useEffect(() => {
-    if (user && activeTab === 'area') fetchRules();
-    if (user && activeTab === 'time') {
-      fetchTimeRules();
-      // 自動ピックアップ対象業種マップ取得
-      api.get('/api/admin/auto-pickup-industries').then(res => {
-        if (res.data.success) {
-          const map = res.data.data.industries || {};
-          // 保存済みマップがあれば優先、なければデフォルト全部true
-          const merged = INDUSTRIES.reduce((acc, ind) => ({
-            ...acc,
-            [ind]: map[ind] !== undefined ? map[ind] : true,
-          }), {});
-          setAiSelectedIndustries(merged);
-          setAutoPickupLoaded(true);
-        }
-      }).catch(() => {});
-      // 自動ピックアップ対象都道府県マップ取得
-      api.get('/api/admin/auto-pickup-prefectures').then(res => {
-        if (res.data.success) {
-          const saved = res.data.data.prefectures || {};
-          // 保存済みのみ採用（未設定なら全許可とみなすため空のままにする選択肢もあるが、
-          // UIではデフォルト全部true表示にする）
-          const merged = ALL_PREFS.reduce((acc, p) => ({
-            ...acc,
-            [p]: saved[p] !== undefined ? saved[p] : true,
-          }), {});
-          setAutoPickupPrefs(merged);
-          setAutoPickupPrefsLoaded(true);
-        }
-      }).catch(() => {});
-    }
+    if (user && activeTab === 'area') { fetchRules(); loadAutoPickup(); }
+    if (user && activeTab === 'time') { fetchTimeRules(); loadAutoPickup(); }
   }, [user, activeTab]);
 
-  // チェックボックス変更時にサーバー保存
-  const updateAutoPickupIndustries = async (newMap) => {
+  // ① 業種を保存（明示「保存」ボタン）
+  const saveAutoPickupIndustries = async () => {
+    setSavingIndustries(true);
     try {
-      await api.put('/api/admin/auto-pickup-industries', { industries: newMap });
+      await api.put('/api/admin/auto-pickup-industries', { industries: aiSelectedIndustries });
+      setIndustriesDirty(false);
+      toast.success('自動ピックアップ対象 業種を保存しました');
     } catch (err) {
       toast.error('自動対象業種の保存に失敗しました');
+    } finally {
+      setSavingIndustries(false);
     }
   };
 
-  // 都道府県チェック変更時にサーバー保存
-  const updateAutoPickupPrefs = async (newMap) => {
+  // ② 都道府県を保存（明示「保存」ボタン）
+  const saveAutoPickupPrefs = async () => {
+    setSavingPrefs(true);
     try {
-      await api.put('/api/admin/auto-pickup-prefectures', { prefectures: newMap });
+      await api.put('/api/admin/auto-pickup-prefectures', { prefectures: autoPickupPrefs });
+      setPrefsDirty(false);
+      toast.success('自動ピックアップ対象 都道府県を保存しました');
     } catch (err) {
       toast.error('自動対象都道府県の保存に失敗しました');
+    } finally {
+      setSavingPrefs(false);
     }
   };
+
+  // 以下トグルはローカル編集のみ（保存は「保存」ボタンで確定）
   const togglePrefecture = (pref) => {
-    const newMap = { ...autoPickupPrefs, [pref]: !autoPickupPrefs[pref] };
-    setAutoPickupPrefs(newMap);
-    updateAutoPickupPrefs(newMap);
+    setAutoPickupPrefs(prev => ({ ...prev, [pref]: !prev[pref] }));
+    setPrefsDirty(true);
   };
   const toggleRegion = (groupName) => {
     const group = REGION_GROUPS.find(g => g.name === groupName);
     if (!group) return;
-    const allOn = group.prefs.every(p => autoPickupPrefs[p]);
-    const newMap = { ...autoPickupPrefs };
-    group.prefs.forEach(p => { newMap[p] = !allOn; });
-    setAutoPickupPrefs(newMap);
-    updateAutoPickupPrefs(newMap);
+    setAutoPickupPrefs(prev => {
+      const allOn = group.prefs.every(p => prev[p]);
+      const newMap = { ...prev };
+      group.prefs.forEach(p => { newMap[p] = !allOn; });
+      return newMap;
+    });
+    setPrefsDirty(true);
   };
   const togglePrefAll = (on) => {
-    const newMap = ALL_PREFS.reduce((acc, p) => ({ ...acc, [p]: on }), {});
-    setAutoPickupPrefs(newMap);
-    updateAutoPickupPrefs(newMap);
+    setAutoPickupPrefs(ALL_PREFS.reduce((acc, p) => ({ ...acc, [p]: on }), {}));
+    setPrefsDirty(true);
   };
 
   // === 架電リスト 関数 ===
@@ -1386,9 +1408,14 @@ export default function AdminCompanies() {
                   チェックを外した業種は自動モードでピックアップされません（AI自動設定の分析対象も兼ねます）。
                 </p>
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = true; }); setAiSelectedIndustries(m); updateAutoPickupIndustries(m); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
-                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = false; }); setAiSelectedIndustries(m); updateAutoPickupIndustries(m); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = true; }); setAiSelectedIndustries(m); setIndustriesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+                <button onClick={() => { const m = {}; INDUSTRIES.forEach(i => { m[i] = false; }); setAiSelectedIndustries(m); setIndustriesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+                {industriesDirty && <span className="text-[11px] text-amber-600 ml-1">未保存</span>}
+                <button onClick={saveAutoPickupIndustries} disabled={!industriesDirty || savingIndustries}
+                  className="text-[11px] px-3 py-1 rounded font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {savingIndustries ? '保存中...' : '保存'}
+                </button>
               </div>
             </div>
             <div className="p-4 flex flex-wrap gap-2">
@@ -1400,9 +1427,8 @@ export default function AdminCompanies() {
                     type="checkbox"
                     checked={!!aiSelectedIndustries[ind]}
                     onChange={e => {
-                      const newMap = { ...aiSelectedIndustries, [ind]: e.target.checked };
-                      setAiSelectedIndustries(newMap);
-                      updateAutoPickupIndustries(newMap);
+                      setAiSelectedIndustries({ ...aiSelectedIndustries, [ind]: e.target.checked });
+                      setIndustriesDirty(true);
                     }}
                     className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
                   />
@@ -1421,9 +1447,14 @@ export default function AdminCompanies() {
                   チェックを外した都道府県の企業は自動モードでピックアップされません。
                 </p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1">
                 <button onClick={() => togglePrefAll(true)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
                 <button onClick={() => togglePrefAll(false)} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+                {prefsDirty && <span className="text-[11px] text-amber-600 ml-1">未保存</span>}
+                <button onClick={saveAutoPickupPrefs} disabled={!prefsDirty || savingPrefs}
+                  className="text-[11px] px-3 py-1 rounded font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {savingPrefs ? '保存中...' : '保存'}
+                </button>
               </div>
             </div>
             <div className="p-4 space-y-3">
