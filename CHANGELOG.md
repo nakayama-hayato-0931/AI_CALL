@@ -6,6 +6,10 @@
 
 ## 2026年6月 〜 直近
 
+### 不通(NO_ANSWER)の再ピックアップを2日後→1時間後に
+- 不通の再ピックアップ間隔を `INTERVAL 2 DAY` から `INTERVAL 1 HOUR` に変更（`companyController.js` の `getNextCallTarget` / `getCallList` の不通バケット）。
+- 直後（1時間未満）は対象化されず、1時間あけて再ピックアップされる。
+
 ### リコールの重複作成防止 + 自動完了
 - **重複作成防止**: リコール企業に再架電して結果を再びリコールにした際、新規 recall_tasks を作らず、同企業の `pending` リコールを更新（recall_at / user_id / call_id）するように変更（`callController.js` endCall）。pending が無い場合のみ新規作成。
   - これに伴い RECALL の 409 重複確認（DUPLICATE_RECALL）と overwrite キャンセル処理を撤去（PROJECT の重複確認は維持）。フロントの確認ダイアログは PROJECT のみに縮退（フロント変更なし）。
