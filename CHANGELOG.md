@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: 「全業界まとめ」フォーマット & 巨大xlsx対応
+- 列名マッピングを拡張: `法人名称`/`法人名`/`事業者名`→`company_name`、`FAX番号`→`fax_number`、`業種(中分類1)`→`industry`、`法人サマリー`→`comment`、`サイトURL`/`URL`→`url`(commentに「URL: ...」で統合)。
+- 巨大xlsx（sheet1.xml が Node の String 上限 ~536MB を超える 800MB級）のパースに対応。通常の `xlsx` パッケージで失敗した場合、OSの `unzip -p` で `xl/worksheets/sheet1.xml` をストリーミング展開し、自前のXMLパーサーで `<row>` 単位に逐次処理（inlineStr/v 両対応）。
+- INSERT時に `fax_number` も保存。
+- 動作確認: 「全業界まとめ.xlsx」(800MB級) → 609,606行を27秒でパース、phone_number付き481,030行抽出。
+
 ### 案件管理: 書類選考あり の詳細記録 + 経過日アラート
 - 案件一覧の「書類選考」が「あり」の行をクリックで詳細モーダルを開けるように（`projects.js`）。
 - モーダルで ①募集開始日 ②企業に履歴書送付日 ③面接日 を入力（③は `interview_date` を流用＝案件の面接日と双方向で同期）。

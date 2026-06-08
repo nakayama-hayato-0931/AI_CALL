@@ -5,6 +5,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const pool = require('../../config/database');
@@ -13,8 +14,10 @@ const logger = require('../utils/logger');
 
 /**
  * 日本語→英語 カラム名マッピング
+ * 「全業界まとめ.xlsx」等の新フォーマットにも対応
  */
 const COLUMN_MAP = {
+  // 既存
   '会社名': 'company_name',
   '電話番号': 'phone_number',
   '業種': 'industry',
@@ -23,6 +26,20 @@ const COLUMN_MAP = {
   '住所': 'address',
   '地域': 'region',
   'データ元': 'data_source',
+  // 新フォーマット（全業界まとめ等）
+  '法人名称': 'company_name',
+  '法人名': 'company_name',
+  '事業者名': 'company_name',
+  'FAX番号': 'fax_number',
+  '業種(中分類1)': 'industry',
+  '業種（中分類1）': 'industry',
+  '業種(中分類)': 'industry',
+  '業種（中分類）': 'industry',
+  '中分類': 'industry',
+  '法人サマリー': 'comment',
+  'サイトURL': 'url',
+  'URL': 'url',
+  'ホームページ': 'url',
 };
 
 const normalizeColumnName = (name) => {
@@ -31,21 +48,129 @@ const normalizeColumnName = (name) => {
 };
 
 /**
- * XLS/XLSX ファイルをパースしてレコード配列を返す
+ * XLS/XLSX ファイルをパースしてレコード配列を返す。
+ * 通常は xlsx パッケージで読むが、sheet1.xml が Node の String 上限(~536MB)を
+ * 超える巨大ファイルは「Cannot create a string longer than ...」で失敗するため、
+ * その場合は OS の unzip コマンドで sheet1.xml をストリーミング展開し、
+ * 自前のXMLパーサーで <row> 単位に逐次処理する（Linux/Mac前提）。
  */
-const parseExcelFile = (filePath) => {
-  const wb = XLSX.readFile(filePath);
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rawData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-  return rawData.map(row => {
-    const normalized = {};
-    for (const [key, value] of Object.entries(row)) {
-      const normKey = normalizeColumnName(key);
-      normalized[normKey] = typeof value === 'string' ? value.trim() : String(value);
+const parseExcelFile = async (filePath) => {
+  try {
+    const wb = XLSX.readFile(filePath);
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (sheet && sheet['!ref']) {
+      const rawData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      return rawData.map(row => {
+        const normalized = {};
+        for (const [key, value] of Object.entries(row)) {
+          const normKey = normalizeColumnName(key);
+          normalized[normKey] = typeof value === 'string' ? value.trim() : String(value);
+        }
+        return normalized;
+      });
     }
-    return normalized;
-  });
+    // SheetNamesにはあるが Sheets が空 → 巨大ファイル等で読み損ねた
+    logger.warn(`[parseExcelFile] xlsx で本体読み取り失敗。ストリーム展開にフォールバック: ${filePath}`);
+  } catch (err) {
+    // 「Cannot create a string longer than 0x1fffffe8 characters」など
+    logger.warn(`[parseExcelFile] xlsx 失敗(${err.message})。ストリーム展開にフォールバック: ${filePath}`);
+  }
+  return parseExcelHugeStream(filePath);
 };
+
+/**
+ * 巨大xlsx をストリーミング展開してパース。
+ * - unzip -p で xl/worksheets/sheet1.xml を stdout に流す
+ * - チャンクを蓄積し <row>...</row> を逐次切り出す
+ * - 各 row の <c r="A2" t="inlineStr"><is><t>VALUE</t></is></c> 等から値を抽出
+ *   （inlineStr / 数値 v / sharedStringsは未使用前提）
+ * - 1行目はヘッダー、それ以降はデータ。列名は COLUMN_MAP で正規化。
+ */
+const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
+  const proc = spawn('unzip', ['-p', filePath, 'xl/worksheets/sheet1.xml']);
+  let stderr = '';
+  proc.stderr.on('data', d => { stderr += d.toString(); });
+  proc.on('error', err => reject(new Error(`unzip 起動失敗: ${err.message}`)));
+
+  let buffer = '';
+  let headerByCol = null; // { A: 'company_name', B: 'phone_number', ... }
+  const records = [];
+
+  const decodeEntities = (s) => s
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)));
+
+  const colLetter = (ref) => (ref.match(/^[A-Z]+/) || [''])[0];
+
+  const parseRow = (rowXml) => {
+    // セル単位に分解。<c ...>...</c> （<c .../> 空セルもあり）
+    const cells = {};
+    const cellRe = /<c\s+([^/>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    let m;
+    while ((m = cellRe.exec(rowXml)) !== null) {
+      const attrs = m[1];
+      const content = m[2] || '';
+      const refMatch = attrs.match(/r="([A-Z]+\d+)"/);
+      if (!refMatch) continue;
+      const col = colLetter(refMatch[1]);
+      // inlineStr: <is><t>VALUE</t></is>
+      let valMatch = content.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+      if (!valMatch) {
+        // 数値: <v>VALUE</v>
+        valMatch = content.match(/<v>([\s\S]*?)<\/v>/);
+      }
+      if (valMatch) cells[col] = decodeEntities(valMatch[1]).trim();
+    }
+    return cells;
+  };
+
+  proc.stdout.on('data', (chunk) => {
+    buffer += chunk.toString('utf-8');
+    while (true) {
+      // <row...> の開始を見つける。終了タグまでが揃っていない場合は次のチャンクを待つ
+      const start = buffer.indexOf('<row');
+      if (start === -1) {
+        // <row 自体がまだ来ていない。<sheetData> までは捨ててOK
+        if (buffer.length > 1024 * 1024) buffer = buffer.slice(-65536);
+        break;
+      }
+      const end = buffer.indexOf('</row>', start);
+      if (end === -1) {
+        // 行末まで未着信。startより前は不要なので捨てる
+        buffer = buffer.slice(start);
+        break;
+      }
+      const rowXml = buffer.slice(start, end + '</row>'.length);
+      buffer = buffer.slice(end + '</row>'.length);
+      const cells = parseRow(rowXml);
+      if (!headerByCol) {
+        // 1行目をヘッダーに
+        headerByCol = {};
+        for (const [col, raw] of Object.entries(cells)) {
+          headerByCol[col] = normalizeColumnName(raw);
+        }
+      } else {
+        const obj = {};
+        for (const [col, val] of Object.entries(cells)) {
+          const key = headerByCol[col];
+          if (key) obj[key] = val;
+        }
+        // 空行スキップ
+        if (Object.values(obj).some(v => v && String(v).trim())) records.push(obj);
+      }
+    }
+  });
+
+  proc.stdout.on('end', () => {
+    if (records.length === 0 && !headerByCol) {
+      return reject(new Error(`xlsx を展開できませんでした（sheet1.xml 取得失敗）: ${stderr || 'unknown'}`));
+    }
+    logger.info(`[parseExcelHugeStream] パース完了: ${records.length}行 (headers=${Object.keys(headerByCol || {}).join(',')})`);
+    resolve(records);
+  });
+});
 
 /**
  * CSVファイルをパースしてレコード配列を返す
@@ -264,10 +389,15 @@ const importCompanies = async (req, res, next) => {
         const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim());
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
         const jobType = (row.job_type || '').trim() || null;
-        const comment = (row.comment || '').trim() || null;
+        // 新フォーマットの URL は comment に統合（既存スキーマを壊さない）
+        const baseComment = (row.comment || '').trim();
+        const urlField = (row.url || '').trim();
+        const comment = [baseComment, urlField ? `URL: ${urlField}` : ''].filter(Boolean).join(' / ') || null;
         const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
+        // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
+        const faxNumber = normalizePhoneNumber((row.fax_number || '').trim()) || null;
 
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
@@ -348,9 +478,9 @@ const importCompanies = async (req, res, next) => {
         }
 
         const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, importedByUserId, isSalesList]
+          `INSERT INTO companies (company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [companyName, phoneNumber, faxNumber, industry, jobType, comment, dataSource, region, address, importedByUserId, isSalesList]
         );
 
         // ファイル内 + DB重複防止
@@ -857,10 +987,15 @@ const importSpecialList = async (req, res, next) => {
         const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim());
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
         const jobType = (row.job_type || '').trim() || null;
-        const comment = (row.comment || '').trim() || null;
+        // 新フォーマットの URL は comment に統合（既存スキーマを壊さない）
+        const baseComment = (row.comment || '').trim();
+        const urlField = (row.url || '').trim();
+        const comment = [baseComment, urlField ? `URL: ${urlField}` : ''].filter(Boolean).join(' / ') || null;
         const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
+        // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
+        const faxNumber = normalizePhoneNumber((row.fax_number || '').trim()) || null;
 
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
@@ -1006,4 +1141,4 @@ const manualAddSpecial = async (req, res, next) => {
   }
 };
 
-module.exports = { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion, importSpecialList, manualAddSpecial };
+module.exports = { importCompanies, importExclusionList, getExclusionStats, manualAddCompany, manualAddExclusion, importSpecialList, manualAddSpecial, _parseExcelFile: parseExcelFile };
