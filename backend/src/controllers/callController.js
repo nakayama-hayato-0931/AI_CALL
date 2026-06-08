@@ -136,77 +136,51 @@ const endCall = async (req, res, next) => {
   }
 
   try {
-    // 重複チェック (PROJECT / RECALL のみ)
-    // 既存があり overwrite フラグが立っていない場合は 409 で問い合わせる
-    if (!overwrite && (result_code === 'PROJECT' || result_code === 'RECALL')) {
+    // 重複チェック (PROJECT のみ)
+    // 既存があり overwrite フラグが立っていない場合は 409 で問い合わせる。
+    // RECALL は重複確認せず、既存 pending リコールがあれば更新する（下の付随処理を参照）。
+    if (!overwrite && result_code === 'PROJECT') {
       // 通話から company_id を取得
       const [callPre] = await pool.execute(
         'SELECT company_id FROM calls WHERE id = ?', [id]
       );
       const companyId = callPre[0]?.company_id;
       if (companyId) {
-        if (result_code === 'PROJECT') {
-          const [exists] = await pool.execute(
-            `SELECT p.id, p.status, p.created_at, p.job_number,
-                    COALESCE(c.company_name, p.legacy_company_name) AS company_name,
-                    u.name AS owner_name
-             FROM projects p
-             LEFT JOIN companies c ON p.company_id = c.id
-             LEFT JOIN users u ON p.owner_user_id = u.id
-             WHERE p.company_id = ? AND p.is_legacy = 0
-               AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI'))
-             ORDER BY p.created_at DESC LIMIT 1`,
-            [companyId]
-          );
-          if (exists.length > 0) {
-            return res.status(409).json({
-              success: false,
-              code: 'DUPLICATE_PROJECT',
-              message: `この企業には既に案件があります（${exists[0].status || '未確定'}）。上書き保存しますか？`,
-              existing: exists[0],
-            });
-          }
-        } else if (result_code === 'RECALL') {
-          const [exists] = await pool.execute(
-            `SELECT rt.id, rt.recall_at, rt.status, u.name AS user_name
-             FROM recall_tasks rt
-             LEFT JOIN users u ON rt.user_id = u.id
-             WHERE rt.company_id = ? AND rt.status = 'pending'
-             ORDER BY rt.recall_at DESC LIMIT 1`,
-            [companyId]
-          );
-          if (exists.length > 0) {
-            return res.status(409).json({
-              success: false,
-              code: 'DUPLICATE_RECALL',
-              message: `この企業には既にリコール予定があります（${exists[0].user_name || '?'} / ${new Date(exists[0].recall_at).toLocaleString('ja-JP')}）。上書き保存しますか？`,
-              existing: exists[0],
-            });
-          }
+        const [exists] = await pool.execute(
+          `SELECT p.id, p.status, p.created_at, p.job_number,
+                  COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+                  u.name AS owner_name
+           FROM projects p
+           LEFT JOIN companies c ON p.company_id = c.id
+           LEFT JOIN users u ON p.owner_user_id = u.id
+           WHERE p.company_id = ? AND p.is_legacy = 0
+             AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI'))
+           ORDER BY p.created_at DESC LIMIT 1`,
+          [companyId]
+        );
+        if (exists.length > 0) {
+          return res.status(409).json({
+            success: false,
+            code: 'DUPLICATE_PROJECT',
+            message: `この企業には既に案件があります（${exists[0].status || '未確定'}）。上書き保存しますか？`,
+            existing: exists[0],
+          });
         }
       }
     }
 
-    // overwrite=true の場合は既存レコードを無効化
-    if (overwrite && (result_code === 'PROJECT' || result_code === 'RECALL')) {
+    // overwrite=true の場合は既存案件を無効化（RECALL は重複しないので対象外）
+    if (overwrite && result_code === 'PROJECT') {
       const [callPre] = await pool.execute('SELECT company_id FROM calls WHERE id = ?', [id]);
       const companyId = callPre[0]?.company_id;
       if (companyId) {
-        if (result_code === 'PROJECT') {
-          // 既存案件を LOST にして残す（履歴保持）。新しい案件は通常通り作成される。
-          await pool.execute(
-            `UPDATE projects SET status = 'LOST', memo = CONCAT(COALESCE(memo, ''), '\n[上書きにより無効化]')
-             WHERE company_id = ? AND is_legacy = 0
-               AND (status IS NULL OR status NOT IN ('LOST','BARASHI'))`,
-            [companyId]
-          );
-        } else if (result_code === 'RECALL') {
-          // 既存リコールをキャンセル扱い
-          await pool.execute(
-            `UPDATE recall_tasks SET status = 'cancelled' WHERE company_id = ? AND status = 'pending'`,
-            [companyId]
-          );
-        }
+        // 既存案件を LOST にして残す（履歴保持）。新しい案件は通常通り作成される。
+        await pool.execute(
+          `UPDATE projects SET status = 'LOST', memo = CONCAT(COALESCE(memo, ''), '\n[上書きにより無効化]')
+           WHERE company_id = ? AND is_legacy = 0
+             AND (status IS NULL OR status NOT IN ('LOST','BARASHI'))`,
+          [companyId]
+        );
       }
     }
 
@@ -283,17 +257,43 @@ const endCall = async (req, res, next) => {
     let projectId = null;
     const warnings = [];
 
-    // RECALL: リコールタスク作成
+    // RECALL: 既存の pending リコールがあれば更新（重複作成しない）、なければ新規作成
     if (result_code === 'RECALL') {
       try {
-        await pool.execute(
-          `INSERT INTO recall_tasks (call_id, company_id, user_id, recall_at, status)
-           VALUES (?, ?, ?, ?, 'pending')`,
-          [id, call.company_id, call.user_id, recall_at]
+        const [upd] = await pool.execute(
+          `UPDATE recall_tasks
+             SET recall_at = ?, user_id = ?, call_id = ?
+           WHERE company_id = ? AND status = 'pending'`,
+          [recall_at, call.user_id, id, call.company_id]
         );
+        if (upd.affectedRows === 0) {
+          await pool.execute(
+            `INSERT INTO recall_tasks (call_id, company_id, user_id, recall_at, status)
+             VALUES (?, ?, ?, ?, 'pending')`,
+            [id, call.company_id, call.user_id, recall_at]
+          );
+        } else {
+          logger.info(`[endCall] リコール更新(重複作成回避): company=${call.company_id}, ${upd.affectedRows}件`);
+        }
       } catch (e) {
-        logger.error(`[endCall] recall_tasks挿入エラー: ${e.message}`);
-        warnings.push(`リコールタスク作成失敗: ${e.sqlMessage || e.message}`);
+        logger.error(`[endCall] recall_tasks保存エラー: ${e.message}`);
+        warnings.push(`リコールタスク保存失敗: ${e.sqlMessage || e.message}`);
+      }
+    }
+
+    // リコール自動完了: 不通(NO_ANSWER)・リコール(RECALL)以外の確定結果を入力したら、
+    //   この企業の pending リコールを完了にする（架電済みとして消し込む）。
+    if (['NG', 'INTERESTED', 'PROJECT'].includes(result_code)) {
+      try {
+        const [done] = await pool.execute(
+          `UPDATE recall_tasks SET status = 'completed' WHERE company_id = ? AND status = 'pending'`,
+          [call.company_id]
+        );
+        if (done.affectedRows > 0) {
+          logger.info(`[endCall] リコール自動完了: company=${call.company_id}, ${done.affectedRows}件 (result=${result_code})`);
+        }
+      } catch (e) {
+        logger.error(`[endCall] リコール自動完了エラー: ${e.message}`);
       }
     }
 

@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### リコールの重複作成防止 + 自動完了
+- **重複作成防止**: リコール企業に再架電して結果を再びリコールにした際、新規 recall_tasks を作らず、同企業の `pending` リコールを更新（recall_at / user_id / call_id）するように変更（`callController.js` endCall）。pending が無い場合のみ新規作成。
+  - これに伴い RECALL の 409 重複確認（DUPLICATE_RECALL）と overwrite キャンセル処理を撤去（PROJECT の重複確認は維持）。フロントの確認ダイアログは PROJECT のみに縮退（フロント変更なし）。
+- **自動完了**: リコール企業への架電で、不通(NO_ANSWER)・リコール(RECALL)以外の確定結果（NG / INTERESTED / PROJECT）を入力したら、同企業の `pending` リコールを `completed` に自動更新。
+
 ### ルール設定 ①②保存の体感速度改善（楽観的更新）
 - 保存の遅さは Railway へのネットワーク往復（コールドスタート含む）が要因。保存処理自体は `system_settings` への単一UPSERTでミリ秒。
 - ①② の保存を楽観的更新に変更: クリック即「未保存」解除＋成功表示、PUTは裏で実行し失敗時のみ「未保存」に戻してエラー表示。「保存中...」スピナー状態は廃止。
