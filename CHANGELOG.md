@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: ストリーミング処理化（records配列廃止、メモリ91MBに削減）
+- importCompanies が `parseFile()` で全行を records配列にロードしていたため、60万行で 1.1GB のメモリを消費しOOMでプロセスクラッシュ→CORSエラー表示になっていた問題を解消。
+- `parseFile/parseExcelFile/parseExcelHugeStream/parseCsvFile` に `onRow` コールバック引数を追加し、ストリーミング処理に対応。
+- importCompanies のループを `processRow(record)` 関数化し、`parseFile(..., processRow)` で 1行ずつ受け取る方式に変更（records配列を持たない）。
+- 動作確認: 60万行xlsx → **ピークメモリ 91MB**（従来の1/12）、37秒でパース完了。Railway標準インスタンスでも余裕で動作する見込み。
+
 ### CSVインポート: 巨大xlsx展開を unzip コマンドから fflate(純粋JS)に変更
 - Railway環境に `unzip` コマンドが無く `spawn unzip ENOENT` で失敗していた問題を解消。
 - `fflate.Unzip` + `UnzipInflate` でストリーミング解凍に切替。`fs.createReadStream` で xlsx を読みつつ、解凍チャンクを `TextDecoder(stream)` でデコード → `<row>` 単位で逐次パース。

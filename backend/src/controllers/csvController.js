@@ -48,34 +48,38 @@ const normalizeColumnName = (name) => {
 };
 
 /**
- * XLS/XLSX ファイルをパースしてレコード配列を返す。
+ * XLS/XLSX ファイルをパース。
+ * - onRow が指定されていれば各行を await onRow(record) で渡す（ストリーミング、メモリ効率○）
+ * - onRow なしなら従来通り records 配列を返す（小さいファイル向け互換）
  * 通常は xlsx パッケージで読むが、sheet1.xml が Node の String 上限(~536MB)を
  * 超える巨大ファイルは「Cannot create a string longer than ...」で失敗するため、
- * その場合は OS の unzip コマンドで sheet1.xml をストリーミング展開し、
- * 自前のXMLパーサーで <row> 単位に逐次処理する（Linux/Mac前提）。
+ * その場合は fflate ストリーミング解凍にフォールバック。
  */
-const parseExcelFile = async (filePath) => {
+const parseExcelFile = async (filePath, onRow) => {
   try {
     const wb = XLSX.readFile(filePath);
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (sheet && sheet['!ref']) {
       const rawData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      return rawData.map(row => {
+      const normalize = (row) => {
         const normalized = {};
         for (const [key, value] of Object.entries(row)) {
           const normKey = normalizeColumnName(key);
           normalized[normKey] = typeof value === 'string' ? value.trim() : String(value);
         }
         return normalized;
-      });
+      };
+      if (onRow) {
+        for (const row of rawData) await onRow(normalize(row));
+        return null;
+      }
+      return rawData.map(normalize);
     }
-    // SheetNamesにはあるが Sheets が空 → 巨大ファイル等で読み損ねた
     logger.warn(`[parseExcelFile] xlsx で本体読み取り失敗。ストリーム展開にフォールバック: ${filePath}`);
   } catch (err) {
-    // 「Cannot create a string longer than 0x1fffffe8 characters」など
     logger.warn(`[parseExcelFile] xlsx 失敗(${err.message})。ストリーム展開にフォールバック: ${filePath}`);
   }
-  return parseExcelHugeStream(filePath);
+  return parseExcelHugeStream(filePath, onRow);
 };
 
 /**
@@ -90,7 +94,7 @@ const parseExcelFile = async (filePath) => {
  *     String 化できない。そのため fflate で UInt8Array にしたバッファを
  *     32MB ずつスライスして文字列化＋XMLパースで逐次処理する。
  */
-const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
+const parseExcelHugeStream = (filePath, onRow) => new Promise((resolve, reject) => {
   const decoder = new (require('util').TextDecoder)('utf-8', { fatal: false });
   const decodeEntities = (s) => s
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -102,9 +106,13 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
 
   let buffer = '';
   let headerByCol = null;
-  const records = [];
+  const records = onRow ? null : [];
+  let recordCount = 0;
   let sheetFound = false;
   let done = false;
+  // onRow への async 処理用キュー（DBへの flush を確実に直列化する）
+  let pending = Promise.resolve();
+  const enqueue = (record) => { pending = pending.then(() => onRow(record)); };
 
   const parseRow = (rowXml) => {
     const cells = {};
@@ -149,7 +157,11 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
           const key = headerByCol[col];
           if (key) obj[key] = val;
         }
-        if (Object.values(obj).some(v => v && String(v).trim())) records.push(obj);
+        if (Object.values(obj).some(v => v && String(v).trim())) {
+          recordCount++;
+          if (onRow) enqueue(obj);
+          else records.push(obj);
+        }
       }
     }
   };
@@ -190,8 +202,13 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
     if (!sheetFound) {
       return reject(new Error('xl/worksheets/sheet1.xml が xlsx 内に見つかりません'));
     }
-    logger.info(`[parseExcelHugeStream] パース完了: ${records.length}行 (headers=${Object.keys(headerByCol || {}).join(',')})`);
-    resolve(records);
+    // onRow キューを全て待ってから解決
+    pending
+      .then(() => {
+        logger.info(`[parseExcelHugeStream] パース完了: ${recordCount}行 (headers=${Object.keys(headerByCol || {}).join(',')})`);
+        resolve(onRow ? null : records);
+      })
+      .catch(reject);
   });
   stream.on('error', (err) => {
     done = true;
@@ -200,30 +217,40 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
 });
 
 /**
- * CSVファイルをパースしてレコード配列を返す
+ * CSVファイルをパース。
+ * onRow 指定時はストリーミング、未指定時は records 配列を返す。
  */
-const parseCsvFile = (filePath) => {
+const parseCsvFile = (filePath, onRow) => {
   return new Promise((resolve, reject) => {
-    const records = [];
-    fs.createReadStream(filePath, { encoding: 'utf-8' })
-      .pipe(csv({
-        mapHeaders: ({ header }) => normalizeColumnName(header),
-      }))
-      .on('data', (row) => records.push(row))
-      .on('end', () => resolve(records))
+    const records = onRow ? null : [];
+    let count = 0;
+    let pending = Promise.resolve();
+    const rs = fs.createReadStream(filePath, { encoding: 'utf-8' });
+    rs.pipe(csv({
+      mapHeaders: ({ header }) => normalizeColumnName(header),
+    }))
+      .on('data', (row) => {
+        count++;
+        if (onRow) pending = pending.then(() => onRow(row));
+        else records.push(row);
+      })
+      .on('end', () => {
+        pending.then(() => resolve(onRow ? null : records)).catch(reject);
+      })
       .on('error', reject);
   });
 };
 
 /**
- * ファイルをパース（拡張子で自動判別）
+ * ファイルをパース（拡張子で自動判別）。
+ * onRow 指定でストリーミング処理（メモリ効率○）。
  */
-const parseFile = async (filePath, originalName) => {
+const parseFile = async (filePath, originalName, onRow) => {
   const ext = path.extname(originalName).toLowerCase();
   if (ext === '.xls' || ext === '.xlsx') {
-    return parseExcelFile(filePath);
+    return parseExcelFile(filePath, onRow);
   }
-  return parseCsvFile(filePath);
+  return parseCsvFile(filePath, onRow);
 };
 
 /**
@@ -356,13 +383,8 @@ const importCompanies = async (req, res, next) => {
 
     const filePath = req.file.path;
     logger.info(`インポート開始: ${req.file.originalname} (${req.file.size} bytes)`);
-    const records = await parseFile(filePath, req.file.originalname);
-    logger.info(`パース完了: ${records.length}件`);
-
-    if (records.length === 0) {
-      cleanupFile(filePath);
-      return ApiResponse.badRequest(res, 'ファイルにデータがありません');
-    }
+    // ストリーミングインポート: records配列を持たず、parseFile が 1行ずつ onRow を呼ぶ。
+    // 60万行クラスのファイルでも records[] による OOM を回避する。
 
     // 優先オペレーター設定（管理者/マネージャーのみ）
     let priorityOperatorIds = [];
@@ -372,6 +394,7 @@ const importCompanies = async (req, res, next) => {
       graceDays = parseInt(req.body.grace_days) || 0;
     }
 
+    let totalRows = 0;
     let insertedCount = 0;
     let skippedCount = 0;
     let duplicateCount = 0;
@@ -479,13 +502,14 @@ const importCompanies = async (req, res, next) => {
           await conn.commit();
           await conn.beginTransaction();
           lastCommittedAt = insertedCount;
-          logger.info(`[import] progress: inserted=${insertedCount} / records=${records.length}`);
+          logger.info(`[import] progress: inserted=${insertedCount} / processed=${totalRows}`);
         }
       };
 
-      for (let i = 0; i < records.length; i++) {
-        const row = records[i];
-        const lineNum = i + 2;
+      // 1行分のレコードを処理して pendingInserts に積む（必要なら flush）
+      const processRow = async (row) => {
+        totalRows++;
+        const lineNum = totalRows + 1; // ヘッダー分
 
         const companyName = normalizeCompanyName((row.company_name || '').trim());
         const phoneNumber = normalizePhoneNumber((row.phone_number || '').trim());
@@ -504,14 +528,14 @@ const importCompanies = async (req, res, next) => {
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
           skippedCount++;
-          continue;
+          return;
         }
 
         // ファイル内重複チェック
         if (importedPhones.has(phoneNumber) || importedNames.has(companyName)) {
           duplicateCount++;
           skippedCount++;
-          continue;
+          return;
         }
 
         // 双方向重複チェック: 相手側リスト(オペ↔営業)に存在する場合はスキップ
@@ -520,7 +544,7 @@ const importCompanies = async (req, res, next) => {
           errors.push({ line: lineNum, message: `${listName}に存在するためスキップ: ${phoneNumber}` });
           duplicateCount++;
           skippedCount++;
-          continue;
+          return;
         }
 
         // DB重複チェック: 既存企業があれば「自作リスト優先」ロジック
@@ -529,12 +553,12 @@ const importCompanies = async (req, res, next) => {
           // オペレーターの自作リストインポート時
           if (req.user.role === 'operator' && importedByUserId) {
             if (existing.imported_by_user_id === null) {
-              // 共有リストにある → 自作リストに移す
+              // 共有リストにある → 自作リストに移す（直前に pendingInserts を flush して整合性確保）
+              await flushInserts();
               await conn.execute(
                 'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
                 [importedByUserId, industry, jobType, comment, dataSource, region, address, existing.id]
               );
-              // 自動割り当ても追加
               try {
                 await conn.execute(
                   'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
@@ -544,28 +568,26 @@ const importCompanies = async (req, res, next) => {
               existing.imported_by_user_id = importedByUserId;
               insertedCount++;
               importedPhones.add(phoneNumber);
-              continue;
+              return;
             } else if (existing.imported_by_user_id === importedByUserId) {
-              // 既に自分の自作リストにある
               duplicateCount++;
               skippedCount++;
-              continue;
+              return;
             } else {
-              // 他のオペレーターの自作リストにある
               errors.push({ line: lineNum, message: `他のオペレーターの自作リストに登録済みのためスキップ: ${companyName} (${phoneNumber})` });
               duplicateCount++;
               skippedCount++;
-              continue;
+              return;
             }
           }
           // 管理者/営業の共有リストインポート時 → 重複スキップ
           duplicateCount++;
           skippedCount++;
-          continue;
+          return;
         }
 
         // 除外リストチェック（メモリ内Set使用）
-        if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; continue; }
+        if (excludePhoneSet.has(phoneNumber)) { excludedCount++; skippedCount++; return; }
 
         // NGワードチェック: 会社名・業種・職種・コメントにNGワードが含まれる場合は除外
         // ただしオペレーター自身が自分リストとしてインポートする場合はNGワードチェックをスキップ
@@ -575,7 +597,7 @@ const importCompanies = async (req, res, next) => {
           if (matchedNg) {
             excludedCount++;
             skippedCount++;
-            continue;
+            return;
           }
         }
 
@@ -591,7 +613,10 @@ const importCompanies = async (req, res, next) => {
         if (pendingInserts.length >= INSERT_BATCH_SIZE) {
           await flushInserts();
         }
-      }
+      };
+
+      // ストリーミングパース: 1行ずつ processRow を呼ぶ（records配列を持たない＝OOM回避）
+      await parseFile(filePath, req.file.originalname, processRow);
 
       // 残りをフラッシュ
       await flushInserts();
@@ -609,7 +634,7 @@ const importCompanies = async (req, res, next) => {
     logger.info(`ファイルインポート完了: inserted=${insertedCount}, skipped=${skippedCount}, duplicates=${duplicateCount}, excluded=${excludedCount}, user=${req.user.id}`);
 
     return ApiResponse.success(res, {
-      totalRows: records.length,
+      totalRows,
       insertedCount,
       skippedCount,
       duplicateCount,
