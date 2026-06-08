@@ -228,9 +228,16 @@ export default function AdminProjects() {
     e.stopPropagation();
     const newStatus = e.target.value;
     try {
-      await api.put(`/api/projects/${projectId}`, { status: newStatus });
       const proj = projects.find(p => p.id === projectId);
-      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus } : p));
+      const payload = { status: newStatus };
+      // 募集中にしたら ①募集開始日 を当日で自動入力（未入力のときのみ）
+      if (newStatus === 'BOSHUCHU' && proj && !proj.recruitment_start_date) {
+        payload.recruitment_start_date = todayStr();
+      }
+      await api.put(`/api/projects/${projectId}`, payload);
+      setProjects(prev => prev.map(p => p.id === projectId
+        ? { ...p, status: newStatus, ...(payload.recruitment_start_date ? { recruitment_start_date: payload.recruitment_start_date } : {}) }
+        : p));
       toast.success('ステータスを更新しました');
       if (newStatus === 'NAITEI') {
         setModalNaiteiDate('');
@@ -260,9 +267,15 @@ export default function AdminProjects() {
     if (isNaN(d.getTime())) return null;
     return Math.floor((today - d) / (1000 * 60 * 60 * 24));
   };
-  // 書類選考「あり」を強調表示するか（①②の直近から4日以上経過）
+  // 当日の日付文字列 YYYY-MM-DD（ローカル）
+  const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  // 書類選考「あり」を強調表示するか（①②の直近から4日以上経過。面接日が入っていれば抑制）
   const screeningOverdue = (p) => {
     if (p.document_screening !== 'required') return false;
+    if (p.interview_date) return false; // 面接日が入っていればアラート不要
     const elapsed = daysSince(screeningBaseDate(p));
     return elapsed != null && elapsed >= 4;
   };
@@ -855,7 +868,8 @@ export default function AdminProjects() {
       {screeningModal && (() => {
         const base = [screeningForm.recruitment_start_date, screeningForm.resume_sent_date].filter(Boolean).sort().slice(-1)[0] || null;
         const elapsed = daysSince(base);
-        const overdue = elapsed != null && elapsed >= 4;
+        // 面接日が入っていれば経過アラートは出さない
+        const overdue = elapsed != null && elapsed >= 4 && !screeningForm.interview_date;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setScreeningModal(null)}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
