@@ -2295,7 +2295,8 @@ const getQualityIndustryDetail = async (req, res, next) => {
               ou.name AS owner_name, su.name AS sales_name,
               COALESCE(ph.hires_count, 0)         AS hires_count,
               COALESCE(ph.initial_payment_sum, 0) AS initial_payment,
-              COALESCE(ph.expected_revenue_sum, 0) AS expected_revenue
+              COALESCE(ph.expected_revenue_sum, 0) AS expected_revenue,
+              ph.registration_numbers AS registration_numbers
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
        LEFT JOIN users ou ON p.owner_user_id = ou.id
@@ -2304,7 +2305,8 @@ const getQualityIndustryDetail = async (req, res, next) => {
          SELECT project_id,
                 COUNT(*)                          AS hires_count,
                 SUM(COALESCE(initial_payment, 0)) AS initial_payment_sum,
-                SUM(COALESCE(expected_revenue, 0)) AS expected_revenue_sum
+                SUM(COALESCE(expected_revenue, 0)) AS expected_revenue_sum,
+                GROUP_CONCAT(NULLIF(registration_number, '') ORDER BY id SEPARATOR ', ') AS registration_numbers
            FROM project_hires
           GROUP BY project_id
        ) ph ON ph.project_id = p.id

@@ -6,6 +6,10 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: 内定内訳に求職者の登録番号を表示
+- 内定の業種別内訳モーダルの案件明細に「登録番号」列を追加（NAITEI時のみ）。
+- `getQualityIndustryDetail` の明細で `project_hires.registration_number` を `GROUP_CONCAT` し、1案件に複数内定者がいる場合はカンマ区切りで表示。
+
 ### CPA: 集計の日付基準トグル（案件獲得日 / 内定日）+ 内訳の不一致修正
 - CPA指標タブに「集計基準」トグルを追加（`analytics.js`）。既定は **案件獲得日(created_at)**、切替で **内定日** 基準。
   - 内定日モードの基準: コスト/コール/案件数=獲得日のまま、面接数=面接実施日(interview_date)、内定/不合格/バラシ失注/初回入金/見込売上/ROAS=内定日(naitei_date)。

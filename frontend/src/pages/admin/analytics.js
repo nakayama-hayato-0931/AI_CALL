@@ -1315,6 +1315,9 @@ export default function AnalyticsPage() {
                             {industryModal.status === 'NAITEI' && (
                               <th className="text-left px-2 py-1.5">内定日</th>
                             )}
+                            {industryModal.status === 'NAITEI' && (
+                              <th className="text-left px-2 py-1.5">登録番号</th>
+                            )}
                             <th className="text-right px-2 py-1.5">内定人数</th>
                             <th className="text-right px-2 py-1.5">初回入金</th>
                             <th className="text-right px-2 py-1.5">見込売上</th>
@@ -1342,6 +1345,9 @@ export default function AnalyticsPage() {
                                   {p.naitei_date ? new Date(p.naitei_date).toLocaleDateString('ja-JP') : '-'}
                                 </td>
                               )}
+                              {industryModal.status === 'NAITEI' && (
+                                <td className="px-2 py-1 font-mono text-gray-700">{p.registration_numbers || '-'}</td>
+                              )}
                               <td className="px-2 py-1 text-right">{Number(p.hires_count) > 0 ? `${p.hires_count}名` : '-'}</td>
                               <td className="px-2 py-1 text-right text-emerald-700">{Number(p.initial_payment) > 0 ? `¥${Number(p.initial_payment).toLocaleString()}` : '-'}</td>
                               <td className="px-2 py-1 text-right text-blue-700">{Number(p.expected_revenue) > 0 ? `¥${Number(p.expected_revenue).toLocaleString()}` : '-'}</td>
@@ -1351,7 +1357,7 @@ export default function AnalyticsPage() {
                         {industryModal.data.totals && (
                           <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
                             <tr>
-                              <td colSpan={industryModal.status === 'NAITEI' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-700">
+                              <td colSpan={industryModal.status === 'NAITEI' ? 8 : 6} className="px-2 py-1.5 text-right text-gray-700">
                                 合計 ({industryModal.data.total}件)
                               </td>
                               <td className="px-2 py-1.5 text-right">{Number(industryModal.data.totals.hires) || 0}名</td>
