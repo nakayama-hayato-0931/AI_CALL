@@ -273,9 +273,10 @@ const getVisaPaymentMap = async () => {
     const sheets = await getClient();
     const sheetId = process.env.VISA_PROGRESS_SPREADSHEET_ID || '1wPH1sud7dAwJQihiR6qDrH-otJ3ygAgcCAg-e4ituvw';
     // G:CC を取得（G列=登録番号=index0, CC列=index74）
+    // シート名にスペースを含むため A1記法ではシングルクォートで囲む必要がある
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: 'ビザ申請 進捗!G:CC',
+      range: "'ビザ申請 進捗'!G:CC",
     });
     const rows = response.data.values || [];
     let count = 0;

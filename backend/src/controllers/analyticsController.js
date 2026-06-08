@@ -1074,7 +1074,10 @@ const getCpaAll = async (req, res, next) => {
             [systemDateFrom, systemDateTo]
           );
           for (const r of regRows) {
-            const yen = lookupVisaPayment(visaMap, r.reg);
+            // 登録番号が1セルに複数入る場合があるため区切り文字で分割し、1件ずつ照合・合算
+            const tokens = String(r.reg || '').split(/[,、，\s/／]+/).map(s => s.trim()).filter(Boolean);
+            let yen = 0;
+            for (const t of tokens) yen += lookupVisaPayment(visaMap, t);
             if (yen) actualPaymentMap.set(r.user_id, (actualPaymentMap.get(r.user_id) || 0) + yen);
           }
         }
