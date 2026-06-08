@@ -537,6 +537,12 @@ export default function AdminProjects() {
                   面接日<SortIcon col="interview_date" />
                 </th>
                 <th className="table-header" style={{width:'60px'}}>書類選考</th>
+                {docScreening === 'required' && (
+                  <>
+                    <th className="table-header" style={{width:'80px'}}>募集開始日</th>
+                    <th className="table-header" style={{width:'90px'}}>履歴書送付日</th>
+                  </>
+                )}
                 <th className="table-header" style={{width:'70px'}}>面接方法</th>
                 <th className="table-header" style={{width:'60px'}}>メール送信</th>
                 <th className="table-header" style={{width:'60px'}}>メール返信</th>
@@ -612,6 +618,16 @@ export default function AdminProjects() {
                         );
                       })() : p.document_screening === 'not_required' ? 'なし' : '-'}
                     </td>
+                    {docScreening === 'required' && (
+                      <>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">
+                          {p.recruitment_start_date ? new Date(p.recruitment_start_date).toLocaleDateString('ja-JP') : '-'}
+                        </td>
+                        <td className="table-cell text-gray-500 whitespace-nowrap">
+                          {p.resume_sent_date ? new Date(p.resume_sent_date).toLocaleDateString('ja-JP') : '-'}
+                        </td>
+                      </>
+                    )}
                     <td className="table-cell whitespace-nowrap">
                       {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
                     </td>
