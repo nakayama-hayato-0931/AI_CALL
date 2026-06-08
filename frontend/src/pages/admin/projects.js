@@ -118,6 +118,10 @@ export default function AdminProjects() {
   // 不合格モーダル
   const [fugokakuModal, setFugokakuModal] = useState(null);
   const [fugokakuAttendees, setFugokakuAttendees] = useState('');
+  // 書類選考あり 詳細モーダル
+  const [screeningModal, setScreeningModal] = useState(null); // { projectId, companyName }
+  const [screeningForm, setScreeningForm] = useState({ recruitment_start_date: '', resume_sent_date: '', interview_date: '' });
+  const [screeningSaving, setScreeningSaving] = useState(false);
 
   // 手動案件追加モーダル
   const [showManualAdd, setShowManualAdd] = useState(false);
@@ -240,6 +244,52 @@ export default function AdminProjects() {
     } catch (err) {
       toast.error('ステータスの更新に失敗しました');
     }
+  };
+
+  // 書類選考あり 詳細: ①募集開始日 ②履歴書送付日 の直近(最新)日付
+  const screeningBaseDate = (p) => {
+    const dates = [p.recruitment_start_date, p.resume_sent_date].filter(Boolean).map(d => String(d).slice(0, 10));
+    if (dates.length === 0) return null;
+    return dates.sort().slice(-1)[0]; // 最新
+  };
+  // 指定日からの経過日数（今日 - 日付）。null なら null
+  const daysSince = (dateStr) => {
+    if (!dateStr) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+  };
+  // 書類選考「あり」を強調表示するか（①②の直近から4日以上経過）
+  const screeningOverdue = (p) => {
+    if (p.document_screening !== 'required') return false;
+    const elapsed = daysSince(screeningBaseDate(p));
+    return elapsed != null && elapsed >= 4;
+  };
+
+  const openScreeningModal = (p) => {
+    setScreeningModal({ projectId: p.id, companyName: p.company_name });
+    setScreeningForm({
+      recruitment_start_date: p.recruitment_start_date ? String(p.recruitment_start_date).slice(0, 10) : '',
+      resume_sent_date: p.resume_sent_date ? String(p.resume_sent_date).slice(0, 10) : '',
+      interview_date: p.interview_date ? String(p.interview_date).slice(0, 10) : '',
+    });
+  };
+
+  const handleSaveScreening = async () => {
+    if (!screeningModal) return;
+    setScreeningSaving(true);
+    try {
+      await api.put(`/api/projects/${screeningModal.projectId}`, {
+        recruitment_start_date: screeningForm.recruitment_start_date || null,
+        resume_sent_date: screeningForm.resume_sent_date || null,
+        interview_date: screeningForm.interview_date || null,
+      });
+      toast.success('書類選考の詳細を保存しました');
+      setScreeningModal(null);
+      fetchProjects();
+    } catch { toast.error('保存に失敗しました'); }
+    finally { setScreeningSaving(false); }
   };
 
   const openHireModal = async (projectId, companyName) => {
@@ -536,8 +586,18 @@ export default function AdminProjects() {
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}
                     </td>
-                    <td className="table-cell text-center whitespace-nowrap">
-                      {p.document_screening === 'required' ? 'あり' : p.document_screening === 'not_required' ? 'なし' : '-'}
+                    <td className="table-cell text-center whitespace-nowrap"
+                        onClick={p.document_screening === 'required' ? (e => { e.stopPropagation(); openScreeningModal(p); }) : undefined}>
+                      {p.document_screening === 'required' ? (() => {
+                        const overdue = screeningOverdue(p);
+                        const elapsed = daysSince(screeningBaseDate(p));
+                        return (
+                          <span className={`cursor-pointer hover:underline ${overdue ? 'text-red-600 font-bold' : 'text-gray-700'}`}
+                                title="クリックで書類選考の詳細を記録">
+                            あり{elapsed != null ? `(${elapsed}日)` : ''}
+                          </span>
+                        );
+                      })() : p.document_screening === 'not_required' ? 'なし' : '-'}
                     </td>
                     <td className="table-cell whitespace-nowrap">
                       {p.interview_type === 'online' ? 'オンライン' : p.interview_type === 'in_person' ? '対面' : '-'}
@@ -791,6 +851,67 @@ export default function AdminProjects() {
           </div>
         </div>
       )}
+      {/* 書類選考あり 詳細モーダル */}
+      {screeningModal && (() => {
+        const base = [screeningForm.recruitment_start_date, screeningForm.resume_sent_date].filter(Boolean).sort().slice(-1)[0] || null;
+        const elapsed = daysSince(base);
+        const overdue = elapsed != null && elapsed >= 4;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setScreeningModal(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">書類選考あり 詳細</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{screeningModal.companyName}</p>
+                </div>
+                <button onClick={() => setScreeningModal(null)} className="p-2 hover:bg-white/60 rounded-lg transition-colors">
+                  <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                {/* 経過日（①または②の直近から） */}
+                <div className={`rounded-lg p-3 text-center border ${overdue ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                  {elapsed != null ? (
+                    <div>
+                      <span className="text-xs text-gray-500">①募集開始 / ②履歴書送付 の直近から</span>
+                      <div className={`text-2xl font-bold ${overdue ? 'text-red-600' : 'text-gray-800'}`}>{elapsed}日経過</div>
+                      {overdue && <span className="text-xs text-red-600 font-medium">4日以上経過しています</span>}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">①または②の日付を入力すると経過日を表示します</span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 font-medium">① 募集開始日</label>
+                  <input type="date" value={screeningForm.recruitment_start_date}
+                    onChange={e => setScreeningForm(f => ({ ...f, recruitment_start_date: e.target.value }))}
+                    className="input text-sm mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 font-medium">② 企業に履歴書送付日</label>
+                  <input type="date" value={screeningForm.resume_sent_date}
+                    onChange={e => setScreeningForm(f => ({ ...f, resume_sent_date: e.target.value }))}
+                    className="input text-sm mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 font-medium">③ 面接日</label>
+                  <input type="date" value={screeningForm.interview_date}
+                    onChange={e => setScreeningForm(f => ({ ...f, interview_date: e.target.value }))}
+                    className="input text-sm mt-0.5" />
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+                <button onClick={() => setScreeningModal(null)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">キャンセル</button>
+                <button onClick={handleSaveScreening} disabled={screeningSaving}
+                  className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  {screeningSaving ? '保存中...' : '保存する'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 不合格時の面接人数入力モーダル */}
       {fugokakuModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFugokakuModal(null)}>

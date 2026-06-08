@@ -302,6 +302,9 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN contact_email VARCHAR(255) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN naitei_date DATE DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE projects ADD COLUMN interview_attendees INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  // 書類選考あり 詳細: ①募集開始日 ②企業に履歴書送付日（③面接日は interview_date を流用）
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN recruitment_start_date DATE DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE projects ADD COLUMN resume_sent_date DATE DEFAULT NULL`); } catch (e) {}
   // 既存の書類選考未入力(NULL)案件を「なし」に一括更新
   try {
     const [r] = await pool.execute(`UPDATE projects SET document_screening = 'not_required' WHERE document_screening IS NULL OR document_screening = ''`);
