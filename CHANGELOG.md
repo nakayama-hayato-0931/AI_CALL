@@ -6,6 +6,15 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: 集計の日付基準トグル（案件獲得日 / 内定日）+ 内訳の不一致修正
+- CPA指標タブに「集計基準」トグルを追加（`analytics.js`）。既定は **案件獲得日(created_at)**、切替で **内定日** 基準。
+  - 内定日モードの基準: コスト/コール/案件数=獲得日のまま、面接数=面接実施日(interview_date)、内定/不合格/バラシ失注/初回入金/見込売上/ROAS=内定日(naitei_date)。
+  - `getCpaAll` に `date_base` パラメータを追加し、案件集計（projAll）と金額集計（finMap）の日付軸を基準ごとに切替（`analyticsController.js`）。
+- 内訳（業種別内訳モーダル）と一覧の不一致を修正:
+  - 一覧は案件獲得日基準＋レガシー除外なのに、内訳モーダルは内定日固定＋レガシー混在で数字がずれていた。
+  - `getQualityIndustryDetail` に `date_base` を追加し、内定ドリルダウンを一覧と同じ基準（acquisition→created_at / naitei→naitei_date）に一致させ、`is_legacy = 0` を追加してレガシー案件を除外。
+  - 注意: 過去シード(`past_cpa_data`)は明細を持たないため、シードを含む月は内訳合計が一覧よりシード分少なくなる（実案件分は一致）。
+
 ### 不通の再ピックアップ: リコール由来のみ1時間後、通常は従来通り2日後
 - 通常の不通(NO_ANSWER)は従来通り2日後に再ピックアップ（`companyController.js` の不通バケットは `INTERVAL 2 DAY` のまま）。
 - リコール企業への架電が不通だった場合のみ、`endCall`（`callController.js`）で同企業の `pending` リコールの `recall_at` を `NOW() + 1 HOUR` に再設定し、1時間後に recall_due として再ピックアップされるようにした（直後に再度対象化されて邪魔になる問題を解消）。

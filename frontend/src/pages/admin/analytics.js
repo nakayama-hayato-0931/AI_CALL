@@ -73,6 +73,8 @@ export default function AnalyticsPage() {
   // 月別・累計用（単一データ）
   const [cpaData, setCpaData] = useState(null);
   const [qualData, setQualData] = useState(null);
+  // CPA集計の日付基準: 'acquisition'(案件獲得日, 既定) / 'naitei'(内定日)
+  const [cpaBase, setCpaBase] = useState('acquisition');
 
   // 週別用（全週のデータ配列）
   const [weeklyData, setWeeklyData] = useState([]); // [{ weekLabel, cpa, qual }]
@@ -220,12 +222,12 @@ export default function AnalyticsPage() {
           const weeks = getWeeksInMonth(ym);
           // 月合計(cpa,quality) + 各週(cpa,quality) を一括並列
           const responses = await Promise.all([
-            api.get('/api/analytics/cpa-all', { params: monthParams }),
+            api.get('/api/analytics/cpa-all', { params: { ...monthParams, date_base: cpaBase } }),
             api.get('/api/analytics/quality-all', { params: monthParams }),
             ...weeks.flatMap(w => {
               const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
               return [
-                api.get('/api/analytics/cpa-all', { params: p }),
+                api.get('/api/analytics/cpa-all', { params: { ...p, date_base: cpaBase } }),
                 api.get('/api/analytics/quality-all', { params: p }),
               ];
             }),
@@ -251,7 +253,7 @@ export default function AnalyticsPage() {
           weeks.map(async (w) => {
             const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
             const [cpaRes, qualRes] = await Promise.all([
-              api.get('/api/analytics/cpa-all', { params }),
+              api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
               api.get('/api/analytics/quality-all', { params }),
             ]);
             return { weekLabel: w.label, cpa: cpaRes.data.data, qual: qualRes.data.data };
@@ -283,7 +285,7 @@ export default function AnalyticsPage() {
         if (!customFrom || !customTo) return;
         const params = { period: 'custom', date_from: customFrom, date_to: customTo };
         const [cpaRes, qualRes] = await Promise.all([
-          api.get('/api/analytics/cpa-all', { params }),
+          api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
           api.get('/api/analytics/quality-all', { params }),
         ]);
         setCpaData(cpaRes.data.data);
@@ -295,7 +297,7 @@ export default function AnalyticsPage() {
           ? { period: 'monthly', date: `${selectedMonth}-15` }
           : { period: 'cumulative', date: new Date().toISOString().slice(0, 10) };
         const [cpaRes, qualRes] = await Promise.all([
-          api.get('/api/analytics/cpa-all', { params }),
+          api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
           api.get('/api/analytics/quality-all', { params }),
         ]);
         setCpaData(cpaRes.data.data);
@@ -307,7 +309,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths]);
+  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths, cpaBase]);
 
   useEffect(() => {
     if (user && (['admin','manager','consultant'].includes(user.role))) {
@@ -559,6 +561,8 @@ export default function AnalyticsPage() {
     try {
       const params = new URLSearchParams({ status, date_from: dateFrom, date_to: dateTo });
       if (userId) params.append('user_id', userId);
+      // CPAの内定ドリルダウンは一覧と同じ日付基準に合わせる（acquisition→created / naitei→naitei）
+      if (status === 'NAITEI') params.append('date_base', cpaBase === 'naitei' ? 'naitei' : 'created');
       const { data: res } = await api.get(`/api/analytics/quality-industry-detail?${params}`);
       if (res.success) {
         setIndustryModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
@@ -914,6 +918,28 @@ export default function AnalyticsPage() {
                 }`}>案件質向上</button>
             </div>
           </div>
+
+          {/* CPA 集計の日付基準（CPA指標タブのみ） */}
+          {tab === 'cpa' && (
+            <div>
+              <label className="input-label">集計基準</label>
+              <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                {[
+                  { value: 'acquisition', label: '案件獲得日' },
+                  { value: 'naitei', label: '内定日' },
+                ].map(b => (
+                  <button key={b.value}
+                    onClick={() => setCpaBase(b.value)}
+                    title={b.value === 'naitei'
+                      ? 'コスト/コール/案件数は獲得日、面接数は面接実施日、内定/不合格/バラシ失注/入金/売上は内定日で集計'
+                      : 'すべて案件獲得日で集計'}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      cpaBase === b.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>{b.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 手動補正ボタン */}
           <div>

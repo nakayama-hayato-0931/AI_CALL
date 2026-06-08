@@ -846,6 +846,10 @@ const importCostPdf = async (req, res, next) => {
 const getCpaAll = async (req, res, next) => {
   try {
     const period = req.query.period || 'monthly';
+    // 集計の日付基準:
+    //  - 'acquisition'(既定): すべて案件獲得日(created_at)基準
+    //  - 'naitei': 案件数/コール/コスト=獲得日のまま、面接数=面接実施日、内定/不合格/バラシ失注/入金/売上=内定日
+    const dateBase = req.query.date_base === 'naitei' ? 'naitei' : 'acquisition';
     let dateFrom, dateTo;
     if (req.query.date_from && req.query.date_to) {
       dateFrom = req.query.date_from;
@@ -965,17 +969,32 @@ const getCpaAll = async (req, res, next) => {
     }
 
     // 案件数・ステータス（全員分一括）- 4月以降のみ
+    // 日付基準（dateBase）:
+    //  - 案件数(project_count): 常に獲得日(created_at)
+    //  - 面接数(interview_count): naiteiモードは面接実施日(interview_date)、それ以外は獲得日
+    //  - 内定/不合格/バラシ失注: naiteiモードは内定日(naitei_date)、それ以外は獲得日
+    const projDateCol = 'DATE(p.created_at)';
+    const intvDateCol = dateBase === 'naitei' ? 'p.interview_date' : 'DATE(p.created_at)';
+    const outDateCol  = dateBase === 'naitei' ? 'p.naitei_date'    : 'DATE(p.created_at)';
     let projAll = [];
     if (systemDateFrom) {
       const [rows] = await pool.query(
         `SELECT p.owner_user_id as user_id,
-          COUNT(*) as project_count,
-          CAST(SUM(CASE WHEN p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
-          CAST(SUM(CASE WHEN p.status = 'NAITEI' THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
-          CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
-          CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
-         FROM projects p WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
-        [systemDateFrom, systemDateTo]
+          CAST(SUM(CASE WHEN ${projDateCol} BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as project_count,
+          CAST(SUM(CASE WHEN p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') AND ${intvDateCol} BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as interview_count,
+          CAST(SUM(CASE WHEN p.status = 'NAITEI' AND ${outDateCol} BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as naitei_count,
+          CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' AND ${outDateCol} BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
+          CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') AND ${outDateCol} BETWEEN ? AND ? THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
+         FROM projects p
+         WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND (
+           ${projDateCol} BETWEEN ? AND ?
+           OR (p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') AND ${intvDateCol} BETWEEN ? AND ?)
+           OR (p.status IN ('NAITEI','FUGOKAKU','BARASHI','LOST') AND ${outDateCol} BETWEEN ? AND ?)
+         )
+         GROUP BY p.owner_user_id`,
+        [systemDateFrom, systemDateTo, systemDateFrom, systemDateTo, systemDateFrom, systemDateTo,
+         systemDateFrom, systemDateTo, systemDateFrom, systemDateTo, systemDateFrom, systemDateTo,
+         systemDateFrom, systemDateTo, systemDateFrom, systemDateTo]
       );
       projAll = rows;
     }
@@ -1022,13 +1041,15 @@ const getCpaAll = async (req, res, next) => {
     }
 
     // 金額（全員分一括）- 4月以降のみ
+    // naiteiモードは内定日(naitei_date)基準、それ以外は獲得日(created_at)基準
+    const finDateCol = dateBase === 'naitei' ? 'p.naitei_date' : 'DATE(p.created_at)';
     let finAll = [];
     if (systemDateFrom) {
       const [rows] = await pool.query(
         `SELECT p.owner_user_id as user_id,
           COALESCE(SUM(ph.initial_payment), 0) as ip, COALESCE(SUM(ph.expected_revenue), 0) as er
          FROM project_hires ph JOIN projects p ON ph.project_id = p.id
-         WHERE p.is_legacy = 0 AND DATE(p.created_at) BETWEEN ? AND ? AND ph.is_cancelled = 0
+         WHERE p.is_legacy = 0 AND ${finDateCol} BETWEEN ? AND ? AND ph.is_cancelled = 0
          GROUP BY p.owner_user_id`,
         [systemDateFrom, systemDateTo]
       );
@@ -2244,15 +2265,19 @@ const getQualityIndustryDetail = async (req, res, next) => {
       userFilter = 'AND p.owner_user_id = ?';
       params.push(user_id);
     }
-    // NAITEI は naitei_date 基準、それ以外は created_at
-    const dateCol = status === 'NAITEI' ? 'p.naitei_date' : 'DATE(p.created_at)';
+    // NAITEI の日付基準: date_base='created' なら獲得日、それ以外(既定)は内定日。
+    //   （CPA一覧の集計基準=date_base に合わせてドリルダウンを一致させる）
+    // LOST/BARASHI は従来通り獲得日(created_at)。
+    const dateCol = status === 'NAITEI'
+      ? (req.query.date_base === 'created' ? 'DATE(p.created_at)' : 'p.naitei_date')
+      : 'DATE(p.created_at)';
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
     const [rows] = await pool.query(
       `SELECT ${CAT} AS industry_cat, COUNT(*) AS cnt
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
-       WHERE p.is_prospect = 0
+       WHERE p.is_prospect = 0 AND p.is_legacy = 0
          AND p.status = ?
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
@@ -2283,7 +2308,7 @@ const getQualityIndustryDetail = async (req, res, next) => {
            FROM project_hires
           GROUP BY project_id
        ) ph ON ph.project_id = p.id
-       WHERE p.is_prospect = 0
+       WHERE p.is_prospect = 0 AND p.is_legacy = 0
          AND p.status = ?
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
