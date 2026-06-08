@@ -280,7 +280,7 @@ const assignmentFilterSQL = `
 /**
  * 再ピックアップ除外SQL
  * - SKIP/PROJECT/RECALL/INTERESTED: 永久除外（再ピックアップ禁止）
- * - NO_ANSWER: 最終架電から1時間後以降に再ピックアップ可能
+ * - NO_ANSWER: 最終架電から2日後以降に再ピックアップ可能（リコール由来の不通のみ別途1時間後、endCall側で制御）
  * - NG: 最終架電から3ヶ月後以降に別オペレーターのみ再ピックアップ可能
  */
 const lastResultExclusionSQL = `
@@ -447,7 +447,7 @@ const getNextCallTarget = async (req, res, next) => {
       return ApiResponse.success(res, { target: untouchedRows[0], reason: 'untouched' });
     }
 
-    // 4. 前回不通 → 1時間後以降に再ピックアップ（すぐに対象化されると邪魔なため1時間あける）
+    // 4. 前回不通 → 2日後以降に再ピックアップ（リコール由来の不通は除く: recall_atで1時間後に再ピックアップ）
     const [noAnswerRows] = await pool.query(
       `SELECT c.*,
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
@@ -457,7 +457,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
@@ -758,7 +758,7 @@ const getCallList = async (req, res, next) => {
       return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
     }
 
-    // 4. 前回不通 → 1時間後以降に再ピックアップ（すぐに対象化されると邪魔なため1時間あける）
+    // 4. 前回不通 → 2日後以降に再ピックアップ（リコール由来の不通は除く: recall_atで1時間後に再ピックアップ）
     const remaining4 = LIST_SIZE - targets.length;
     const [retryRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -769,7 +769,7 @@ const getCallList = async (req, res, next) => {
          AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)
+         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${asFilter}

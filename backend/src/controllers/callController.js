@@ -329,6 +329,21 @@ const endCall = async (req, res, next) => {
       } catch (e) {
         logger.error(`[endCall] company_assignments挿入エラー: ${e.message}`);
       }
+      // リコール由来の不通: 既存 pending リコールがあれば recall_at を1時間後に再設定。
+      //   （通常の不通は companyController 側で2日後に再ピックアップ。リコールの不通のみ1時間後）
+      try {
+        const [bumped] = await pool.execute(
+          `UPDATE recall_tasks
+             SET recall_at = DATE_ADD(NOW(), INTERVAL 1 HOUR), call_id = ?
+           WHERE company_id = ? AND status = 'pending'`,
+          [id, call.company_id]
+        );
+        if (bumped.affectedRows > 0) {
+          logger.info(`[endCall] リコール不通: recall_atを1時間後に再設定 company=${call.company_id}, ${bumped.affectedRows}件`);
+        }
+      } catch (e) {
+        logger.error(`[endCall] リコール不通の再設定エラー: ${e.message}`);
+      }
     }
 
     // ロック解除

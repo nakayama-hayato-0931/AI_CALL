@@ -6,9 +6,9 @@
 
 ## 2026年6月 〜 直近
 
-### 不通(NO_ANSWER)の再ピックアップを2日後→1時間後に
-- 不通の再ピックアップ間隔を `INTERVAL 2 DAY` から `INTERVAL 1 HOUR` に変更（`companyController.js` の `getNextCallTarget` / `getCallList` の不通バケット）。
-- 直後（1時間未満）は対象化されず、1時間あけて再ピックアップされる。
+### 不通の再ピックアップ: リコール由来のみ1時間後、通常は従来通り2日後
+- 通常の不通(NO_ANSWER)は従来通り2日後に再ピックアップ（`companyController.js` の不通バケットは `INTERVAL 2 DAY` のまま）。
+- リコール企業への架電が不通だった場合のみ、`endCall`（`callController.js`）で同企業の `pending` リコールの `recall_at` を `NOW() + 1 HOUR` に再設定し、1時間後に recall_due として再ピックアップされるようにした（直後に再度対象化されて邪魔になる問題を解消）。
 
 ### リコールの重複作成防止 + 自動完了
 - **重複作成防止**: リコール企業に再架電して結果を再びリコールにした際、新規 recall_tasks を作らず、同企業の `pending` リコールを更新（recall_at / user_id / call_id）するように変更（`callController.js` endCall）。pending が無い場合のみ新規作成。
