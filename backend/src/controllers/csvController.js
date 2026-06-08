@@ -5,9 +5,9 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
+const fflate = require('fflate');
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
@@ -80,22 +80,18 @@ const parseExcelFile = async (filePath) => {
 
 /**
  * 巨大xlsx をストリーミング展開してパース。
- * - unzip -p で xl/worksheets/sheet1.xml を stdout に流す
- * - チャンクを蓄積し <row>...</row> を逐次切り出す
+ * - fflate.unzipSync で xl/worksheets/sheet1.xml だけ取り出す（他エントリは無視）
+ * - 展開した Uint8Array を Buffer 化してチャンクごとに XML パース
  * - 各 row の <c r="A2" t="inlineStr"><is><t>VALUE</t></is></c> 等から値を抽出
- *   （inlineStr / 数値 v / sharedStringsは未使用前提）
+ *   （inlineStr / 数値 v / sharedStrings 未使用前提）
  * - 1行目はヘッダー、それ以降はデータ。列名は COLUMN_MAP で正規化。
+ *
+ * 注: sheet1.xml が Node の String 上限(~536MB)を超える場合、全文を一度に
+ *     String 化できない。そのため fflate で UInt8Array にしたバッファを
+ *     32MB ずつスライスして文字列化＋XMLパースで逐次処理する。
  */
 const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
-  const proc = spawn('unzip', ['-p', filePath, 'xl/worksheets/sheet1.xml']);
-  let stderr = '';
-  proc.stderr.on('data', d => { stderr += d.toString(); });
-  proc.on('error', err => reject(new Error(`unzip 起動失敗: ${err.message}`)));
-
-  let buffer = '';
-  let headerByCol = null; // { A: 'company_name', B: 'phone_number', ... }
-  const records = [];
-
+  const decoder = new (require('util').TextDecoder)('utf-8', { fatal: false });
   const decodeEntities = (s) => s
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
@@ -104,8 +100,13 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
 
   const colLetter = (ref) => (ref.match(/^[A-Z]+/) || [''])[0];
 
+  let buffer = '';
+  let headerByCol = null;
+  const records = [];
+  let sheetFound = false;
+  let done = false;
+
   const parseRow = (rowXml) => {
-    // セル単位に分解。<c ...>...</c> （<c .../> 空セルもあり）
     const cells = {};
     const cellRe = /<c\s+([^/>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
     let m;
@@ -115,30 +116,22 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
       const refMatch = attrs.match(/r="([A-Z]+\d+)"/);
       if (!refMatch) continue;
       const col = colLetter(refMatch[1]);
-      // inlineStr: <is><t>VALUE</t></is>
       let valMatch = content.match(/<t[^>]*>([\s\S]*?)<\/t>/);
-      if (!valMatch) {
-        // 数値: <v>VALUE</v>
-        valMatch = content.match(/<v>([\s\S]*?)<\/v>/);
-      }
+      if (!valMatch) valMatch = content.match(/<v>([\s\S]*?)<\/v>/);
       if (valMatch) cells[col] = decodeEntities(valMatch[1]).trim();
     }
     return cells;
   };
 
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk.toString('utf-8');
+  const processBuffer = () => {
     while (true) {
-      // <row...> の開始を見つける。終了タグまでが揃っていない場合は次のチャンクを待つ
       const start = buffer.indexOf('<row');
       if (start === -1) {
-        // <row 自体がまだ来ていない。<sheetData> までは捨ててOK
         if (buffer.length > 1024 * 1024) buffer = buffer.slice(-65536);
         break;
       }
       const end = buffer.indexOf('</row>', start);
       if (end === -1) {
-        // 行末まで未着信。startより前は不要なので捨てる
         buffer = buffer.slice(start);
         break;
       }
@@ -146,7 +139,6 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
       buffer = buffer.slice(end + '</row>'.length);
       const cells = parseRow(rowXml);
       if (!headerByCol) {
-        // 1行目をヘッダーに
         headerByCol = {};
         for (const [col, raw] of Object.entries(cells)) {
           headerByCol[col] = normalizeColumnName(raw);
@@ -157,18 +149,53 @@ const parseExcelHugeStream = (filePath) => new Promise((resolve, reject) => {
           const key = headerByCol[col];
           if (key) obj[key] = val;
         }
-        // 空行スキップ
         if (Object.values(obj).some(v => v && String(v).trim())) records.push(obj);
       }
     }
-  });
+  };
 
-  proc.stdout.on('end', () => {
-    if (records.length === 0 && !headerByCol) {
-      return reject(new Error(`xlsx を展開できませんでした（sheet1.xml 取得失敗）: ${stderr || 'unknown'}`));
+  // fflate ストリーミング Unzip: ファイルチャンクと解凍チャンク両方を逐次処理
+  const unzip = new fflate.Unzip();
+  unzip.register(fflate.UnzipInflate);
+  unzip.onfile = (file) => {
+    if (file.name !== 'xl/worksheets/sheet1.xml') return; // 他エントリは無視
+    sheetFound = true;
+    logger.info(`[parseExcelHugeStream] sheet1.xml 解凍開始 (圧縮=${file.size}, 非圧縮=${file.originalSize})`);
+    file.ondata = (err, data, final) => {
+      if (err) { done = true; return reject(new Error(`解凍エラー: ${err.message || err}`)); }
+      // data: Uint8Array チャンク
+      buffer += decoder.decode(data, { stream: !final });
+      processBuffer();
+      if (final) {
+        buffer += decoder.decode(); // フラッシュ
+        processBuffer();
+      }
+    };
+    file.start();
+  };
+
+  // xlsxファイルをストリームで読みつつ unzip に push
+  const stream = fs.createReadStream(filePath);
+  stream.on('data', (chunk) => {
+    if (done) return;
+    unzip.push(new Uint8Array(chunk), false);
+  });
+  stream.on('end', () => {
+    try {
+      unzip.push(new Uint8Array(0), true);
+    } catch (err) {
+      done = true;
+      return reject(new Error(`zip終端エラー: ${err.message}`));
+    }
+    if (!sheetFound) {
+      return reject(new Error('xl/worksheets/sheet1.xml が xlsx 内に見つかりません'));
     }
     logger.info(`[parseExcelHugeStream] パース完了: ${records.length}行 (headers=${Object.keys(headerByCol || {}).join(',')})`);
     resolve(records);
+  });
+  stream.on('error', (err) => {
+    done = true;
+    reject(new Error(`ファイル読込エラー: ${err.message}`));
   });
 });
 

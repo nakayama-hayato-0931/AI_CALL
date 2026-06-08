@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: 巨大xlsx展開を unzip コマンドから fflate(純粋JS)に変更
+- Railway環境に `unzip` コマンドが無く `spawn unzip ENOENT` で失敗していた問題を解消。
+- `fflate.Unzip` + `UnzipInflate` でストリーミング解凍に切替。`fs.createReadStream` で xlsx を読みつつ、解凍チャンクを `TextDecoder(stream)` でデコード → `<row>` 単位で逐次パース。
+- 依存追加: `fflate@^0.8`（純粋JS、30KB、依存ゼロ）。
+- 動作確認: 60万行/800MB の xlsx → ピークメモリ 1.1GB、37秒でパース完了。
+
 ### CSVインポート: Node heap 4GB に拡張
 - 巨大xlsx（60万行/800MB）のパース+取り込み中にOOMで500になる症状を回避するため、`start` スクリプトに `--max-old-space-size=4096` を追加。
 - 既存の `importCompanies` の catch は `message` を含む500レスポンスを返すため、Networkタブで Response 本文を確認すれば原因が特定可能。
