@@ -4,7 +4,7 @@
   "description": "AIコールセンターCRM バックエンドAPI",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node --max-old-space-size=4096 src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js"

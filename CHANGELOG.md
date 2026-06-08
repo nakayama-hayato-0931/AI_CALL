@@ -6,6 +6,10 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: Node heap 4GB に拡張
+- 巨大xlsx（60万行/800MB）のパース+取り込み中にOOMで500になる症状を回避するため、`start` スクリプトに `--max-old-space-size=4096` を追加。
+- 既存の `importCompanies` の catch は `message` を含む500レスポンスを返すため、Networkタブで Response 本文を確認すれば原因が特定可能。
+
 ### CSVインポート: 巨大ファイル受信のサーバー側設定
 - multer のファイルサイズ上限を 50MB → **1GB** に拡張（全業界まとめ.xlsx 800MB級対応）。
 - multer の `fileSize` / `fileFilter` エラーを JSON 400 で返すエラーハンドラを追加（従来は HTML エラーが返り、CORS ヘッダ欠落でブラウザ側ではCORSエラー扱いに見えていた）。
