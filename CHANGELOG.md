@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: 巨大ファイル受信のサーバー側設定
+- multer のファイルサイズ上限を 50MB → **1GB** に拡張（全業界まとめ.xlsx 800MB級対応）。
+- multer の `fileSize` / `fileFilter` エラーを JSON 400 で返すエラーハンドラを追加（従来は HTML エラーが返り、CORS ヘッダ欠落でブラウザ側ではCORSエラー扱いに見えていた）。
+- Node HTTP サーバーの `requestTimeout=0`（無制限）/ `headersTimeout=60min` / `setTimeout(0)` で、巨大アップロード〜長時間インポートの応答を切断しないよう設定。
+
 ### CSVインポート: 大規模ファイル対応 - バッチINSERT + チャンクcommit
 - 60万行クラス（全業界まとめ等）の一括取り込みを現実的な時間で完了させるため、INSERT処理を全面バッチ化。
   - **新規INSERTは500件ずつ multi-row INSERT**（1件ずつ await の直列処理 → まとめて1往復）。

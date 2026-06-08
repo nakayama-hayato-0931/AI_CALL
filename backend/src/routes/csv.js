@@ -13,7 +13,7 @@ const ALLOWED_EXTENSIONS = ['.csv', '.xls', '.xlsx'];
 const upload = multer({
   dest: path.join(__dirname, '../../uploads/'),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB上限
+    fileSize: 1024 * 1024 * 1024, // 1GB上限（全業界まとめ等の巨大xlsx想定）
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -25,13 +25,25 @@ const upload = multer({
   },
 });
 
+// multer エラーを JSON で返す（デフォルトは HTML エラーで CORS ヘッダも無いため
+// ブラウザ側でCORSエラー扱いになりがち）
+const handleUploadError = (err, req, res, next) => {
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      message: `アップロード失敗: ${err.code || ''} ${err.message || err}`,
+    });
+  }
+  next();
+};
+
 router.use(authenticate);
 
 // POST /api/csv/import - 架電リストインポート (オペレーターも自作リスト用に許可)
-router.post('/import', upload.single('file'), importCompanies);
+router.post('/import', upload.single('file'), handleUploadError, importCompanies);
 
 // POST /api/csv/import-exclusion?list_type=ng|existing_project - 除外リストインポート (マネージャー以上)
-router.post('/import-exclusion', requireEditor, upload.single('file'), importExclusionList);
+router.post('/import-exclusion', requireEditor, upload.single('file'), handleUploadError, importExclusionList);
 
 // GET /api/csv/exclusion-stats - 除外リスト統計（件数・最終更新日）
 router.get('/exclusion-stats', getExclusionStats);
@@ -43,7 +55,7 @@ router.post('/manual-company', manualAddCompany);
 router.post('/manual-exclusion', requireEditor, manualAddExclusion);
 
 // POST /api/csv/import-special - 特別リストインポート (マネージャー以上)
-router.post('/import-special', requireEditor, upload.single('file'), importSpecialList);
+router.post('/import-special', requireEditor, upload.single('file'), handleUploadError, importSpecialList);
 
 // POST /api/csv/manual-special - 特別リスト手動登録 (全ユーザー: 失注・バラシ案件の再架電用)
 router.post('/manual-special', manualAddSpecial);

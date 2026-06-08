@@ -675,12 +675,21 @@ const runMigrations = async () => {
 };
 runMigrations();
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`=================================`);
   logger.info(`AIコールセンターCRM API起動`);
   logger.info(`ポート: ${PORT}`);
   logger.info(`環境: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`=================================`);
 });
+// 大規模CSVインポート対応: アップロード+処理で長時間応答する余地を残す
+//   - requestTimeout: リクエスト受信完了までの猶予（巨大アップロード用）
+//   - headersTimeout: ヘッダ受信タイムアウト
+//   - keepAliveTimeout: アイドル接続のkeep-alive上限
+server.requestTimeout = 0;            // 0 = 無制限（インポート完了まで切らない）
+server.headersTimeout = 60 * 60 * 1000; // 60分
+server.keepAliveTimeout = 65 * 1000;  // 65s (ALB等とのミスマッチ回避)
+// 既存のレガシーAPIで使われていた server.setTimeout も0で無効化
+try { server.setTimeout(0); } catch (e) {}
 
 module.exports = app;
