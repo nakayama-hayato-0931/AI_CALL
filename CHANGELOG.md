@@ -6,6 +6,9 @@
 
 ## 2026年6月 〜 直近
 
+### 架電画面: NG理由に選択肢追加
+- NG理由に「経験者(専門分野を学習含む)のみ」を追加（`call.js`、「アルバイトだけ(正社員NG)」の下）。
+
 ### CPA: 内定内訳に求職者の登録番号を表示
 - 内定の業種別内訳モーダルの案件明細に「登録番号」列を追加（NAITEI時のみ）。
 - `getQualityIndustryDetail` の明細で `project_hires.registration_number` を `GROUP_CONCAT` し、1案件に複数内定者がいる場合はカンマ区切りで表示。

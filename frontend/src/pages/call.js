@@ -1283,6 +1283,7 @@ export default function CallPage() {
                       <option value="技人国NG">技人国NG</option>
                       <option value="特定技能のみ募集中">特定技能のみ募集中</option>
                       <option value="アルバイトだけ(正社員NG)">アルバイトだけ(正社員NG)</option>
+                      <option value="経験者(専門分野を学習含む)のみ">経験者(専門分野を学習含む)のみ</option>
                       <option value="今忙しい(対応不可)">今忙しい(対応不可)</option>
                       <option value="ハローワークからしか募集していない">ハローワークからしか募集していない</option>
                       <option value="決まったところ(ハローワーク以外)からしか募集していない">決まったところ(ハローワーク以外)からしか募集していない</option>
