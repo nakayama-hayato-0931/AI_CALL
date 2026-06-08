@@ -381,6 +381,81 @@ const importCompanies = async (req, res, next) => {
       const importedPhones = new Set();
       const importedNames = new Set();
 
+      // ===== バッチINSERT用 =====
+      // 60万行クラスの一括取り込みに耐えるため、新規INSERTはチャンクでmulti-row INSERTする。
+      // 1件ずつ await すると Railway-MySQL の往復で 1行あたり数十msかかり数時間〜半日になるため。
+      const INSERT_BATCH_SIZE = 500;       // 1回のINSERTで挿入する行数
+      const COMMIT_BATCH_SIZE = 5000;      // 何件INSERTごとに commit/begin するか
+      const pendingInserts = [];            // 各要素: 11カラム値の配列
+      let lastCommittedAt = 0;              // 直近commit時点の累計insertedCount
+      const flushInserts = async () => {
+        if (pendingInserts.length === 0) return;
+        // multi-row INSERT
+        const COLS = '(company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)';
+        const oneTuple = '(?,?,?,?,?,?,?,?,?,?,?)';
+        const placeholders = pendingInserts.map(() => oneTuple).join(',');
+        const flat = pendingInserts.flatMap(v => v);
+        const [result] = await conn.query(
+          `INSERT INTO companies ${COLS} VALUES ${placeholders}`,
+          flat
+        );
+        // MySQL の multi-row INSERT は insertId に先頭idを返し、以降は連番。
+        const firstId = result.insertId;
+        // dbPhoneMap も更新（後続行の重複検知用）
+        for (let k = 0; k < pendingInserts.length; k++) {
+          const phone = pendingInserts[k][1];
+          dbPhoneMap.set(phone, { id: firstId + k, is_sales_list: isSalesList, imported_by_user_id: importedByUserId });
+        }
+        // 自作リスト時 → company_assignments もバッチINSERT
+        if (req.user.role === 'operator' && importedByUserId) {
+          const aPh = pendingInserts.map(() => '(?,?,?)').join(',');
+          const aFlat = [];
+          for (let k = 0; k < pendingInserts.length; k++) {
+            aFlat.push(firstId + k, req.user.id, req.user.id);
+          }
+          try {
+            await conn.query(
+              `INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by) VALUES ${aPh}`,
+              aFlat
+            );
+          } catch (e) { logger.warn(`[import] assignments batch error: ${e.message}`); }
+        }
+        // 優先オペレーター割り当て + 猶予期間
+        if (priorityOperatorIds.length > 0 && graceDays > 0) {
+          const ids = pendingInserts.map((_, k) => firstId + k);
+          // priority_expires_at をまとめて更新（IN句）
+          try {
+            await conn.query(
+              `UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id IN (${ids.map(() => '?').join(',')})`,
+              [graceDays, ...ids]
+            );
+            const aPh = [];
+            const aFlat = [];
+            for (const cid of ids) {
+              for (const opId of priorityOperatorIds) {
+                aPh.push('(?,?,?)');
+                aFlat.push(cid, opId, req.user.id);
+              }
+            }
+            if (aPh.length > 0) {
+              await conn.query(
+                `INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by) VALUES ${aPh.join(',')}`,
+                aFlat
+              );
+            }
+          } catch (e) { logger.warn(`[import] priority batch error: ${e.message}`); }
+        }
+        insertedCount += pendingInserts.length;
+        pendingInserts.length = 0;
+        // チャンクごとに commit / begin（ROLLBACK領域とメモリを抑える）
+        if (insertedCount - lastCommittedAt >= COMMIT_BATCH_SIZE) {
+          await conn.commit();
+          await conn.beginTransaction();
+          lastCommittedAt = insertedCount;
+          logger.info(`[import] progress: inserted=${insertedCount} / records=${records.length}`);
+        }
+      };
+
       for (let i = 0; i < records.length; i++) {
         const row = records[i];
         const lineNum = i + 2;
@@ -477,49 +552,22 @@ const importCompanies = async (req, res, next) => {
           }
         }
 
-        const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [companyName, phoneNumber, faxNumber, industry, jobType, comment, dataSource, region, address, importedByUserId, isSalesList]
-        );
-
-        // ファイル内 + DB重複防止
+        // ファイル内重複防止（バッチINSERT前にもガード）
         importedPhones.add(phoneNumber);
         importedNames.add(companyName);
-        dbPhoneMap.set(phoneNumber, { id: insertResult.insertId, is_sales_list: isSalesList, imported_by_user_id: importedByUserId });
 
-        if (req.user.role === 'operator') {
-          try {
-            await conn.execute(
-              'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-              [insertResult.insertId, req.user.id, req.user.id]
-            );
-          } catch (assignErr) {
-            if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
-          }
+        // バッチに積む（後で multi-row INSERT、assignments もまとめて挿入）
+        pendingInserts.push([
+          companyName, phoneNumber, faxNumber, industry, jobType, comment,
+          dataSource, region, address, importedByUserId, isSalesList,
+        ]);
+        if (pendingInserts.length >= INSERT_BATCH_SIZE) {
+          await flushInserts();
         }
-
-        // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
-        if (priorityOperatorIds.length > 0 && graceDays > 0) {
-          await conn.execute(
-            'UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?',
-            [graceDays, insertResult.insertId]
-          );
-          for (const opId of priorityOperatorIds) {
-            try {
-              await conn.execute(
-                'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-                [insertResult.insertId, opId, req.user.id]
-              );
-            } catch (assignErr) {
-              if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
-            }
-          }
-        }
-
-        insertedCount++;
       }
 
+      // 残りをフラッシュ
+      await flushInserts();
       await conn.commit();
     } catch (err) {
       await conn.rollback();

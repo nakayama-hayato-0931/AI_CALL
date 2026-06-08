@@ -6,6 +6,15 @@
 
 ## 2026年6月 〜 直近
 
+### CSVインポート: 大規模ファイル対応 - バッチINSERT + チャンクcommit
+- 60万行クラス（全業界まとめ等）の一括取り込みを現実的な時間で完了させるため、INSERT処理を全面バッチ化。
+  - **新規INSERTは500件ずつ multi-row INSERT**（1件ずつ await の直列処理 → まとめて1往復）。
+  - **`company_assignments`（自作リスト割り当て・優先オペレーター割り当て）も同じ500件単位でバッチINSERT IGNORE**。
+  - **5000件INSERTごとに commit → beginTransaction**（巨大ROLLBACK領域・undoログ肥大化を回避）。
+  - 5000件ごとに進捗ログ（`[import] progress: inserted=N / records=M`）。
+- 既存企業のUPDATE（自作リストへの移行）は従来通り1件ずつ。
+- 想定: ローカルテストで60万行のパース27秒。バッチINSERT化により、推定 数十分〜1時間 程度で取り込み完了見込み（DBレイテンシ次第）。
+
 ### CSVインポート: 「全業界まとめ」フォーマット & 巨大xlsx対応
 - 列名マッピングを拡張: `法人名称`/`法人名`/`事業者名`→`company_name`、`FAX番号`→`fax_number`、`業種(中分類1)`→`industry`、`法人サマリー`→`comment`、`サイトURL`/`URL`→`url`(commentに「URL: ...」で統合)。
 - 巨大xlsx（sheet1.xml が Node の String 上限 ~536MB を超える 800MB級）のパースに対応。通常の `xlsx` パッケージで失敗した場合、OSの `unzip -p` で `xl/worksheets/sheet1.xml` をストリーミング展開し、自前のXMLパーサーで `<row>` 単位に逐次処理（inlineStr/v 両対応）。
