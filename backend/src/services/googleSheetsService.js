@@ -254,4 +254,60 @@ const findTranscriptsBatch = async (calls) => {
   }
 };
 
-module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch };
+// ===== ビザ申請進捗シート（入金実績）キャッシュ（5分間保持） =====
+const VISA_CACHE_TTL = 5 * 60 * 1000; // 5分
+let visaCache = null; // { map: Map<登録番号, 入金実績(円)>, fetchedAt }
+
+/**
+ * 「ビザ申請 進捗」シートから 登録番号(G列) → 入金実績(CC列の数値×10000円) のマップを取得。
+ * - スプレッドシートID: env VISA_PROGRESS_SPREADSHEET_ID（未設定時は既定IDを使用）
+ * - サービスアカウントに該当スプレッドシートの閲覧権限が必要
+ * - 5分キャッシュ。シート未共有・エラー時は空Mapを返す（入金実績は0になる）
+ */
+const getVisaPaymentMap = async () => {
+  if (visaCache && (Date.now() - visaCache.fetchedAt) < VISA_CACHE_TTL) {
+    return visaCache.map;
+  }
+  const map = new Map();
+  try {
+    const sheets = await getClient();
+    const sheetId = process.env.VISA_PROGRESS_SPREADSHEET_ID || '1wPH1sud7dAwJQihiR6qDrH-otJ3ygAgcCAg-e4ituvw';
+    // G:CC を取得（G列=登録番号=index0, CC列=index74）
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: 'ビザ申請 進捗!G:CC',
+    });
+    const rows = response.data.values || [];
+    let count = 0;
+    for (const row of rows) {
+      const reg = String(row[0] || '').trim(); // G列
+      if (!reg) continue;
+      const ccRaw = row[74]; // CC列
+      const num = parseFloat(String(ccRaw == null ? '' : ccRaw).replace(/[^0-9.\-]/g, ''));
+      const yen = isNaN(num) ? 0 : Math.round(num * 10000);
+      // 同一登録番号が複数行ある場合は後勝ち
+      map.set(reg, yen);
+      map.set(reg.toUpperCase(), yen);
+      count++;
+    }
+    visaCache = { map, fetchedAt: Date.now() };
+    logger.info(`ビザ進捗シート取得: ${count}登録番号`);
+  } catch (err) {
+    logger.error(`ビザ進捗シート取得エラー: ${err.message}`);
+    // 失敗時は古いキャッシュがあればそれを、無ければ空Mapを返す
+    return visaCache ? visaCache.map : map;
+  }
+  return map;
+};
+
+/**
+ * 登録番号から入金実績(円)を引く。完全一致→大文字一致の順で照合。
+ */
+const lookupVisaPayment = (map, registrationNumber) => {
+  if (!map || !registrationNumber) return 0;
+  const reg = String(registrationNumber).trim();
+  if (!reg) return 0;
+  return map.get(reg) ?? map.get(reg.toUpperCase()) ?? 0;
+};
+
+module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch, getVisaPaymentMap, lookupVisaPayment };

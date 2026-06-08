@@ -425,6 +425,8 @@ export default function AnalyticsPage() {
     { key: 'initialPayment', label: '初回入金', format: 'yen', highlight: true },
     { key: 'expectedRevenue', label: '見込売上', format: 'yen' },
     { key: 'roas', label: 'ROAS', format: 'pct', highlight: true },
+    { key: 'actualPayment', label: '入金実績', format: 'yen', highlight: true },
+    { key: 'actualRoas', label: '実績ROAS', format: 'pct', highlight: true },
   ];
 
   // 案件質指標の列定義

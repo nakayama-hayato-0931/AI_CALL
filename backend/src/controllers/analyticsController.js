@@ -44,6 +44,7 @@ const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const { getDateRange } = require('../utils/periodHelper');
 const logger = require('../utils/logger');
+const { getVisaPaymentMap, lookupVisaPayment } = require('../services/googleSheetsService');
 
 const HOURLY_RATE = 1500; // 時給（円）
 const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
@@ -1057,6 +1058,30 @@ const getCpaAll = async (req, res, next) => {
     }
     const finMap = new Map(finAll.map(r => [r.user_id, { ip: Number(r.ip), er: Number(r.er) }]));
 
+    // 入金実績（全員分）- 内定者の登録番号を「ビザ申請 進捗」シートで照合し、CC列×10000円を合算
+    // - 対象は finMap と同じ集計（finDateCol 基準・is_legacy=0・未取消の内定者）
+    // - シート未共有/エラー時は visaMap が空 → 入金実績は全員0（既存指標には影響なし）
+    const actualPaymentMap = new Map();
+    if (systemDateFrom) {
+      try {
+        const visaMap = await getVisaPaymentMap();
+        if (visaMap && visaMap.size > 0) {
+          const [regRows] = await pool.query(
+            `SELECT p.owner_user_id as user_id, ph.registration_number as reg
+             FROM project_hires ph JOIN projects p ON ph.project_id = p.id
+             WHERE p.is_legacy = 0 AND ${finDateCol} BETWEEN ? AND ? AND ph.is_cancelled = 0
+               AND ph.registration_number IS NOT NULL AND ph.registration_number != ''`,
+            [systemDateFrom, systemDateTo]
+          );
+          for (const r of regRows) {
+            const yen = lookupVisaPayment(visaMap, r.reg);
+            if (yen) actualPaymentMap.set(r.user_id, (actualPaymentMap.get(r.user_id) || 0) + yen);
+          }
+        }
+      } catch (e) { logger.warn(`[getCpaAll] 入金実績集計スキップ: ${e.message}`); }
+    }
+    const teamActualPayment = [...actualPaymentMap.values()].reduce((s, v) => s + v, 0);
+
     // チーム全体
     const teamCost = [...costMap.values()].reduce((s, v) => s + v, 0);
     const teamWorkHours = [...workHoursMap.values()].reduce((s, v) => s + v, 0);
@@ -1069,9 +1094,10 @@ const getCpaAll = async (req, res, next) => {
     const teamIp = finAll.reduce((s, r) => s + Number(r.ip), 0);
     const teamEr = finAll.reduce((s, r) => s + Number(r.er), 0);
 
-    const buildRow = (cost, calls, proj, fin) => {
+    const buildRow = (cost, calls, proj, fin, actualPayment = 0) => {
       const pc = proj ? Number(proj.project_count) : 0;
       const ic = proj ? Number(proj.interview_count) : 0;
+      const ap = Number(actualPayment) || 0;
       return {
         cost,
         callCount: calls,
@@ -1087,6 +1113,9 @@ const getCpaAll = async (req, res, next) => {
         initialPayment: fin ? fin.ip : 0,
         expectedRevenue: fin ? fin.er : 0,
         roas: cost > 0 && fin ? Math.round(fin.ip / cost * 10000) / 100 : 0,
+        // 入金実績（ビザ申請進捗シート由来）と、その実績で出すROAS
+        actualPayment: ap,
+        actualRoas: cost > 0 ? Math.round(ap / cost * 10000) / 100 : 0,
       };
     };
 
@@ -1188,13 +1217,14 @@ const getCpaAll = async (req, res, next) => {
               fugokaku_count: (curProj ? Number(curProj.fugokaku_count) : 0) + past.fugokaku,
               barashi_lost_count: (curProj ? Number(curProj.barashi_lost_count) : 0) + past.barashi,
             },
-            { ip: (curFin ? curFin.ip : 0) + past.ip, er: (curFin ? curFin.er : 0) + past.er }
+            { ip: (curFin ? curFin.ip : 0) + past.ip, er: (curFin ? curFin.er : 0) + past.er },
+            actualPaymentMap.get(u.id) || 0
           ),
         };
       }
       return {
         userId: u.id, name: u.name, role: u.role, isActive: !!u.is_active, workHours: curWorkHours,
-        ...buildRow(curCost, curCalls, curProj, curFin),
+        ...buildRow(curCost, curCalls, curProj, curFin, actualPaymentMap.get(u.id) || 0),
       };
     }).filter(op => {
       // 無効ユーザーは数値が1以上の時のみ含める
@@ -1209,7 +1239,7 @@ const getCpaAll = async (req, res, next) => {
       ...buildRow(effectiveTeamCost + pastCost + extraCostSum, teamCalls + pastCalls, {
         project_count: teamProjects + pastProjects, interview_count: teamInterviews + pastInterviews,
         naitei_count: teamNaitei + pastNaitei, fugokaku_count: teamFugokaku + pastFugokaku, barashi_lost_count: teamBarashiLost + pastBarashiLost,
-      }, { ip: teamIp + pastIp, er: teamEr + pastEr }),
+      }, { ip: teamIp + pastIp, er: teamEr + pastEr }, teamActualPayment),
       extraCost: extraCostSum,
       extraCostBreakdown,
       extraCostIncluded: includeExtra,

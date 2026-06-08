@@ -6,6 +6,14 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: 入金実績 + 実績ROAS 列を追加（ビザ申請進捗シート連携）
+- ROAS の右に「入金実績」「実績ROAS」列を追加（`analytics.js`）。
+- 入金実績 = 内定者の登録番号(`project_hires.registration_number`)を Google スプレッドシート「ビザ申請 進捗」シートの G列で照合し、一致行の CC列の数値×10,000円を合算（`googleSheetsService.getVisaPaymentMap`、5分キャッシュ）。
+- 実績ROAS = 入金実績 / コスト（既存ROASと同じ計算式、入金実績ベース）。
+- 集計対象は既存の初回入金(finMap)と同じ（finDateCol基準・is_legacy=0・未取消の内定者）。
+- スプレッドシートIDは env `VISA_PROGRESS_SPREADSHEET_ID`（未設定時は既定ID）。サービスアカウントに該当シートの閲覧権限が必要。未共有/エラー時は入金実績0（既存指標に影響なし）。
+- 注意: 過去シード(`past_cpa_data`)には登録番号が無いため入金実績は付かない（実案件分のみ）。
+
 ### 架電画面: NG理由に選択肢追加
 - NG理由に「経験者のみ(専門分野を学習含む)」を追加（`call.js`、「アルバイトだけ(正社員NG)」の下）。
 
