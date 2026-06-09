@@ -272,27 +272,50 @@ export default function DashboardPage() {
     const d = new Date().getDate();
     return Math.min(Math.ceil(d / 7), 5);
   });
-  const [analysis, setAnalysis] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = sessionStorage.getItem('dashboardAnalysis');
-        return saved ? JSON.parse(saved) : null;
-      } catch { return null; }
-    }
-    return null;
-  });
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisSavedAt, setAnalysisSavedAt] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  // 分析結果をsessionStorageに保持
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (analysis) {
-        sessionStorage.setItem('dashboardAnalysis', JSON.stringify(analysis));
-      } else {
-        sessionStorage.removeItem('dashboardAnalysis');
-      }
+  // ===== AI分析結果の永続化（localStorage、条件キー単位） =====
+  // 条件キー = scope|userId|period|date_from|date_to
+  // 同条件の前回実行結果を自動表示し、新規実行で上書き保存。
+  const ANALYSIS_STORE_KEY = 'dashboardAnalysisStore_v1';
+  const buildAnalysisKey = (scope, userId, period, dateFrom, dateTo) => `${scope}|${userId || ''}|${period}|${dateFrom || ''}|${dateTo || ''}`;
+  const loadAnalysisStore = () => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem(ANALYSIS_STORE_KEY) || '{}'); } catch { return {}; }
+  };
+  const saveAnalysisToStore = (key, data) => {
+    if (typeof window === 'undefined') return;
+    const store = loadAnalysisStore();
+    store[key] = { analysis: data, savedAt: new Date().toISOString() };
+    // 容量対策: 最大50件まで保持（古い順に削る）
+    const entries = Object.entries(store);
+    if (entries.length > 50) {
+      entries.sort((a, b) => (a[1].savedAt || '').localeCompare(b[1].savedAt || ''));
+      const trimmed = Object.fromEntries(entries.slice(-50));
+      try { localStorage.setItem(ANALYSIS_STORE_KEY, JSON.stringify(trimmed)); } catch {}
+    } else {
+      try { localStorage.setItem(ANALYSIS_STORE_KEY, JSON.stringify(store)); } catch {}
     }
-  }, [analysis]);
+  };
+
+  // 条件変更時に保存済み分析結果を自動ロード
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const range = calcAnalysisRange();
+    const key = buildAnalysisKey(analysisScope, analysisTargetUserId, kpiPeriod, range.date_from, range.date_to);
+    const store = loadAnalysisStore();
+    const found = store[key];
+    if (found) {
+      setAnalysis(found.analysis);
+      setAnalysisSavedAt(found.savedAt);
+    } else {
+      setAnalysis(null);
+      setAnalysisSavedAt(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisScope, analysisTargetUserId, kpiPeriod, kpiDate, customFrom, customTo, cumFrom, cumTo]);
 
   // 月内の週リストを計算
   const getWeeksInMonth = (yearMonth) => {
@@ -434,15 +457,18 @@ export default function DashboardPage() {
     try {
       setAnalysisLoading(true);
       setAnalysis(null);
+      setAnalysisSavedAt(null);
       const range = calcAnalysisRange();
+      const storeKey = buildAnalysisKey(analysisScope, analysisTargetUserId, kpiPeriod, range.date_from, range.date_to);
+      let finalData = null;
 
-            // directApi: バックエンド直接リクエスト（タイムアウト回避）
+      // directApi: バックエンド直接リクエスト（タイムアウト回避）
       if (analysisScope === 'team') {
         const { data } = await directApi.post('/api/ai/analysis/team', {
           period: kpiPeriod,
           ...range,
         });
-        if (data.success) setAnalysis(data.data);
+        if (data.success) { setAnalysis(data.data); finalData = data.data; }
       } else if (analysisTargetUserId) {
         // データ取得
         const { data } = await directApi.get(`/api/ai/analysis/operator/${analysisTargetUserId}`, {
@@ -450,6 +476,7 @@ export default function DashboardPage() {
         });
         if (data.success) {
           setAnalysis(data.data);
+          finalData = data.data;
           // AIコーチングも同時に取得
           try {
             const { data: coachData } = await directApi.post(`/api/ai/analysis/operator/${analysisTargetUserId}/coaching`, {
@@ -457,12 +484,19 @@ export default function DashboardPage() {
               ...range,
             });
             if (coachData.success) {
-              setAnalysis(prev => ({ ...prev, coaching: coachData.data }));
+              const merged = { ...data.data, coaching: coachData.data };
+              setAnalysis(merged);
+              finalData = merged;
             }
           } catch (coachErr) {
             console.warn('AIコーチング取得スキップ:', coachErr.response?.data?.message || coachErr.message);
           }
         }
+      }
+      // 取得成功なら保存（条件キー別に上書き）
+      if (finalData) {
+        saveAnalysisToStore(storeKey, finalData);
+        setAnalysisSavedAt(new Date().toISOString());
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || '分析に失敗しました';
@@ -908,13 +942,12 @@ export default function DashboardPage() {
           {/* スコープ切替 + 実行ボタン（期間は上部タブと共通） */}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-              <button onClick={() => { setAnalysisScope('team'); setAnalysis(null); }}
+              <button onClick={() => setAnalysisScope('team')}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   analysisScope === 'team' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}>全体</button>
               <button onClick={() => {
                 setAnalysisScope('operator');
-                setAnalysis(null);
                 if (operators.length > 0 && !analysisTargetUserId) setAnalysisTargetUserId(String(operators[0].id));
               }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
@@ -922,7 +955,7 @@ export default function DashboardPage() {
                 }`}>オペレーター別</button>
             </div>
             {analysisScope === 'operator' && (
-              <select value={analysisTargetUserId || ''} onChange={e => { setAnalysisTargetUserId(e.target.value); setAnalysis(null); }}
+              <select value={analysisTargetUserId || ''} onChange={e => setAnalysisTargetUserId(e.target.value)}
                 className="input text-sm py-1.5">
                 {operators.map(op => (
                   <option key={op.id} value={op.id}>{op.name}</option>
@@ -953,6 +986,14 @@ export default function DashboardPage() {
           {/* 分析結果 */}
           {analysis?.analysis ? (
             <div className="space-y-4">
+              {/* 実行日時バッジ（保存済み分析の場合） */}
+              {analysisSavedAt && (
+                <div className="flex items-center justify-end -mb-2">
+                  <span className="text-[11px] text-gray-400">
+                    分析実行: {new Date(analysisSavedAt).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              )}
               {/* スコア + サマリー */}
               <div className="flex items-start gap-4 bg-gray-50 rounded-lg p-4">
                 <ScoreCircle score={analysis.analysis.team_score} size={72} />
@@ -1216,17 +1257,7 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-4">
               <p className="text-sm text-gray-400">期間を選択して「分析実行」を押してください</p>
-              {typeof window !== 'undefined' && sessionStorage.getItem('dashboardAnalysis') && (
-                <button
-                  onClick={() => {
-                    try {
-                      const saved = JSON.parse(sessionStorage.getItem('dashboardAnalysis'));
-                      if (saved) setAnalysis(saved);
-                    } catch {}
-                  }}
-                  className="mt-2 text-xs text-blue-500 hover:text-blue-700 underline transition-colors"
-                >前回の分析結果を表示</button>
-              )}
+              <p className="text-[11px] text-gray-300 mt-1">※ 同じ条件で過去に実行した分析は自動的に再表示されます</p>
             </div>
           )}
         </div>
