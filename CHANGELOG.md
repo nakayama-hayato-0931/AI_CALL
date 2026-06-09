@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### 管理者向け: 案件数差分診断ツール
+- ダッシュボードと案件管理の案件数が合わない時の原因切り分け用。ダッシュボード上部に「案件数差分診断」ボタンを追加（管理者のみ）。
+- バックエンド `GET /api/admin/diagnose-projects?date_from=&date_to=` を新設。owner_user_id × call_type の集計を返す。
+- 集計差の最有力原因（案件管理は call_type フィルタなし、ダッシュボードは `call_type='operator'` で絞る）が user 別に可視化される。
+- 結果はクリック時に新ウィンドウで表として表示（オペレーター別の差分、call_type=null/sales/other の内訳）。
+
 ### ダッシュボードAI分析: 条件別に永続化（次回も自動表示）
 - 従来は sessionStorage に1件のみ保存（タブ閉じると消える＋条件を切り替えると消える）。
 - localStorage に **条件キー（scope/userId/period/date_from/date_to）別** に保存し、同条件で開き直すと過去実行結果を自動表示。

@@ -35,6 +35,7 @@ const {
   bulkSyncCustomers,
   updateCustomerMaster,
   importMissingFromFaxCrm,
+  diagnoseProjectCount,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -134,5 +135,8 @@ router.get('/customer-master/faxcrm-shadow-status', requireManager, async (req, 
   }
 });
 router.post('/customer-master/import-missing-from-faxcrm', requireEditor, importMissingFromFaxCrm);
+
+// ダッシュボードと案件管理の案件数差分診断（管理者）
+router.get('/diagnose-projects', requireManager, diagnoseProjectCount);
 
 module.exports = router;

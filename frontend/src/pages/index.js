@@ -507,6 +507,69 @@ export default function DashboardPage() {
     }
   };
 
+  // 案件数差分診断（管理者・ダッシュボードと案件管理の数値が合わない時に user 別の差分を確認）
+  // 期間を入力 → API を叩いて、結果を新ウィンドウに表として描画。
+  const runDiagnoseProjects = async () => {
+    const from = window.prompt('開始日 YYYY-MM-DD', '2026-06-01');
+    if (!from) return;
+    const to = window.prompt('終了日 YYYY-MM-DD', '2026-06-05');
+    if (!to) return;
+    try {
+      const { data } = await api.get('/api/admin/diagnose-projects', { params: { date_from: from, date_to: to } });
+      if (!data.success) { toast.error(data.message || '取得失敗'); return; }
+      const d = data.data;
+      const win = window.open('', '_blank', 'width=1100,height=700');
+      if (!win) { toast.error('ポップアップがブロックされました'); return; }
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+      const rowsHtml = (d.byUser || []).map(r => `
+        <tr ${r.diffVsOperatorDash !== 0 ? 'style="background:#fff7ed"' : ''}>
+          <td>${esc(r.name)}</td>
+          <td>${esc(r.role)}</td>
+          <td style="text-align:right">${r.projectsTotal}</td>
+          <td style="text-align:right">${r.dashboardOperator}</td>
+          <td style="text-align:right;font-weight:bold;color:${r.diffVsOperatorDash > 0 ? '#dc2626' : r.diffVsOperatorDash < 0 ? '#2563eb' : '#666'}">${r.diffVsOperatorDash > 0 ? '+' : ''}${r.diffVsOperatorDash}</td>
+          <td style="text-align:right">${r.callTypeBreakdown.operator}</td>
+          <td style="text-align:right">${r.callTypeBreakdown.sales}</td>
+          <td style="text-align:right">${r.callTypeBreakdown.null}</td>
+          <td style="text-align:right">${r.callTypeBreakdown.other}</td>
+          <td style="text-align:right">${r.dashboardSales}</td>
+        </tr>`).join('');
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>案件数差分診断</title>
+        <style>
+          body{font-family:sans-serif;font-size:13px;padding:16px;color:#1f2937}
+          h1{font-size:18px;margin:0 0 8px}
+          .note{background:#f3f4f6;padding:8px 12px;border-radius:6px;color:#4b5563;font-size:12px;margin-bottom:12px}
+          .totals{display:flex;gap:16px;margin-bottom:12px}
+          .totals div{background:#f0f9ff;padding:8px 12px;border-radius:6px}
+          table{border-collapse:collapse;width:100%}
+          th,td{border:1px solid #e5e7eb;padding:6px 8px}
+          th{background:#f9fafb;text-align:left;font-size:12px}
+          tr:hover{background:#fafafa}
+        </style></head><body>
+        <h1>案件数差分診断</h1>
+        <div class="note">期間: ${esc(d.dateFrom)} 〜 ${esc(d.dateTo)} / ${esc(d.note)}</div>
+        <div class="totals">
+          <div><b>案件管理(全call_type):</b> ${d.totals.projectsManagementTotal}件</div>
+          <div><b>ダッシュボード(operator):</b> ${d.totals.dashboardOperatorTotal}件</div>
+          <div><b>ダッシュボード(sales):</b> ${d.totals.dashboardSalesTotal}件</div>
+          <div style="background:#fef3c7"><b>合計差分:</b> ${d.totals.diff > 0 ? '+' : ''}${d.totals.diff}件</div>
+        </div>
+        <table>
+          <thead><tr>
+            <th>担当(owner)</th><th>役割</th>
+            <th>案件管理(全)</th><th>ダッシュ(op)</th><th>差分(管理-op)</th>
+            <th>op</th><th>sales</th><th>null</th><th>other</th><th>ダッシュ(sales)</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <p style="color:#9ca3af;font-size:11px;margin-top:12px">※ 差分のある行は薄オレンジ。「null」「sales」「other」列が大きい人ほど差が出ています（ダッシュは call_type='operator' のみカウントするため）。</p>
+        </body></html>`);
+      win.document.close();
+    } catch (err) {
+      toast.error(err.response?.data?.message || '診断に失敗しました');
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -545,6 +608,13 @@ export default function DashboardPage() {
                 </svg>
                 日報コピー
               </button>
+              {isManager && (
+                <button onClick={runDiagnoseProjects}
+                  title="ダッシュボードと案件管理の案件数が合わない時にユーザー別差分を表示"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition-colors">
+                  案件数差分診断
+                </button>
+              )}
             </div>
           </div>
         </div>

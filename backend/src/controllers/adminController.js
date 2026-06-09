@@ -1279,7 +1279,111 @@ module.exports = {
   bulkSyncCustomers,
   updateCustomerMaster,
   importMissingFromFaxCrm,
+  diagnoseProjectCount,
 };
+
+/**
+ * GET /api/admin/diagnose-projects?date_from=&date_to=
+ * ダッシュボードと案件管理の案件数差分をユーザー別に診断する。
+ * ダッシュボード: call_type を必ず絞る（operator/sales）
+ * 案件管理: call_type 未指定なら絞らない
+ * → 差分は call_type=NULL（古い案件）/ 別 call_type の案件が原因の可能性が高い。
+ */
+async function diagnoseProjectCount(req, res, next) {
+  try {
+    const { date_from, date_to } = req.query;
+    if (!date_from || !date_to) {
+      return ApiResponse.badRequest(res, 'date_from と date_to が必要です');
+    }
+    // 案件管理ベース（call_type フィルタなし）
+    const [projAll] = await pool.query(
+      `SELECT p.owner_user_id, p.call_type, COUNT(*) as cnt
+       FROM projects p
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND p.created_at >= ? AND p.created_at <= ?
+       GROUP BY p.owner_user_id, p.call_type`,
+      [date_from, `${date_to} 23:59:59`]
+    );
+    // ダッシュボードベース（call_type='operator' で絞る）
+    const [dashOp] = await pool.query(
+      `SELECT p.owner_user_id, COUNT(*) as cnt
+       FROM projects p
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND DATE(p.created_at) BETWEEN ? AND ?
+         AND p.call_type = 'operator'
+       GROUP BY p.owner_user_id`,
+      [date_from, date_to]
+    );
+    // sales 集計も併記
+    const [dashSales] = await pool.query(
+      `SELECT p.owner_user_id, COUNT(*) as cnt
+       FROM projects p
+       WHERE p.is_legacy = 0 AND p.is_prospect = 0
+         AND DATE(p.created_at) BETWEEN ? AND ?
+         AND p.call_type = 'sales'
+       GROUP BY p.owner_user_id`,
+      [date_from, date_to]
+    );
+    // ユーザー名解決
+    const [users] = await pool.query(
+      "SELECT id, name, role FROM users"
+    );
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    // ユーザー別に集計
+    const byUser = new Map();
+    const ensure = (uid) => {
+      const k = uid == null ? 0 : uid;
+      if (!byUser.has(k)) byUser.set(k, {
+        userId: k, name: userMap.get(k)?.name || (k === 0 ? '(オーナー未設定)' : `id=${k}`),
+        role: userMap.get(k)?.role || '-',
+        projectsTotal: 0, callTypeBreakdown: { operator: 0, sales: 0, null: 0, other: 0 },
+        dashboardOperator: 0, dashboardSales: 0,
+        diffVsOperatorDash: 0,
+      });
+      return byUser.get(k);
+    };
+
+    for (const r of projAll) {
+      const row = ensure(r.owner_user_id);
+      row.projectsTotal += Number(r.cnt);
+      const ct = r.call_type;
+      if (ct === 'operator') row.callTypeBreakdown.operator += Number(r.cnt);
+      else if (ct === 'sales') row.callTypeBreakdown.sales += Number(r.cnt);
+      else if (ct == null) row.callTypeBreakdown.null += Number(r.cnt);
+      else row.callTypeBreakdown.other += Number(r.cnt);
+    }
+    for (const r of dashOp) ensure(r.owner_user_id).dashboardOperator = Number(r.cnt);
+    for (const r of dashSales) ensure(r.owner_user_id).dashboardSales = Number(r.cnt);
+
+    // 差分計算: 案件管理(全call_type) vs ダッシュボードoperator分
+    const rows = [];
+    for (const v of byUser.values()) {
+      v.diffVsOperatorDash = v.projectsTotal - v.dashboardOperator;
+      rows.push(v);
+    }
+    rows.sort((a, b) => b.diffVsOperatorDash - a.diffVsOperatorDash);
+
+    // 合計
+    const totalProjects = rows.reduce((s, r) => s + r.projectsTotal, 0);
+    const totalDashOp = rows.reduce((s, r) => s + r.dashboardOperator, 0);
+    const totalDashSales = rows.reduce((s, r) => s + r.dashboardSales, 0);
+
+    return ApiResponse.success(res, {
+      dateFrom: date_from, dateTo: date_to,
+      totals: {
+        projectsManagementTotal: totalProjects,
+        dashboardOperatorTotal: totalDashOp,
+        dashboardSalesTotal: totalDashSales,
+        diff: totalProjects - totalDashOp,
+      },
+      byUser: rows,
+      note: 'ダッシュボードは call_type=operator(or sales) で絞り、案件管理は call_type フィルタなし。差分は call_type=null/sales の案件が原因。',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 const faxCrmClient = require('../services/faxCrmClient');
 
