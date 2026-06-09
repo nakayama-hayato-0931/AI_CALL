@@ -400,6 +400,10 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_companies_sales ON companies(is_sales_list, exclusion_flag, is_special)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_region ON companies(region)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_user_result ON calls(user_id, result_code, call_started_at)'); } catch (e) {}
+  // 架電リスト高速化(営業含む) - is_sales_list × 直近架電
+  try { await pool.execute('CREATE INDEX idx_companies_sales_lastcalled ON companies(is_sales_list, exclusion_flag, is_special, last_called_at)'); } catch (e) {}
+  // recall_tasks pending サブクエリ高速化
+  try { await pool.execute('CREATE INDEX idx_recall_tasks_status_company ON recall_tasks(status, company_id)'); } catch (e) {}
 
   // companies.region を address 先頭から都道府県名で正規化（毎回実行・冪等）
   // 既に正しい値なら何もしない（同値UPDATE）

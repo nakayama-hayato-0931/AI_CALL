@@ -9,6 +9,17 @@ const logger = require('../utils/logger');
 // ロックタイムアウト（分）
 const LOCK_TIMEOUT_MINUTES = 60;
 
+// 架電リスト短期キャッシュ（10秒、user+mode+industry+callType単位）
+// 15秒ポーリングで2回に1回はDBアクセスなしで即返却。
+// 架電完了/結果保存/ロック取得時に invalidateCallListCache() で無効化する。
+const CALL_LIST_CACHE_TTL_MS = 10 * 1000;
+const callListCache = new Map();
+const buildCallListCacheKey = (userId, callType, mode, industryParam) => `${userId}|${callType}|${mode}|${industryParam || ''}`;
+const invalidateCallListCache = (userId) => {
+  if (userId == null) { callListCache.clear(); return; }
+  for (const k of callListCache.keys()) if (k.startsWith(`${userId}|`)) callListCache.delete(k);
+};
+
 /**
  * ロックフィルタ条件（他ユーザーのロック中企業を除外、期限切れロックは許可）
  * さらに他ユーザーが現在通話中(result_code IS NULL)の企業は常に除外
@@ -514,6 +525,17 @@ const getCallList = async (req, res, next) => {
 
     // 架電種別（営業 or オペレーター）
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
+
+    // ===== 短期キャッシュ（10秒） =====
+    // 15秒間隔ポーリング前提で、2回に1回はDBクエリを丸ごとスキップ。
+    // excludeパラメータ（直前完了企業ID）付きは「次の架電先を取りに来た」操作なのでキャッシュしない。
+    const cacheKey = buildCallListCacheKey(userId, callType, req.query.mode || 'auto', req.query.industry || '');
+    if (!req.query.exclude) {
+      const cached = callListCache.get(cacheKey);
+      if (cached && (Date.now() - cached.at) < CALL_LIST_CACHE_TTL_MS) {
+        return ApiResponse.success(res, cached.payload);
+      }
+    }
     const salesListFilter = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
@@ -648,7 +670,9 @@ const getCallList = async (req, res, next) => {
          LIMIT ?`,
         [userId, LIST_SIZE]
       );
-      return ApiResponse.success(res, { targets: specialRows });
+      const payload = { targets: specialRows };
+      if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+      return ApiResponse.success(res, payload);
     }
 
     // 自作リストモード: 全件返す（上限1000件）
@@ -672,7 +696,9 @@ const getCallList = async (req, res, next) => {
          LIMIT 1000`,
         [userId, ...modeFilterParams]
       );
-      return ApiResponse.success(res, { targets: mylistRows });
+      const payload = { targets: mylistRows };
+      if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+      return ApiResponse.success(res, payload);
     }
 
     // 1. リコール期限（自分のリコールのみ）
@@ -694,12 +720,16 @@ const getCallList = async (req, res, next) => {
     excludeIds = targets.map(t => t.id);
 
     if (targets.length >= LIST_SIZE) {
-      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
+      const payload = { targets: targets.slice(0, LIST_SIZE) };
+      if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+      return ApiResponse.success(res, payload);
     }
 
-    // 2. ゴールデンタイム（割り当て優先）
-    const remaining2 = LIST_SIZE - targets.length;
-    const [goldenRows] = await pool.query(
+    // ===== Tier 2-5 を並列実行 =====
+    // 直列だと各ティアで重いサブクエリを毎回評価するため遅い（60万行クラスのDBで顕著）。
+    // Tier 1(recall) の結果のみを exclude として渡し、Tier 2-5 は独立クエリとして並列実行。
+    // 結果は優先順位順に Map で重複排除して結合 → LIMIT で切る。
+    const tier2Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -720,18 +750,9 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining2]
+      [userId, currentTime, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    targets.push(...goldenRows);
-    excludeIds = targets.map(t => t.id);
-
-    if (targets.length >= LIST_SIZE) {
-      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
-    }
-
-    // 3. 未接触（割り当て優先）
-    const remaining3 = LIST_SIZE - targets.length;
-    const [untouchedRows] = await pool.query(
+    const tier3Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -749,18 +770,9 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining3]
+      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    targets.push(...untouchedRows);
-    excludeIds = targets.map(t => t.id);
-
-    if (targets.length >= LIST_SIZE) {
-      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
-    }
-
-    // 4. 前回不通 → 2日後以降に再ピックアップ（リコール由来の不通は除く: recall_atで1時間後に再ピックアップ）
-    const remaining4 = LIST_SIZE - targets.length;
-    const [retryRows] = await pool.query(
+    const tier4Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -780,18 +792,9 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining4]
+      [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    targets.push(...retryRows);
-    excludeIds = targets.map(t => t.id);
-
-    if (targets.length >= LIST_SIZE) {
-      return ApiResponse.success(res, { targets: targets.slice(0, LIST_SIZE) });
-    }
-
-    // 5. 前回NG → 3ヶ月後以降に別OPのみ再ピックアップ
-    const remaining5 = LIST_SIZE - targets.length;
-    const [ngRetryRows] = await pool.query(
+    const tier5Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -812,20 +815,44 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, remaining5]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    targets.push(...ngRetryRows);
+
+    const [[goldenRows], [untouchedRows], [retryRows], [ngRetryRows]] = await Promise.all([
+      tier2Promise, tier3Promise, tier4Promise, tier5Promise,
+    ]);
+
+    // 優先順位順に重複排除しながら結合 (golden > untouched > retry_na > retry_ng)
+    const seen = new Set(targets.map(t => t.id));
+    const pushUnique = (arr) => {
+      for (const r of arr) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        targets.push(r);
+        if (targets.length >= LIST_SIZE) return true;
+      }
+      return false;
+    };
+    if (!pushUnique(goldenRows)) {
+      if (!pushUnique(untouchedRows)) {
+        if (!pushUnique(retryRows)) {
+          pushUnique(ngRetryRows);
+        }
+      }
+    }
 
     // デバッグ: 各ティアの件数をログ出力
     logger.info(`[getCallList] mode=${mode} user=${userId} recall=${recallRows.length} golden=${goldenRows.length} untouched=${untouchedRows.length} retry_na=${retryRows.length} retry_ng=${ngRetryRows.length} total=${targets.length}`);
 
-    return ApiResponse.success(res, { targets, debug: {
+    const payload = { targets: targets.slice(0, LIST_SIZE), debug: {
       recall: recallRows.length,
       golden: goldenRows.length,
       untouched: untouchedRows.length,
       retry_no_answer: retryRows.length,
       retry_ng: ngRetryRows.length,
-    } });
+    } };
+    if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+    return ApiResponse.success(res, payload);
   } catch (err) {
     logger.error(`[getCallList] ${err.code} ${err.message} sqlMessage=${err.sqlMessage} sql=${(err.sql || '').slice(0, 500)}`);
     return ApiResponse.error(res, `架電リスト取得失敗: ${err.sqlMessage || err.message}`, 500);
@@ -910,6 +937,8 @@ const lockCallTarget = async (req, res, next) => {
     );
 
     await conn.commit();
+    // 他ユーザーの架電リストキャッシュもこの企業を除外する必要があるため全クリア
+    invalidateCallListCache();
 
     // 企業情報 + 通話履歴を返す
     const [companyData] = await pool.execute('SELECT * FROM companies WHERE id = ?', [id]);
@@ -950,6 +979,7 @@ const unlockCallTarget = async (req, res, next) => {
       'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ? AND locked_by_user_id = ?',
       [id, userId]
     );
+    invalidateCallListCache();
 
     return ApiResponse.success(res, null, 'ロックを解除しました');
   } catch (err) {
@@ -1251,4 +1281,5 @@ module.exports = {
   createCompanyAction,
   updateCompanyAction,
   deleteCompanyAction,
+  invalidateCallListCache,
 };

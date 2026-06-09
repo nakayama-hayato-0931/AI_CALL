@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト(getCallList)の高速化（営業/オペレーター両方）
+- Tier 2-5（ゴールデン/未接触/不通リトライ/NGリトライ）を `Promise.all` で並列実行に変更。直列だと各ティアで重いサブクエリを順番に評価していたため遅かった（60万行クラスのDBで顕著）。
+- 10秒インメモリキャッシュ追加（user+mode+industry+callType単位）。15秒ポーリングで2回に1回はDBアクセスなしで即返却。
+- ロック取得/解除・通話結果保存時にキャッシュを無効化（架電済企業が他ユーザーのリストに残らないように）。
+- インデックス追加: `companies(is_sales_list, exclusion_flag, is_special, last_called_at)` / `recall_tasks(status, company_id)`。
+
 ### CSVインポート: ストリーミング処理化（records配列廃止、メモリ91MBに削減）
 - importCompanies が `parseFile()` で全行を records配列にロードしていたため、60万行で 1.1GB のメモリを消費しOOMでプロセスクラッシュ→CORSエラー表示になっていた問題を解消。
 - `parseFile/parseExcelFile/parseExcelHugeStream/parseCsvFile` に `onRow` コールバック引数を追加し、ストリーミング処理に対応。

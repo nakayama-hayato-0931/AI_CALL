@@ -7,6 +7,7 @@ const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { findTranscript, findTranscriptsBatch, findDurationsBatch } = require('../services/googleSheetsService');
 const faxCrmClient = require('../services/faxCrmClient');
+const { invalidateCallListCache } = require('./companyController');
 
 /**
  * POST /api/calls/start
@@ -355,6 +356,8 @@ const endCall = async (req, res, next) => {
     } catch (e) {
       logger.error(`[endCall] ロック解除エラー: ${e.message}`);
     }
+    // 架電リストキャッシュ無効化（この企業が架電済みになり、他ユーザーのリストにも影響）
+    invalidateCallListCache();
 
     logger.info(`通話結果登録: call=${id}, result=${result_code}${warnings.length ? `, warnings=${warnings.length}` : ''}`);
 
