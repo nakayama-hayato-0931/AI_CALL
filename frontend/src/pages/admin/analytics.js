@@ -1027,20 +1027,24 @@ export default function AnalyticsPage() {
             <button
               onClick={async () => {
                 const basis = window.confirm('OK=案件獲得日基準 / キャンセル=内定日基準') ? 'acquired' : 'offer';
-                if (!window.confirm('まず Google Sheets 同期を実行しますか？ (初回必須・10〜30秒)')) {
-                  // 同期せず月次のみ取得
-                } else {
+                let syncRes = null;
+                if (window.confirm('まず Google Sheets 同期を実行しますか? (初回必須・10〜30秒)')) {
                   try {
                     const { data: s } = await api.post('/api/cpa-v2/sync');
                     if (!s.success) { toast.error(s.message || '同期失敗'); return; }
-                    toast.success('同期完了: ' + JSON.stringify(s.data));
+                    syncRes = s.data;
+                    toast.success('同期完了');
                   } catch (e) { toast.error('同期失敗: ' + (e.response?.data?.message || e.message)); return; }
                 }
                 try {
-                  const { data } = await api.get('/api/cpa-v2/monthly', { params: { basis, months: 12 } });
-                  if (!data.success) { toast.error(data.message || '取得失敗'); return; }
-                  const rows = data.data.rows || [];
-                  const win = window.open('', '_blank', 'width=1200,height=700');
+                  const [monthlyRes, probeRes] = await Promise.all([
+                    api.get('/api/cpa-v2/monthly', { params: { basis, months: 12 } }),
+                    api.get('/api/cpa-v2/probe'),
+                  ]);
+                  if (!monthlyRes.data.success) { toast.error('月次取得失敗'); return; }
+                  const rows = monthlyRes.data.data.rows || [];
+                  const probe = probeRes.data.success ? probeRes.data.data : null;
+                  const win = window.open('', '_blank', 'width=1280,height=800');
                   if (!win) { toast.error('ポップアップがブロックされました'); return; }
                   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
                   const yen = (n) => '¥' + (Number(n) || 0).toLocaleString();
@@ -1058,13 +1062,28 @@ export default function AnalyticsPage() {
                       <td style="text-align:right">${yen(r.expected_revenue)}</td>
                       <td style="text-align:right;color:#dc2626;font-weight:bold">${yen(r.payment_actual)}</td>
                     </tr>`).join('');
+                  const kindHtml = (label, p) => {
+                    if (!p?.ok) return `<div style="color:#dc2626"><b>${esc(label)}</b>: 失敗 ${esc(p?.error || '')}</div>`;
+                    const entries = Object.entries(p.byKindValue || {}).sort((a,b)=>b[1]-a[1]);
+                    const dot = entries.map(([k,v]) => `<span style="display:inline-block;padding:2px 6px;margin:2px;border-radius:4px;background:${k==='架電バイト'?'#bbf7d0':k==='FAX受電'?'#fef3c7':'#f3f4f6'}"><code>${esc(k)}</code>: ${v}件</span>`).join('');
+                    return `<div style="margin:6px 0"><b>${esc(label)}</b> (全${p.totalDataRows}行): ${dot || '(空)'}</div>`;
+                  };
+                  const syncHtml = syncRes ? `<div class="box"><b>シート同期結果:</b><pre style="margin:4px 0 0;font-size:11px;background:#fff;padding:8px;border:1px solid #e5e7eb;max-height:200px;overflow:auto">${esc(JSON.stringify(syncRes, null, 2))}</pre></div>` : '';
+                  const probeHtml = probe ? `<div class="box"><b>シート診断 (期待値: <code style="background:#bbf7d0;padding:1px 4px">架電バイト</code>):</b>${kindHtml('売上シート (BE列)', probe.projects)}${kindHtml('求人情報 (H列)', probe.jobs)}${kindHtml('面接内訳 (NR列)', probe.interviews)}</div>` : '';
+                  const emptyMsg = rows.length === 0 ? '<div style="padding:16px;background:#fee2e2;border-radius:6px;color:#dc2626;margin:10px 0">集計結果0行。シート診断で「架電バイト」列の件数を確認してください。0件ならシートに該当データ無し、件数があれば同期エラーの可能性。</div>' : '';
                   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>新CPA(β)</title>
-                    <style>body{font-family:sans-serif;font-size:13px;padding:16px}
+                    <style>body{font-family:sans-serif;font-size:13px;padding:16px;color:#1f2937}
+                    h1{font-size:18px;margin:0 0 6px}
+                    .box{background:#f9fafb;padding:10px 14px;border-radius:6px;margin:10px 0;border:1px solid #e5e7eb}
                     table{border-collapse:collapse;width:100%}
                     th,td{border:1px solid #e5e7eb;padding:6px 8px}
-                    th{background:#f9fafb}</style></head><body>
+                    th{background:#f9fafb;font-size:12px}</style></head><body>
                     <h1>新CPA(β) — source_kind='架電バイト' / basis=${esc(basis)}</h1>
-                    <p style="color:#666">fax-crm と同一ロジック (集計コアのみ、コスト系は Phase 2)。3シート (ビザ申請 進捗 / 求人情報 / 2024_面接内訳) からの集計。</p>
+                    <p style="color:#666;margin:0">fax-crm と同一ロジック (集計コアのみ、コスト系は Phase 2)。</p>
+                    ${syncHtml}
+                    ${probeHtml}
+                    <h2 style="font-size:16px;margin:14px 0 4px">月別集計</h2>
+                    ${emptyMsg}
                     <table>
                       <thead><tr>
                         <th>月</th><th>案件数</th><th>バラシ</th><th>面接数</th><th>不合格</th>

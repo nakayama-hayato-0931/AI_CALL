@@ -123,4 +123,45 @@ router.post('/sync', async (req, res) => {
   }
 });
 
+// ----- 診断: 各シートの「source_kind 相当列」のユニーク値別件数 -----
+// 'FAX受電'/'架電バイト' などが期待値。シートに架電バイト行が無いと keep=0 になる。
+router.get('/probe', async (req, res) => {
+  try {
+    const { probeKindColumn } = require('../services/cpa-v2/_common');
+    const [pcfg, jcfg, icfg] = await Promise.all([
+      salesProj.getConfig(), jobPost.getConfig(), interview.getConfig(),
+    ]);
+    const out = {};
+    out.projects = pcfg?.projects_sheet_id ? await probeKindColumn({
+      spreadsheetId: pcfg.projects_sheet_id,
+      sheetName: pcfg.projects_sheet_name || 'ビザ申請 進捗',
+      rangePart: pcfg.projects_sheet_range || 'A1:CZ20000',
+      colLetter: 'BE',
+    }) : { ok: false, error: 'projects_sheet_id 未設定' };
+    out.jobs = jcfg?.jobs_sheet_id ? await probeKindColumn({
+      spreadsheetId: jcfg.jobs_sheet_id,
+      sheetName: jcfg.jobs_sheet_name || '求人情報',
+      rangePart: jcfg.jobs_sheet_range || 'A1:BZ20000',
+      colLetter: 'H',
+    }) : { ok: false, error: 'jobs_sheet_id 未設定' };
+    out.interviews = icfg?.interviews_sheet_id ? await probeKindColumn({
+      spreadsheetId: icfg.interviews_sheet_id,
+      sheetName: icfg.interviews_sheet_name || '2024_面接内訳',
+      rangePart: icfg.interviews_sheet_range || 'A1:OZ20000',
+      colLetter: 'NR',
+    }) : { ok: false, error: 'interviews_sheet_id 未設定' };
+    // 最終 sync ステータスも併記
+    out.lastSync = {
+      projects:   { at: pcfg?.projects_last_synced_at,   status: pcfg?.projects_last_sync_status,   message: pcfg?.projects_last_sync_message },
+      jobs:       { at: jcfg?.jobs_last_synced_at,       status: jcfg?.jobs_last_sync_status,       message: jcfg?.jobs_last_sync_message },
+      interviews: { at: icfg?.interviews_last_synced_at, status: icfg?.interviews_last_sync_status, message: icfg?.interviews_last_sync_message },
+    };
+    out.expectedKeepValue = '架電バイト';
+    return ApiResponse.success(res, out);
+  } catch (err) {
+    logger.error(`[cpa-v2 probe] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+});
+
 module.exports = router;

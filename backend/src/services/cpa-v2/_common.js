@@ -115,10 +115,38 @@ async function fetchSheetValues({ spreadsheetId, sheetName, rangePart }) {
   return resp.data.values || [];
 }
 
+/**
+ * 各シートの「source_kind 相当列」のユニーク値別件数を集計する診断ヘルパー。
+ * 期待値:
+ *   sales_projects/job_postings: 'FAX受電' / '架電バイト' などが見えるはず
+ *   interview_records: NR列に同様
+ */
+async function probeKindColumn({ spreadsheetId, sheetName, rangePart, colLetter }) {
+  const colIdx = colIndex(colLetter);
+  try {
+    const values = await fetchSheetValues({ spreadsheetId, sheetName, rangePart });
+    const counts = {};
+    let total = 0;
+    const sampleRows = [];
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r] || [];
+      total++;
+      const v = clean(row[colIdx]) || '(空)';
+      counts[v] = (counts[v] || 0) + 1;
+      if (sampleRows.length < 5) {
+        sampleRows.push({ row: r + 1, kindValue: v, snippet: (row || []).slice(0, 8).map(c => String(c == null ? '' : c).slice(0, 30)) });
+      }
+    }
+    return { ok: true, totalDataRows: total, byKindValue: counts, sampleRows };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   SOURCE_KIND_KEEP,
   getPool, isConfigured,
   parseDateCell, parseMoneyTimes10000, parseInt0, parseIntNullable, clean,
   colIndex, excelSerialToYMD,
-  getSheetsClient, fetchSheetValues,
+  getSheetsClient, fetchSheetValues, probeKindColumn,
 };
