@@ -140,6 +140,7 @@ const getNavSections = (role, adminView) => {
         items: [
           { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
           { href: '/call', label: '架電画面', icon: 'call' },
+          { href: '/recalls', label: 'リコール管理', icon: 'recall' },
         ],
       },
       {

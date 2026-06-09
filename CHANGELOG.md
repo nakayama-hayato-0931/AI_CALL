@@ -6,6 +6,10 @@
 
 ## 2026年6月 〜 直近
 
+### 営業アカウントでもリコール管理を表示
+- 営業の左メニュー「業務」セクションに「リコール管理」（`/recalls`）を追加（`Layout.jsx`）。
+- バックエンドAPIは元から認証のみで誰でも利用可（`req.user.id` でログインユーザーのリコールを返す）。
+
 ### 架電リスト高速化 第3弾（相関サブクエリ排除）
 - 一番重かった `(SELECT cl3.result_code FROM calls...ORDER BY started_at DESC LIMIT 1) = 'NO_ANSWER'/'NG'` の相関サブクエリ（60万行に対し毎行評価）を排除。
 - `companies` に **`last_call_result_code` / `last_call_user_id` カラムを追加**し、`endCall` 時に同期。ティア4/5は `c.last_call_result_code = 'NO_ANSWER'` のような単純条件で判定可能に（インデックス: `(last_call_result_code, last_called_at)`）。
