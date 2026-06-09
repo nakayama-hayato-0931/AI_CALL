@@ -6,6 +6,15 @@
 
 ## 2026年6月 〜 直近
 
+### インセンティブ管理: 新CPA(v2)データで内定日ベース集計
+- 既存の callcenter.projects ベース集計から、sales_projects_v2 (架電バイト/fax-crm互換) ベース集計に変更。
+- オペレーター紐付け: sales_projects_v2.job_number → callcenter.projects.owner_user_id → users.name で解決。
+- 内定社数: 同一job_numberの複数行(=複数内定者)は1社にユニーク化(Setで dedupe)。
+- 入金実績(payment_actual) と 実績ROAS をサマリ/オペレーター行/案件詳細/合計行に追加。
+- 案件詳細に「状態」(取消/辞退)列を追加。
+- インセンティブ画面に <Layout wide> を適用 (テーブル拡張対応)。
+- v2テーブル不在時は v1ロジックにフォールバック (try/catch)。
+
 ### 案件管理: 募集開始日 一括補完ボタン (管理者・マネージャー)
 - 4/1以降・書類選考あり・募集中・募集開始日未入力の案件すべてに、案件獲得日(DATE(created_at))と同日を一括入力する管理API/ボタンを追加。
 - バックエンド: `POST /api/admin/backfill-recruitment-start-date` (requireEditor)

@@ -2240,29 +2240,72 @@ async function getIncentiveData(req, res, next) {
        ORDER BY u.id ASC`
     );
 
-    // 内定案件（指定月の naitei_date）
-    const [projects] = await pool.query(
-      `SELECT
-         p.id AS project_id,
-         p.owner_user_id,
-         p.job_number,
-         p.naitei_date,
-         p.created_at AS acquired_at,
-         p.sales_user_id,
-         COALESCE(c.company_name, p.legacy_company_name) AS company_name,
-         su.name AS sales_name,
-         (SELECT COUNT(*) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS hire_count,
-         (SELECT COALESCE(SUM(ph.initial_payment), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS initial_payment,
-         (SELECT COALESCE(SUM(ph.expected_revenue), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS expected_revenue
-       FROM projects p
-       LEFT JOIN companies c ON p.company_id = c.id
-       LEFT JOIN users su ON p.sales_user_id = su.id
-       WHERE p.is_prospect = 0
-         AND p.status = 'NAITEI'
-         AND p.naitei_date BETWEEN ? AND ?
-       ORDER BY p.naitei_date DESC`,
-      [dateFrom, dateTo]
-    );
+    // 内定案件（指定月の offer_date、sales_projects_v2='架電バイト' から取得）
+    // - hire_count: 同一求人番号の行数 (= 合格人数)
+    // - owner_user_id: 求人番号で callcenter.projects→owner_user_id を解決 (LIMIT 1)
+    // - 取消/辞退も内定社1としてカウント(売上は0で記録、CPAv2と同じ仕様)
+    let projects = [];
+    try {
+      const [rows] = await pool.query(
+        `SELECT
+           sp.id AS project_id,
+           sp.job_number,
+           sp.offer_date AS naitei_date,
+           sp.acquired_date AS acquired_at,
+           sp.company_name,
+           sp.sales_owner AS sales_name,
+           sp.first_payment AS initial_payment,
+           sp.expected_revenue,
+           sp.payment_actual,
+           sp.is_cancelled,
+           sp.is_declined,
+           (SELECT u.id FROM projects p JOIN users u ON u.id = p.owner_user_id
+             WHERE p.job_number = sp.job_number AND p.is_legacy = 0 AND p.owner_user_id IS NOT NULL
+             ORDER BY p.created_at DESC LIMIT 1) AS owner_user_id
+         FROM sales_projects_v2 sp
+         WHERE sp.offer_date BETWEEN ? AND ?
+         ORDER BY sp.offer_date DESC`,
+        [dateFrom, dateTo]
+      );
+      projects = rows;
+    } catch (e) {
+      logger.warn(`[getIncentiveData] v2 fetch failed (fallback to v1): ${e.message}`);
+      // v2テーブル無しなら旧ロジックにフォールバック
+      const [rows] = await pool.query(
+        `SELECT
+           p.id AS project_id,
+           p.owner_user_id,
+           p.job_number,
+           p.naitei_date,
+           p.created_at AS acquired_at,
+           COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+           su.name AS sales_name,
+           (SELECT COUNT(*) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS hire_count,
+           (SELECT COALESCE(SUM(ph.initial_payment), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS initial_payment,
+           (SELECT COALESCE(SUM(ph.expected_revenue), 0) FROM project_hires ph WHERE ph.project_id = p.id AND ph.is_cancelled = 0) AS expected_revenue
+         FROM projects p
+         LEFT JOIN companies c ON p.company_id = c.id
+         LEFT JOIN users su ON p.sales_user_id = su.id
+         WHERE p.is_prospect = 0
+           AND p.status = 'NAITEI'
+           AND p.naitei_date BETWEEN ? AND ?
+         ORDER BY p.naitei_date DESC`,
+        [dateFrom, dateTo]
+      );
+      projects = rows;
+    }
+    // 求人番号(または会社名)ごとに hire_count を求める (同一企業=1社)
+    const hireCountByJob = new Map();
+    for (const p of projects) {
+      const k = (p.job_number && String(p.job_number).trim()) || p.company_name || '?';
+      hireCountByJob.set(k, (hireCountByJob.get(k) || 0) + 1);
+    }
+    // 各行に hire_count をセット (求人ごとの行数=合格人数)
+    for (const p of projects) {
+      if (p.hire_count != null) continue; // v1 fallback ならすでに入っている
+      const k = (p.job_number && String(p.job_number).trim()) || p.company_name || '?';
+      p.hire_count = hireCountByJob.get(k) || 1;
+    }
 
     // コスト計算（cost_records）
     const [costRows] = await pool.query(
@@ -2310,16 +2353,29 @@ async function getIncentiveData(req, res, next) {
       });
     }
 
+    // v2 (sales_projects_v2) は同一求人番号が複数行 = 1社で複数内定者。ユニーク社数で集計。
+    // v1 fallback では 1 project = 1社のためそのまま row 数 = 社数。
+    const isV2Mode = projects.length > 0 && Object.prototype.hasOwnProperty.call(projects[0], 'payment_actual');
+    const seenByOpJobKey = new Map(); // op.userId → Set<jobKey>
     for (const p of projects) {
       const op = operatorMap.get(p.owner_user_id);
       if (!op) continue;
+      const jobKey = (p.job_number && String(p.job_number).trim()) || p.company_name || `__pid_${p.project_id}`;
+      let setForOp = seenByOpJobKey.get(op.userId);
+      if (!setForOp) { setForOp = new Set(); seenByOpJobKey.set(op.userId, setForOp); }
+      const isNewCompany = !setForOp.has(jobKey);
+      setForOp.add(jobKey);
+
       const ip = Number(p.initial_payment) || 0;
       const er = Number(p.expected_revenue) || 0;
-      const hc = Number(p.hire_count) || 0;
-      op.naiteiCount++;
+      const ap = Number(p.payment_actual) || 0;
+      // 人数: v2 では 1行=1人、v1 では project_hires.COUNT(*)
+      const hc = isV2Mode ? 1 : (Number(p.hire_count) || 0);
+      if (isNewCompany) op.naiteiCount++;
       op.hireTotal += hc;
       op.initialPayment += ip;
       op.expectedRevenue += er;
+      op.actualPayment = (op.actualPayment || 0) + ap;
       op.projects.push({
         projectId: p.project_id,
         jobNumber: p.job_number,
@@ -2330,6 +2386,9 @@ async function getIncentiveData(req, res, next) {
         hireCount: hc,
         initialPayment: ip,
         expectedRevenue: er,
+        paymentActual: ap,
+        isCancelled: !!p.is_cancelled,
+        isDeclined: !!p.is_declined,
       });
     }
 
@@ -2352,9 +2411,11 @@ async function getIncentiveData(req, res, next) {
       hireTotal: operators.reduce((s, o) => s + o.hireTotal, 0),
       initialPayment: operators.reduce((s, o) => s + o.initialPayment, 0),
       expectedRevenue: operators.reduce((s, o) => s + o.expectedRevenue, 0),
+      actualPayment: operators.reduce((s, o) => s + (o.actualPayment || 0), 0),
       cost: operators.reduce((s, o) => s + o.cost, 0),
     };
     summary.roas = summary.cost > 0 ? Math.round(summary.initialPayment / summary.cost * 10000) / 100 : 0;
+    summary.actualRoas = summary.cost > 0 ? Math.round(summary.actualPayment / summary.cost * 10000) / 100 : 0;
 
     return ApiResponse.success(res, {
       month,

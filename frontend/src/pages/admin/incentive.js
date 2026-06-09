@@ -81,7 +81,7 @@ export default function IncentivePage() {
 
   if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
     return (
-      <Layout>
+      <Layout wide>
         <div className="p-6">権限がありません</div>
       </Layout>
     );
@@ -116,7 +116,7 @@ export default function IncentivePage() {
         </p>
 
         {/* サマリカード */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6">
           <SummaryCard
             label="内定社数合計"
             value={loading || !s ? '-' : `${s.naiteiCount}社`}
@@ -134,6 +134,11 @@ export default function IncentivePage() {
             color="border-teal-500"
           />
           <SummaryCard
+            label="入金実績合計"
+            value={loading || !s ? '-' : formatMoney(s.actualPayment || 0)}
+            color="border-red-500"
+          />
+          <SummaryCard
             label="コスト合計"
             value={loading || !s ? '-' : formatMoney(s.cost)}
             color="border-orange-500"
@@ -143,6 +148,12 @@ export default function IncentivePage() {
             value={loading || !s ? '-' : `${s.roas}%`}
             sub="初回入金 ÷ コスト"
             color={s && s.roas >= 100 ? 'border-green-600' : 'border-red-500'}
+          />
+          <SummaryCard
+            label="実績ROAS"
+            value={loading || !s ? '-' : `${s.actualRoas || 0}%`}
+            sub="入金実績 ÷ コスト"
+            color={s && (s.actualRoas || 0) >= 100 ? 'border-green-600' : 'border-red-500'}
           />
         </div>
 
@@ -160,14 +171,16 @@ export default function IncentivePage() {
                   <th className="px-3 py-2 text-right">内定人数</th>
                   <th className="px-3 py-2 text-right">初回入金</th>
                   <th className="px-3 py-2 text-right">見込入金</th>
+                  <th className="px-3 py-2 text-right">入金実績</th>
                   <th className="px-3 py-2 text-right">コスト</th>
                   <th className="px-3 py-2 text-right">ROAS</th>
+                  <th className="px-3 py-2 text-right">実績ROAS</th>
                 </tr>
               </thead>
               <tbody>
                 {data.operators.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-gray-500">
+                    <td colSpan={9} className="text-center py-8 text-gray-500">
                       対象オペレーターがいません
                     </td>
                   </tr>
@@ -196,14 +209,18 @@ export default function IncentivePage() {
                         </td>
                         <td className="px-3 py-2 text-right">{op.initialPayment ? formatMoney(op.initialPayment) : '-'}</td>
                         <td className="px-3 py-2 text-right">{op.expectedRevenue ? formatMoney(op.expectedRevenue) : '-'}</td>
+                        <td className="px-3 py-2 text-right text-red-700 font-semibold">{op.actualPayment ? formatMoney(op.actualPayment) : '-'}</td>
                         <td className="px-3 py-2 text-right">{op.cost ? formatMoney(op.cost) : '-'}</td>
                         <td className={`px-3 py-2 text-right font-semibold ${op.roas >= 100 ? 'text-green-700' : op.roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                           {op.cost > 0 ? `${op.roas}%` : '-'}
                         </td>
+                        <td className={`px-3 py-2 text-right font-semibold ${op.cost > 0 && (op.actualPayment / op.cost * 100) >= 100 ? 'text-green-700' : op.actualPayment > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {op.cost > 0 ? `${Math.round((op.actualPayment || 0) / op.cost * 10000) / 100}%` : '-'}
+                        </td>
                       </tr>
                       {isOpen && op.projects.length === 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={7} className="text-center py-3 text-gray-500 text-xs">
+                          <td colSpan={9} className="text-center py-3 text-gray-500 text-xs">
                             内定案件はありません
                           </td>
                         </tr>
@@ -215,8 +232,10 @@ export default function IncentivePage() {
                           <th className="px-3 py-1 text-right font-normal">内定人数</th>
                           <th className="px-3 py-1 text-right font-normal">初回入金</th>
                           <th className="px-3 py-1 text-right font-normal">見込入金</th>
+                          <th className="px-3 py-1 text-right font-normal">入金実績</th>
                           <th className="px-3 py-1 text-right font-normal">内定日</th>
                           <th className="px-3 py-1 text-right font-normal">担当営業</th>
+                          <th className="px-3 py-1 text-right font-normal">状態</th>
                         </tr>
                       )}
                       {isOpen && op.projects.map((p) => (
@@ -229,8 +248,14 @@ export default function IncentivePage() {
                           <td className="px-3 py-1 text-right">{p.hireCount || 0}人</td>
                           <td className="px-3 py-1 text-right">{formatMoney(p.initialPayment)}</td>
                           <td className="px-3 py-1 text-right">{formatMoney(p.expectedRevenue)}</td>
+                          <td className="px-3 py-1 text-right text-red-700">{formatMoney(p.paymentActual || 0)}</td>
                           <td className="px-3 py-1 text-right">{formatDate(p.naiteiDate)}</td>
                           <td className="px-3 py-1 text-right">{p.salesName || '-'}</td>
+                          <td className="px-3 py-1 text-right">
+                            {p.isCancelled ? <span className="text-red-600">取消</span>
+                              : p.isDeclined ? <span className="text-amber-600">辞退</span>
+                              : <span className="text-gray-400">-</span>}
+                          </td>
                         </tr>
                       ))}
                     </Fragment>
@@ -245,9 +270,13 @@ export default function IncentivePage() {
                     <td className="px-3 py-2 text-right">{s.hireTotal}人</td>
                     <td className="px-3 py-2 text-right">{formatMoney(s.initialPayment)}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(s.expectedRevenue)}</td>
+                    <td className="px-3 py-2 text-right text-red-700">{formatMoney(s.actualPayment || 0)}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(s.cost)}</td>
                     <td className={`px-3 py-2 text-right ${s.roas >= 100 ? 'text-green-700' : 'text-red-600'}`}>
                       {s.cost > 0 ? `${s.roas}%` : '-'}
+                    </td>
+                    <td className={`px-3 py-2 text-right ${(s.actualRoas || 0) >= 100 ? 'text-green-700' : 'text-red-600'}`}>
+                      {s.cost > 0 ? `${s.actualRoas || 0}%` : '-'}
                     </td>
                   </tr>
                 </tfoot>
