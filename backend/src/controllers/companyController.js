@@ -813,7 +813,11 @@ const getCallList = async (req, res, next) => {
        LIMIT ?`,
       [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    const tier4Promise = pool.query(
+    // フォールバック時（last_call_result_code カラム未追加）はティア4/5を完全スキップ。
+    // 相関サブクエリで60万行に対し毎行評価され壊滅的に遅くなるため。
+    // 未接触/ゴールデンで候補は十分埋まる。
+    const useFast = hasLastCallResultCol;
+    const tier4Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -834,8 +838,8 @@ const getCallList = async (req, res, next) => {
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
       [userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
-    );
-    const tier5Promise = pool.query(
+    ) : Promise.resolve([[]]);
+    const tier5Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
@@ -857,8 +861,11 @@ const getCallList = async (req, res, next) => {
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
       [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
-    );
+    ) : Promise.resolve([[]]);
 
+    if (!useFast) {
+      logger.warn('[getCallList] last_call_result_code 未追加のためティア4/5スキップ（fast path未有効）');
+    }
     const [[goldenRows], [untouchedRows], [retryRows], [ngRetryRows]] = await Promise.all([
       tier2Promise, tier3Promise, tier4Promise, tier5Promise,
     ]);

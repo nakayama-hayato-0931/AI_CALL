@@ -176,14 +176,36 @@ const pool = require('../config/database');
 // 起動前に必ず完了させるべきマイグレーション（新カラム追加など）。
 // これが完了しないうちにリクエストを受けると "Unknown column" エラーになる。
 const criticalPreflight = async () => {
-  // companies に新カラム追加（冪等）
-  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`); }
-    catch (e) { if (!String(e.message).includes('Duplicate column')) logger.warn(`[Preflight] add last_call_result_code: ${e.message}`); }
-  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`); }
-    catch (e) { if (!String(e.message).includes('Duplicate column')) logger.warn(`[Preflight] add last_call_user_id: ${e.message}`); }
-  // インデックスは無くてもクエリは動くので失敗してもOK
+  logger.info('[Preflight] start: checking companies schema...');
+  // 先にカラム有無を確認
+  let hasResultCol = false, hasUserCol = false;
+  try {
+    const [r1] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
+    hasResultCol = r1.length > 0;
+    const [r2] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_user_id'");
+    hasUserCol = r2.length > 0;
+    logger.info(`[Preflight] 既存カラム: result_code=${hasResultCol}, user_id=${hasUserCol}`);
+  } catch (e) {
+    logger.error(`[Preflight] SHOW COLUMNS失敗: ${e.message}`);
+  }
+  if (!hasResultCol) {
+    try {
+      await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`);
+      logger.info('[Preflight] last_call_result_code 追加完了');
+    } catch (e) { logger.error(`[Preflight] add last_call_result_code FAILED: ${e.code} ${e.message}`); }
+  }
+  if (!hasUserCol) {
+    try {
+      await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`);
+      logger.info('[Preflight] last_call_user_id 追加完了');
+    } catch (e) { logger.error(`[Preflight] add last_call_user_id FAILED: ${e.code} ${e.message}`); }
+  }
   try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
-  logger.info('[Preflight] critical schema updates done');
+  // 最終確認
+  try {
+    const [r] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
+    logger.info(`[Preflight] DONE: last_call_result_code = ${r.length > 0 ? 'OK' : 'MISSING'}`);
+  } catch (e) {}
 };
 
 const runMigrations = async () => {
