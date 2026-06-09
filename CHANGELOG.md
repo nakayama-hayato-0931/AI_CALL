@@ -6,6 +6,13 @@
 
 ## 2026年6月 〜 直近
 
+### CPA-v2: Sheets API レート制限対策 + 権限案内
+- 同期と診断を同時に投げて `Quota exceeded` (per-user 60req/min) でほぼ全失敗していた問題への対策。
+- `fetchSheetValues` に exponential backoff リトライ (429/quota 検知時、最大3回、30秒/60秒/90秒待機)。
+- `/api/cpa-v2/sync` で各シート間に 2秒待機を入れて緩和。
+- フロント: sync を実行した場合は probe をスキップ (同期結果に kept/skipped が出るため十分)。
+- 面接シート (1gHldK7...) の権限 (`The caller does not have permission`) はサービスアカウントへの共有が必要 — 運用で対応。
+
 ### CPA-v2: 新CPA(β) のプレビューに同期結果＋シート診断を追加
 - 「新CPA(β)」ボタン押下時、月別集計が0行のとき原因が分からない問題への対策。
 - 新ルート `GET /api/cpa-v2/probe` で各シートの source_kind 相当列(BE/H/NR)のユニーク値別件数を返す。

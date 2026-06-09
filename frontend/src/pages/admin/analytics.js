@@ -1037,13 +1037,18 @@ export default function AnalyticsPage() {
                   } catch (e) { toast.error('同期失敗: ' + (e.response?.data?.message || e.message)); return; }
                 }
                 try {
-                  const [monthlyRes, probeRes] = await Promise.all([
-                    api.get('/api/cpa-v2/monthly', { params: { basis, months: 12 } }),
-                    api.get('/api/cpa-v2/probe'),
-                  ]);
+                  // sync を走らせた直後は Sheets API レート制限に当たるので probe をスキップ
+                  // (sync の結果に kept/skipped が含まれている)
+                  const monthlyRes = await api.get('/api/cpa-v2/monthly', { params: { basis, months: 12 } });
+                  let probe = null;
+                  if (!syncRes) {
+                    try {
+                      const probeRes = await api.get('/api/cpa-v2/probe');
+                      probe = probeRes.data.success ? probeRes.data.data : null;
+                    } catch (e) { /* probe失敗は許容 */ }
+                  }
                   if (!monthlyRes.data.success) { toast.error('月次取得失敗'); return; }
                   const rows = monthlyRes.data.data.rows || [];
-                  const probe = probeRes.data.success ? probeRes.data.data : null;
                   const win = window.open('', '_blank', 'width=1280,height=800');
                   if (!win) { toast.error('ポップアップがブロックされました'); return; }
                   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));

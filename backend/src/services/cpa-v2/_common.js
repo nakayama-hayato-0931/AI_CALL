@@ -102,17 +102,32 @@ async function getSheetsClient() {
 
 /**
  * 指定シートの values を取得 (UNFORMATTED_VALUE)。
+ * Sheets API は per-user 60req/min (read) なので 429/quota 超過時は exponential backoff で最大3回リトライ。
  */
 async function fetchSheetValues({ spreadsheetId, sheetName, rangePart }) {
   const sheets = await getSheetsClient();
   const range = `'${sheetName}'!${rangePart}`;
-  const resp = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range,
-    valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'SERIAL_NUMBER',
-  });
-  return resp.data.values || [];
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const resp = await sheets.spreadsheets.values.get({
+        spreadsheetId, range,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'SERIAL_NUMBER',
+      });
+      return resp.data.values || [];
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      const status = err?.code || err?.response?.status;
+      const isRateLimit = status === 429 || /quota|rate/i.test(msg);
+      if (!isRateLimit || attempt === 3) break;
+      // 60req/min なので 30秒〜90秒待つと自然に解消する
+      const waitMs = 30000 * (attempt + 1);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr;
 }
 
 /**

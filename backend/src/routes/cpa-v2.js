@@ -109,14 +109,16 @@ router.put('/config', async (req, res) => {
 router.post('/sync', async (req, res) => {
   const which = req.query.which || 'all'; // 'all' | 'projects' | 'jobs' | 'interviews'
   const results = {};
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const run = async (key, fn) => {
     try { results[key] = await fn(); }
     catch (e) { results[key] = { error: e.message, code: e.code, status: e.status || 500 }; }
   };
   try {
-    if (which === 'projects' || which === 'all') await run('projects',  () => salesProj.syncFromSheets());
-    if (which === 'jobs'     || which === 'all') await run('jobs',      () => jobPost.syncFromSheets());
-    if (which === 'interviews'|| which === 'all') await run('interviews', () => interview.syncFromSheets());
+    // 各シート間に 2秒待機して per-user 60req/min レート制限を緩和
+    if (which === 'projects'   || which === 'all') { await run('projects',   () => salesProj.syncFromSheets()); await sleep(2000); }
+    if (which === 'jobs'       || which === 'all') { await run('jobs',       () => jobPost.syncFromSheets());   await sleep(2000); }
+    if (which === 'interviews' || which === 'all') { await run('interviews', () => interview.syncFromSheets()); }
     return ApiResponse.success(res, results, '同期完了');
   } catch (err) {
     return ApiResponse.error(res, err.message, 500);
