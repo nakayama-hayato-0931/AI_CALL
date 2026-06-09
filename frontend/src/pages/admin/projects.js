@@ -403,6 +403,24 @@ export default function AdminProjects() {
           </span>
         </h1>
         <div className="flex items-center gap-2">
+          {/* 募集開始日 一括補完 (管理者・マネージャー) */}
+          {['admin', 'manager'].includes(user?.role) && (
+            <button
+              onClick={async () => {
+                if (!confirm('4/1以降の「書類選考あり&募集中&募集開始日 未入力」の案件すべてに、案件獲得日と同日を募集開始日として一括入力します。続行?')) return;
+                try {
+                  const { data } = await api.post('/api/admin/backfill-recruitment-start-date');
+                  if (data.success) {
+                    toast.success(data.message || `${data.data?.updated || 0}件を補完しました`);
+                    fetchProjects();
+                  } else toast.error(data.message || '失敗しました');
+                } catch (e) { toast.error(e.response?.data?.message || '失敗しました'); }
+              }}
+              title="4/1以降・書類選考あり・募集中・募集開始日未入力の案件に獲得日と同日を一括入力"
+              className="px-3 py-2 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 transition-all whitespace-nowrap">
+              募集開始日 一括補完
+            </button>
+          )}
           {user?.role !== 'consultant' && (
             <button onClick={() => { setShowManualAdd(true); setManualForm({ company_name: '', phone_number: '', status: '', job_number: '', interview_date: '', interview_type: '', memo: '', contact_person: '', contact_info: '' }); }}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-all flex items-center gap-1.5">

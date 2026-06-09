@@ -37,6 +37,7 @@ const {
   importMissingFromFaxCrm,
   diagnoseProjectCount,
   diagnoseVisaPayment,
+  backfillRecruitmentStartDate,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -142,5 +143,8 @@ router.get('/diagnose-projects', requireManager, diagnoseProjectCount);
 
 // CPA入金実績の診断（ビザシート読み取り + 登録番号マッチ結果）
 router.get('/diagnose-visa-payment', requireManager, diagnoseVisaPayment);
+
+// 募集開始日の一括補完 (書類選考あり&募集中&未入力 → 案件獲得日と同日)
+router.post('/backfill-recruitment-start-date', requireEditor, backfillRecruitmentStartDate);
 
 module.exports = router;

@@ -1281,7 +1281,37 @@ module.exports = {
   importMissingFromFaxCrm,
   diagnoseProjectCount,
   diagnoseVisaPayment,
+  backfillRecruitmentStartDate,
 };
+
+/**
+ * POST /api/admin/backfill-recruitment-start-date
+ * 募集開始日(recruitment_start_date)を案件獲得日(DATE(created_at))で一括補完。
+ * 条件:
+ *   - DATE(created_at) >= '2026-04-01'
+ *   - document_screening = 'required' (書類選考あり)
+ *   - status = 'BOSHUCHU' (募集中)
+ *   - recruitment_start_date IS NULL
+ *   - is_legacy = 0
+ * 今後はステータスを募集中に変えた日に自動入力 (frontend admin/projects.js で実装済み)。
+ */
+async function backfillRecruitmentStartDate(req, res, next) {
+  try {
+    const [result] = await pool.execute(
+      `UPDATE projects
+         SET recruitment_start_date = DATE(created_at)
+       WHERE is_legacy = 0
+         AND DATE(created_at) >= '2026-04-01'
+         AND document_screening = 'required'
+         AND status = 'BOSHUCHU'
+         AND recruitment_start_date IS NULL`
+    );
+    logger.info(`[backfillRecruitmentStartDate] updated=${result.affectedRows}`);
+    return ApiResponse.success(res, { updated: result.affectedRows }, `${result.affectedRows}件の募集開始日を案件獲得日で補完しました`);
+  } catch (err) {
+    next(err);
+  }
+}
 
 /**
  * GET /api/admin/diagnose-projects?date_from=&date_to=
