@@ -451,6 +451,40 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
   // NOT EXISTS の company_id = c.id 検索を高速化
   try { await pool.execute('CREATE INDEX idx_assignments_company ON company_assignments(company_id, user_id)'); } catch (e) {}
+
+  // companies に「最終架電結果」キャッシュカラムを追加（相関サブクエリ排除のため）
+  // ティア4/5の (SELECT cl3.result_code FROM calls...ORDER BY started_at DESC LIMIT 1)
+  // を c.last_call_result_code/c.last_call_user_id で置き換えて高速化。
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
+  // バックフィル: 既存データに対し1回だけ実行（system_settings でフラグ管理）
+  try {
+    const [flag] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'last_call_result_backfilled'");
+    if (flag.length === 0) {
+      logger.info('[Migration] last_call_result_code バックフィル開始...');
+      // 1クエリで一気に: 最終 calls の result_code/user_id を companies に反映
+      const t0 = Date.now();
+      const [r] = await pool.execute(`
+        UPDATE companies c
+        LEFT JOIN (
+          SELECT cl.company_id, cl.result_code, cl.user_id
+          FROM calls cl
+          INNER JOIN (
+            SELECT company_id, MAX(call_started_at) AS latest
+            FROM calls
+            WHERE result_code IS NOT NULL
+            GROUP BY company_id
+          ) m ON m.company_id = cl.company_id AND m.latest = cl.call_started_at
+        ) lc ON lc.company_id = c.id
+        SET c.last_call_result_code = lc.result_code,
+            c.last_call_user_id = lc.user_id
+      `);
+      await pool.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('last_call_result_backfilled', ?)",
+        [JSON.stringify({ affected: r.affectedRows, ms: Date.now() - t0, at: new Date().toISOString() })]);
+      logger.info(`[Migration] last_call_result_code バックフィル完了: ${r.affectedRows}行 (${Date.now() - t0}ms)`);
+    }
+  } catch (e) { logger.warn(`[Migration] last_call_result_code backfill: ${e.message}`); }
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
 
   // companies に industry_category カラム追加 + 事前計算

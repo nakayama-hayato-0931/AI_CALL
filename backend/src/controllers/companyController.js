@@ -34,10 +34,12 @@ const lockFilterSQL = `
  * 1時間以内に架電した企業を除外するフィルタ
  */
 const recentCallFilterSQL = `
-  AND c.id NOT IN (
-    SELECT DISTINCT cl.company_id FROM calls cl
-    WHERE cl.user_id = ? AND cl.call_started_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
-    AND cl.result_code IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM calls cl
+    WHERE cl.company_id = c.id
+      AND cl.user_id = ?
+      AND cl.call_started_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+      AND cl.result_code IS NOT NULL
   )
 `;
 
@@ -470,7 +472,7 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
+         AND c.last_call_result_code = 'NO_ANSWER'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
@@ -493,9 +495,9 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
+         AND c.last_call_result_code = 'NG'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
-         AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
+         AND c.last_call_user_id != ?
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
@@ -783,7 +785,7 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
+         AND c.last_call_result_code = 'NO_ANSWER'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -805,9 +807,9 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
+         AND c.last_call_result_code = 'NG'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
-         AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?
+         AND c.last_call_user_id != ?
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${asFilter}

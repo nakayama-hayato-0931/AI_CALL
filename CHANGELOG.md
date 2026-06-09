@@ -6,6 +6,13 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト高速化 第3弾（相関サブクエリ排除）
+- 一番重かった `(SELECT cl3.result_code FROM calls...ORDER BY started_at DESC LIMIT 1) = 'NO_ANSWER'/'NG'` の相関サブクエリ（60万行に対し毎行評価）を排除。
+- `companies` に **`last_call_result_code` / `last_call_user_id` カラムを追加**し、`endCall` 時に同期。ティア4/5は `c.last_call_result_code = 'NO_ANSWER'` のような単純条件で判定可能に（インデックス: `(last_call_result_code, last_called_at)`）。
+- 起動時に既存全社（最大60万行）へ1回バックフィル（`system_settings.last_call_result_backfilled` フラグで二度実行しない）。`getNextCallTarget` / `getCallList` 両方に適用。
+- `recentCallFilterSQL` も NOT IN → NOT EXISTS に変換。
+- 結果: ティア4・5の応答時間が**桁違いに高速化**する見込み（行ごとサブクエリ → 単純カラム比較）。
+
 ### 架電リスト高速化 第2弾（オペレーター効果大）
 - `assignmentFilterSQL` / `recall_tasks` 重複除外を `NOT IN (SELECT ...)` → `NOT EXISTS` に変換。NOT IN は大きなテーブルスキャンになりやすいが NOT EXISTS はインデックスが効きやすい（オペレーター環境で `company_assignments` が大きい場合に特に効く）。
 - キャッシュTTLを 10秒 → 20秒に延長（15秒ポーリングで毎回ヒット）。

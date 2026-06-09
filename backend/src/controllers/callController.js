@@ -347,12 +347,20 @@ const endCall = async (req, res, next) => {
       }
     }
 
-    // ロック解除
+    // ロック解除 + 最終架電結果キャッシュ更新（companies.last_call_result_code/user_id）
+    // 相関サブクエリを回避するため getCallList が参照する。SKIPは保存しない。
     try {
-      await pool.execute(
-        'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
-        [call.company_id]
-      );
+      if (result_code === 'SKIP') {
+        await pool.execute(
+          'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
+          [call.company_id]
+        );
+      } else {
+        await pool.execute(
+          'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL, last_call_result_code = ?, last_call_user_id = ? WHERE id = ?',
+          [result_code, call.user_id, call.company_id]
+        );
+      }
     } catch (e) {
       logger.error(`[endCall] ロック解除エラー: ${e.message}`);
     }
