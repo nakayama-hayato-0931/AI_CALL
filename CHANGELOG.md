@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### 起動シーケンス修正: criticalPreflight でカラム追加を先に await
+- これまで `runMigrations()` が await されずに `app.listen()` が始まっていたため、ALTER TABLE 完了前にAPIリクエストが処理され「Unknown column 'c.last_call_result_code'」エラーが発生していた。
+- 新カラム ALTER（`last_call_result_code` / `last_call_user_id`）と関連INDEXを `criticalPreflight()` に分離し、必ず完了してから listen 開始するよう変更。
+- その他の重いマイグレーション・region正規化・seedは listen 後に非同期実行（起動時間は伸ばさない）。
+
 ### 起動時バックフィル(last_call_result_code)を非同期＋チャンク化
 - 60万行UPDATEを `setImmediate` 内で実行し、サーバー起動・他リクエストを妨げないように。
 - 500件×直列＋5000件ごとに50msの sleep でDBコネクションプールが詰まらないよう調整。

@@ -172,6 +172,20 @@ app.use(errorHandler);
 // ============================================
 // 自動マイグレーション
 const pool = require('../config/database');
+
+// 起動前に必ず完了させるべきマイグレーション（新カラム追加など）。
+// これが完了しないうちにリクエストを受けると "Unknown column" エラーになる。
+const criticalPreflight = async () => {
+  // companies に新カラム追加（冪等）
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`); }
+    catch (e) { if (!String(e.message).includes('Duplicate column')) logger.warn(`[Preflight] add last_call_result_code: ${e.message}`); }
+  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`); }
+    catch (e) { if (!String(e.message).includes('Duplicate column')) logger.warn(`[Preflight] add last_call_user_id: ${e.message}`); }
+  // インデックスは無くてもクエリは動くので失敗してもOK
+  try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
+  logger.info('[Preflight] critical schema updates done');
+};
+
 const runMigrations = async () => {
   try {
     await pool.execute(`
@@ -452,12 +466,7 @@ const runMigrations = async () => {
   // NOT EXISTS の company_id = c.id 検索を高速化
   try { await pool.execute('CREATE INDEX idx_assignments_company ON company_assignments(company_id, user_id)'); } catch (e) {}
 
-  // companies に「最終架電結果」キャッシュカラムを追加（相関サブクエリ排除のため）
-  // ティア4/5の (SELECT cl3.result_code FROM calls...ORDER BY started_at DESC LIMIT 1)
-  // を c.last_call_result_code/c.last_call_user_id で置き換えて高速化。
-  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`); } catch (e) {}
-  try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
-  try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
+  // ※ 上記カラム追加とインデックスは起動時 criticalPreflight() で先行実行済み
   // バックフィル: 既存データに対し1回だけ実行（非同期＋チャンク化）。
   // 起動完了をブロックしない・他リクエストを長時間待たせない設計。
   // 完了は system_settings.last_call_result_backfilled フラグで管理。
@@ -732,23 +741,33 @@ const runMigrations = async () => {
     }
   } catch (e) { logger.warn('[Migration] past_cpa_seed v2:', e.message); }
 };
-runMigrations();
-
-const server = app.listen(PORT, () => {
-  logger.info(`=================================`);
-  logger.info(`AIコールセンターCRM API起動`);
-  logger.info(`ポート: ${PORT}`);
-  logger.info(`環境: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`=================================`);
-});
-// 大規模CSVインポート対応: アップロード+処理で長時間応答する余地を残す
-//   - requestTimeout: リクエスト受信完了までの猶予（巨大アップロード用）
-//   - headersTimeout: ヘッダ受信タイムアウト
-//   - keepAliveTimeout: アイドル接続のkeep-alive上限
-server.requestTimeout = 0;            // 0 = 無制限（インポート完了まで切らない）
-server.headersTimeout = 60 * 60 * 1000; // 60分
-server.keepAliveTimeout = 65 * 1000;  // 65s (ALB等とのミスマッチ回避)
-// 既存のレガシーAPIで使われていた server.setTimeout も0で無効化
-try { server.setTimeout(0); } catch (e) {}
+// 起動シーケンス:
+//   1. criticalPreflight() を await（新カラム追加など、ないとリクエスト処理が500になる項目）
+//   2. listen() で受付開始
+//   3. runMigrations() は非同期に走らせ続ける（重い処理が含まれるため起動を待たせない）
+let server;
+(async () => {
+  try {
+    await criticalPreflight();
+  } catch (e) {
+    logger.error(`[Preflight] FAILED: ${e.message}`);
+    // それでも起動は試みる（既存のリクエストは旧スキーマで動く可能性あり）
+  }
+  server = app.listen(PORT, () => {
+    logger.info(`=================================`);
+    logger.info(`AIコールセンターCRM API起動`);
+    logger.info(`ポート: ${PORT}`);
+    logger.info(`環境: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`=================================`);
+  });
+  if (server) {
+    server.requestTimeout = 0;
+    server.headersTimeout = 60 * 60 * 1000;
+    server.keepAliveTimeout = 65 * 1000;
+    try { server.setTimeout(0); } catch (e) {}
+  }
+  // 残りの重いマイグレーション・region正規化・seed投入などは非同期で実行
+  runMigrations().catch(e => logger.error(`[Migration] background failed: ${e.message}`));
+})();
 
 module.exports = app;
