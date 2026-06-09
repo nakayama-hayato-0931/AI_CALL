@@ -6,6 +6,23 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: fax-crm 互換ロジックを並行実装 (cpa-v2, Phase 1)
+- 並行して動いている fax-crm-system と同じロジック・同じ Google Sheets を共有する CPA を新設。違いは source_kind が 'FAX受電' → '架電バイト' のみ。
+- **既存 /api/analytics には一切影響しない**並行配置。ロールバックはフロントの「新CPA(β)」ボタンを外す + server.js のルート登録1行を削除するだけ。
+- Phase 1 (今回 — backend インフラ + 動作確認UI):
+  - 新サービス: `services/cpa-v2/_common.js` / `salesProjectService.js` / `jobPostingService.js` / `interviewService.js` / `cpaService.js`
+  - 新ルート: `POST /api/cpa-v2/sync` / `GET /monthly` / `GET /offers` / `GET /interviews` / `GET /jobs` / `GET/PUT /config`
+  - 新テーブル: `sheets_config_v2` / `sales_projects_v2` / `job_postings_v2` / `interview_records_v2` (起動時 criticalPreflight で作成)
+  - Google Sheets 認証は callcenter スタイル(`GOOGLE_SERVICE_ACCOUNT_EMAIL` + `GOOGLE_PRIVATE_KEY`)に統一
+  - CPA画面に紫の隣に「新CPA(β)」ボタン(青緑)を追加。同期 → 月別集計を新ウィンドウで表示。
+- 揃え方:
+  - 同一企業 dedupe キー: `COALESCE(NULLIF(job_number, ''), company_name)`
+  - 月キー: `DATE_FORMAT(col, '%Y-%m-01')`
+  - basis 切替: `acquired_date` / `offer_date` (interview_records 側は `acquired_date` / `interview_date`)
+  - 「面接人数=0 かつ 合格=0/空欄」のノイズ行は除外
+  - 取消・辞退は内定社1としてカウント、売上は0 (fax-crm と同一)
+- Phase 2 で予定: 詳細モーダル (画像通り)、basis トグルUI、コスト系 (架電バイト人件費)、Phase 3 で朝7時バッチ。
+
 ### 管理者向け: CPA入金実績の診断ツール
 - CPAの「入金実績」が出ない原因（シート読み取り失敗 or 登録番号未マッチ）を切り分け。
 - バックエンド `GET /api/admin/diagnose-visa-payment?date_from=&date_to=` を新設。

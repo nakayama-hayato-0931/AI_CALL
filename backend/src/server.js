@@ -48,6 +48,7 @@ const requestRoutes = require('./routes/requests');
 const scriptRoutes = require('./routes/scripts');
 const analyticsRoutes = require('./routes/analytics');
 const integrationsRoutes = require('./routes/integrations');
+const cpaV2Routes = require('./routes/cpa-v2');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -133,6 +134,7 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/scripts', scriptRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/cpa-v2', cpaV2Routes);
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
@@ -175,6 +177,108 @@ const pool = require('../config/database');
 
 // 起動前に必ず完了させるべきマイグレーション（新カラム追加など）。
 // これが完了しないうちにリクエストを受けると "Unknown column" エラーになる。
+// cpa-v2 用テーブル作成 (起動時 idempotent)
+// 既存実装に影響しない並行スキーマ。フロントでリンクを外せばロールバック可。
+const ensureCpaV2Schema = async () => {
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS sheets_config_v2 (
+      id TINYINT NOT NULL PRIMARY KEY,
+      projects_sheet_id   VARCHAR(120) DEFAULT NULL,
+      projects_sheet_name VARCHAR(120) DEFAULT 'ビザ申請 進捗',
+      projects_sheet_range VARCHAR(60) DEFAULT 'A1:CZ20000',
+      projects_last_synced_at DATETIME DEFAULT NULL,
+      projects_last_sync_status VARCHAR(20) DEFAULT NULL,
+      projects_last_sync_message TEXT,
+      jobs_sheet_id   VARCHAR(120) DEFAULT NULL,
+      jobs_sheet_name VARCHAR(120) DEFAULT '求人情報',
+      jobs_sheet_range VARCHAR(60) DEFAULT 'A1:BZ20000',
+      jobs_last_synced_at DATETIME DEFAULT NULL,
+      jobs_last_sync_status VARCHAR(20) DEFAULT NULL,
+      jobs_last_sync_message TEXT,
+      interviews_sheet_id   VARCHAR(120) DEFAULT NULL,
+      interviews_sheet_name VARCHAR(120) DEFAULT '2024_面接内訳',
+      interviews_sheet_range VARCHAR(60) DEFAULT 'A1:OZ20000',
+      interviews_last_synced_at DATETIME DEFAULT NULL,
+      interviews_last_sync_status VARCHAR(20) DEFAULT NULL,
+      interviews_last_sync_message TEXT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='cpa-v2: Google Sheets 連携設定'`);
+    // デフォルト設定をseed (3シートのID事前投入)
+    await pool.execute(`INSERT IGNORE INTO sheets_config_v2
+      (id, projects_sheet_id, projects_sheet_name, projects_sheet_range,
+       jobs_sheet_id, jobs_sheet_name, jobs_sheet_range,
+       interviews_sheet_id, interviews_sheet_name, interviews_sheet_range)
+      VALUES (1,
+        '1wPH1sud7dAwJQihiR6qDrH-otJ3ygAgcCAg-e4ituvw', 'ビザ申請 進捗', 'A1:CZ20000',
+        '1wPH1sud7dAwJQihiR6qDrH-otJ3ygAgcCAg-e4ituvw', '求人情報',     'A1:BZ20000',
+        '1gHldK7GyXpP9WoeMDi0E5KV6Ql4Xlw1J0_7BrV8U0tA', '2024_面接内訳', 'A1:OZ20000')`);
+
+    await pool.execute(`CREATE TABLE IF NOT EXISTS sales_projects_v2 (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      external_key VARCHAR(255) NOT NULL UNIQUE COMMENT '求人番号_登録番号',
+      offer_date DATE DEFAULT NULL COMMENT 'A列: 内定日',
+      acquired_date DATE DEFAULT NULL COMMENT 'BK列: 案件取得日',
+      job_number VARCHAR(60) DEFAULT NULL,
+      company_name VARCHAR(255) DEFAULT NULL,
+      candidate_registration_no VARCHAR(60) DEFAULT NULL,
+      sales_owner VARCHAR(120) DEFAULT NULL,
+      industry VARCHAR(120) DEFAULT NULL,
+      first_payment BIGINT NOT NULL DEFAULT 0,
+      expected_revenue BIGINT NOT NULL DEFAULT 0,
+      payment_actual BIGINT NOT NULL DEFAULT 0 COMMENT 'CC列: 入金実績',
+      status_label VARCHAR(40) DEFAULT NULL,
+      is_cancelled TINYINT(1) NOT NULL DEFAULT 0,
+      is_declined  TINYINT(1) NOT NULL DEFAULT 0,
+      source_row INT UNSIGNED DEFAULT NULL,
+      synced_at DATETIME DEFAULT NULL,
+      INDEX idx_acq (acquired_date),
+      INDEX idx_off (offer_date),
+      INDEX idx_jobname (job_number, company_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='cpa-v2: 売上案件 (架電バイト)'`);
+
+    await pool.execute(`CREATE TABLE IF NOT EXISTS job_postings_v2 (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      external_key VARCHAR(255) NOT NULL UNIQUE,
+      acquired_date DATE DEFAULT NULL,
+      job_number VARCHAR(60) DEFAULT NULL,
+      company_name VARCHAR(255) DEFAULT NULL,
+      sales_owner VARCHAR(120) DEFAULT NULL,
+      industry VARCHAR(120) DEFAULT NULL,
+      source_kind VARCHAR(40) DEFAULT NULL,
+      status_label VARCHAR(40) DEFAULT NULL,
+      is_cancelled TINYINT(1) NOT NULL DEFAULT 0,
+      source_row INT UNSIGNED DEFAULT NULL,
+      synced_at DATETIME DEFAULT NULL,
+      INDEX idx_acq (acquired_date),
+      INDEX idx_kind (source_kind, acquired_date),
+      INDEX idx_jobname (job_number, company_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='cpa-v2: 求人案件 (架電バイト)'`);
+
+    await pool.execute(`CREATE TABLE IF NOT EXISTS interview_records_v2 (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      external_key VARCHAR(255) NOT NULL UNIQUE,
+      interview_date DATE DEFAULT NULL,
+      acquired_date DATE DEFAULT NULL,
+      job_number VARCHAR(60) DEFAULT NULL,
+      company_name VARCHAR(255) DEFAULT NULL,
+      sales_owner VARCHAR(120) DEFAULT NULL,
+      industry VARCHAR(120) DEFAULT NULL,
+      interview_count INT NOT NULL DEFAULT 0,
+      pass_count INT DEFAULT NULL COMMENT 'NQ列: NULL=空欄, 0=明示ゼロ',
+      source_kind VARCHAR(40) DEFAULT NULL,
+      source_row INT UNSIGNED DEFAULT NULL,
+      synced_at DATETIME DEFAULT NULL,
+      INDEX idx_iv (interview_date),
+      INDEX idx_acq (acquired_date),
+      INDEX idx_kind (source_kind, interview_date),
+      INDEX idx_jobname (job_number, company_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='cpa-v2: 面接記録 (架電バイト)'`);
+
+    logger.info('[Preflight] cpa-v2 schema ensured');
+  } catch (e) {
+    logger.warn(`[Preflight] cpa-v2 schema: ${e.message}`);
+  }
+};
+
 const criticalPreflight = async () => {
   logger.info('[Preflight] start: checking companies schema...');
   // 先にカラム有無を確認
@@ -206,6 +310,8 @@ const criticalPreflight = async () => {
     const [r] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
     logger.info(`[Preflight] DONE: last_call_result_code = ${r.length > 0 ? 'OK' : 'MISSING'}`);
   } catch (e) {}
+  // cpa-v2 テーブル群も必ず先に作る (新ルートが Unknown table で落ちないように)
+  await ensureCpaV2Schema();
 };
 
 const runMigrations = async () => {

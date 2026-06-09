@@ -1020,6 +1020,70 @@ export default function AnalyticsPage() {
               入金実績診断
             </button>
           </div>
+
+          {/* 新CPA (β) - fax-crm 互換ロジック (架電バイト keep) のプレビュー */}
+          <div>
+            <label className="input-label">&nbsp;</label>
+            <button
+              onClick={async () => {
+                const basis = window.confirm('OK=案件獲得日基準 / キャンセル=内定日基準') ? 'acquired' : 'offer';
+                if (!window.confirm('まず Google Sheets 同期を実行しますか？ (初回必須・10〜30秒)')) {
+                  // 同期せず月次のみ取得
+                } else {
+                  try {
+                    const { data: s } = await api.post('/api/cpa-v2/sync');
+                    if (!s.success) { toast.error(s.message || '同期失敗'); return; }
+                    toast.success('同期完了: ' + JSON.stringify(s.data));
+                  } catch (e) { toast.error('同期失敗: ' + (e.response?.data?.message || e.message)); return; }
+                }
+                try {
+                  const { data } = await api.get('/api/cpa-v2/monthly', { params: { basis, months: 12 } });
+                  if (!data.success) { toast.error(data.message || '取得失敗'); return; }
+                  const rows = data.data.rows || [];
+                  const win = window.open('', '_blank', 'width=1200,height=700');
+                  if (!win) { toast.error('ポップアップがブロックされました'); return; }
+                  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+                  const yen = (n) => '¥' + (Number(n) || 0).toLocaleString();
+                  const tr = rows.map(r => `
+                    <tr>
+                      <td>${esc(r.month)}</td>
+                      <td style="text-align:right">${r.projects}</td>
+                      <td style="text-align:right">${r.cancels}</td>
+                      <td style="text-align:right">${r.interviews}</td>
+                      <td style="text-align:right">${r.rejects}</td>
+                      <td style="text-align:right"><b>${r.offers}</b></td>
+                      <td style="text-align:right">${r.offer_rate}%</td>
+                      <td style="text-align:right">${r.interview_rate}%</td>
+                      <td style="text-align:right">${yen(r.first_payment)}</td>
+                      <td style="text-align:right">${yen(r.expected_revenue)}</td>
+                      <td style="text-align:right;color:#dc2626;font-weight:bold">${yen(r.payment_actual)}</td>
+                    </tr>`).join('');
+                  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>新CPA(β)</title>
+                    <style>body{font-family:sans-serif;font-size:13px;padding:16px}
+                    table{border-collapse:collapse;width:100%}
+                    th,td{border:1px solid #e5e7eb;padding:6px 8px}
+                    th{background:#f9fafb}</style></head><body>
+                    <h1>新CPA(β) — source_kind='架電バイト' / basis=${esc(basis)}</h1>
+                    <p style="color:#666">fax-crm と同一ロジック (集計コアのみ、コスト系は Phase 2)。3シート (ビザ申請 進捗 / 求人情報 / 2024_面接内訳) からの集計。</p>
+                    <table>
+                      <thead><tr>
+                        <th>月</th><th>案件数</th><th>バラシ</th><th>面接数</th><th>不合格</th>
+                        <th>内定社数</th><th>内定率</th><th>面接実施率</th>
+                        <th>初回入金</th><th>見込売上</th><th>入金実績</th>
+                      </tr></thead>
+                      <tbody>${tr}</tbody>
+                    </table></body></html>`);
+                  win.document.close();
+                } catch (e) {
+                  toast.error('取得失敗: ' + (e.response?.data?.message || e.message));
+                }
+              }}
+              title="fax-crm 互換のCPA集計プレビュー（売上シート/求人情報/面接内訳の3シートから集計）"
+              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 rounded-md shadow-sm whitespace-nowrap"
+            >
+              新CPA(β)
+            </button>
+          </div>
         </div>
 
         {/* データ取り込み */}
