@@ -155,23 +155,34 @@ async function syncFromSheets() {
 async function list({ month, basis = 'acquired', kind = 'all', limit = 1000 } = {}) {
   const pool = getPool();
   const dateCol = basis === 'offer' ? 'interview_date' : 'acquired_date';
-  const where = [`source_kind = '${SOURCE_KIND_KEEP}'`, `interview_date <= CURDATE()`];
+  const where = [`ir.source_kind = '${SOURCE_KIND_KEEP}'`, `ir.interview_date <= CURDATE()`];
   const params = [];
   if (month) {
-    where.push(`${dateCol} >= ?`); params.push(month);
-    where.push(`${dateCol} < DATE_ADD(?, INTERVAL 1 MONTH)`); params.push(month);
+    where.push(`ir.${dateCol} >= ?`); params.push(month);
+    where.push(`ir.${dateCol} < DATE_ADD(?, INTERVAL 1 MONTH)`); params.push(month);
   }
-  where.push(`NOT (interview_count = 0 AND (pass_count = 0 OR pass_count IS NULL))`);
+  where.push(`NOT (ir.interview_count = 0 AND (ir.pass_count = 0 OR ir.pass_count IS NULL))`);
   if (kind === 'rejects') {
-    where.push(`(pass_count = 0 OR (pass_count IS NULL AND interview_date <= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)))`);
+    where.push(`(ir.pass_count = 0 OR (ir.pass_count IS NULL AND ir.interview_date <= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)))`);
   }
   const whereSql = 'WHERE ' + where.join(' AND ');
+  // - 面接結果(result_label): pass_count>0=合格, =0=不合格, IS NULL+1ヶ月以上経過=不合格, それ以外=結果待ち
+  // - caller_name: 求人番号で callcenter.projects→users から架電担当者を解決(LIMIT 1)
   const [rows] = await pool.query(
-    `SELECT id, external_key, interview_date, acquired_date, job_number, company_name,
-            sales_owner, industry, interview_count, pass_count, source_kind, source_row
-       FROM interview_records_v2 ${whereSql}
-      ORDER BY COALESCE(NULLIF(job_number, ''), company_name) ASC,
-               interview_date DESC, id DESC
+    `SELECT ir.id, ir.external_key, ir.interview_date, ir.acquired_date, ir.job_number, ir.company_name,
+            ir.sales_owner, ir.industry, ir.interview_count, ir.pass_count, ir.source_kind, ir.source_row,
+            CASE
+              WHEN ir.pass_count > 0 THEN '合格'
+              WHEN ir.pass_count = 0 THEN '不合格'
+              WHEN ir.pass_count IS NULL AND ir.interview_date <= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN '不合格'
+              ELSE '結果待ち'
+            END AS result_label,
+            (SELECT u.name FROM projects p JOIN users u ON u.id = p.owner_user_id
+              WHERE p.job_number = ir.job_number AND p.is_legacy = 0 AND p.owner_user_id IS NOT NULL
+              ORDER BY p.created_at DESC LIMIT 1) AS caller_name
+       FROM interview_records_v2 ir ${whereSql}
+      ORDER BY COALESCE(NULLIF(ir.job_number, ''), ir.company_name) ASC,
+               ir.interview_date DESC, ir.id DESC
       LIMIT ?`,
     [...params, Math.min(Number(limit) || 1000, 5000)]
   );
@@ -186,9 +197,12 @@ async function listOfferOnly({ month, basis = 'acquired', limit = 1000 } = {}) {
   const [rows] = await pool.query(
     `SELECT id, acquired_date, offer_date, job_number, company_name,
             sales_owner, industry, first_payment, expected_revenue,
-            status_label, is_cancelled, is_declined
+            status_label, is_cancelled, is_declined, caller_name
        FROM (
          SELECT sp.*,
+                (SELECT u.name FROM projects p JOIN users u ON u.id = p.owner_user_id
+                  WHERE p.job_number = sp.job_number AND p.is_legacy = 0 AND p.owner_user_id IS NOT NULL
+                  ORDER BY p.created_at DESC LIMIT 1) AS caller_name,
                 ROW_NUMBER() OVER (
                   PARTITION BY COALESCE(NULLIF(sp.job_number, ''), sp.company_name)
                   ORDER BY sp.offer_date DESC, sp.id DESC

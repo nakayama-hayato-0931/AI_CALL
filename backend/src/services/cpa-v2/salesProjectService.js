@@ -184,7 +184,7 @@ async function syncFromSheets() {
 
 async function list({ from, to, month, basis = 'acquired', status, limit = 200 } = {}) {
   const pool = getPool();
-  const dateCol = basis === 'offer' ? 'offer_date' : 'acquired_date';
+  const dateCol = basis === 'offer' ? 'sp.offer_date' : 'sp.acquired_date';
   const where = []; const params = [];
   if (month) {
     where.push(`${dateCol} >= ?`); params.push(month);
@@ -193,18 +193,22 @@ async function list({ from, to, month, basis = 'acquired', status, limit = 200 }
     if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
     if (to)   { where.push(`${dateCol} <= ?`); params.push(to); }
   }
-  if (status === 'active')    where.push('is_cancelled = 0 AND is_declined = 0');
-  else if (status === 'cancelled') where.push('is_cancelled = 1');
-  else if (status === 'declined')  where.push('is_declined = 1');
+  if (status === 'active')    where.push('sp.is_cancelled = 0 AND sp.is_declined = 0');
+  else if (status === 'cancelled') where.push('sp.is_cancelled = 1');
+  else if (status === 'declined')  where.push('sp.is_declined = 1');
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  // caller_name: 求人番号で callcenter.projects→users.name から架電担当者を解決
   const [rows] = await pool.query(
-    `SELECT id, external_key, offer_date, acquired_date, job_number, company_name,
-            candidate_registration_no, sales_owner, industry,
-            first_payment, expected_revenue, payment_actual,
-            status_label, is_cancelled, is_declined, source_row
-       FROM sales_projects_v2 ${whereSql}
-      ORDER BY COALESCE(NULLIF(job_number, ''), company_name) ASC,
-               ${dateCol} DESC, id DESC
+    `SELECT sp.id, sp.external_key, sp.offer_date, sp.acquired_date, sp.job_number, sp.company_name,
+            sp.candidate_registration_no, sp.sales_owner, sp.industry,
+            sp.first_payment, sp.expected_revenue, sp.payment_actual,
+            sp.status_label, sp.is_cancelled, sp.is_declined, sp.source_row,
+            (SELECT u.name FROM projects p JOIN users u ON u.id = p.owner_user_id
+              WHERE p.job_number = sp.job_number AND p.is_legacy = 0 AND p.owner_user_id IS NOT NULL
+              ORDER BY p.created_at DESC LIMIT 1) AS caller_name
+       FROM sales_projects_v2 sp ${whereSql}
+      ORDER BY COALESCE(NULLIF(sp.job_number, ''), sp.company_name) ASC,
+               ${dateCol} DESC, sp.id DESC
       LIMIT ?`,
     [...params, Math.min(Number(limit) || 200, 1000)]
   );

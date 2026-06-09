@@ -111,6 +111,8 @@ export default function AnalyticsPage() {
   const [newExtra, setNewExtra] = useState({ period_ym: '', category: 'コンサル料', amount: '', memo: '' });
   // CPA表示モード: 'v2' (デフォルト, fax-crm互換) / 'v1' (旧CPA)
   const [cpaMode, setCpaMode] = useState('v2');
+  // 新CPA(v2) 内訳モーダル: { type:'offers'|'interviews'|'rejects', month, data, loading }
+  const [v2Modal, setV2Modal] = useState(null);
 
   const openExtraCostsModal = async () => {
     setExtraCostsOpen(true);
@@ -230,19 +232,18 @@ export default function AnalyticsPage() {
     if (!v2) return cpaData;
     const team = cpaData.team || {};
     const cost = Number(team.cost) || 0;
-    const calls = Number(team.callCount) || 0;
     const pc = Number(v2.offers) || 0;             // 内定社数 (v2)
     const ic = Number(v2.interviews) || 0;
     const ip = Number(v2.first_payment) || 0;
     const er = Number(v2.expected_revenue) || 0;
     const ap = Number(v2.payment_actual) || 0;
-    const projects = Number(v2.projects) || 0;     // 案件数 (v2)
     const fugokaku = Number(v2.rejects) || 0;
     const barashi = Number(v2.cancels) || 0;       // バラシ
+    // 案件数は v1 のまま (取得方法は既存通り)
+    const projectsForCpa = Number(team.projectCount) || 0;
     const newTeam = {
       ...team,
-      // v2 由来で上書き
-      projectCount: projects,
+      // v2 由来で上書き (内定/面接/不合格/バラシ失注/初回入金/見込売上/入金実績)
       naiteiCount: pc,
       interviewCount: ic,
       fugokakuCount: fugokaku,
@@ -250,13 +251,11 @@ export default function AnalyticsPage() {
       initialPayment: ip,
       expectedRevenue: er,
       actualPayment: ap,
-      // 派生指標 再計算
-      projectRate:  calls > 0 ? Math.round(projects / calls * 10000) / 100 : 0,
-      projectCpa:   projects > 0 ? Math.round(cost / projects) : 0,
-      interviewCpa: ic > 0 ? Math.round(cost / ic) : 0,
-      interviewRate: projects > 0 ? Math.round(ic / projects * 10000) / 100 : 0,
-      roas:         cost > 0 ? Math.round(ip / cost * 10000) / 100 : 0,
-      actualRoas:   cost > 0 ? Math.round(ap / cost * 10000) / 100 : 0,
+      // 派生指標 再計算 (案件数=v1のまま、面接数=v2)
+      interviewCpa:  ic > 0 ? Math.round(cost / ic) : 0,
+      interviewRate: projectsForCpa > 0 ? Math.round(ic / projectsForCpa * 10000) / 100 : 0,
+      roas:          cost > 0 ? Math.round(ip / cost * 10000) / 100 : 0,
+      actualRoas:    cost > 0 ? Math.round(ap / cost * 10000) / 100 : 0,
       _v2Merged: true,
     };
     return { ...cpaData, team: newTeam };
@@ -488,11 +487,11 @@ export default function AnalyticsPage() {
     { key: 'projectRate', label: '案件化率', format: 'pct' },
     { key: 'projectCount', label: '案件数', highlight: true },
     { key: 'projectCpa', label: '案件CPA', format: 'yen' },
-    { key: 'interviewCount', label: '面接数' },
+    { key: 'interviewCount', label: '面接数', clickable: 'v2:interviews' },
     { key: 'interviewCpa', label: '面接CPA', format: 'yen' },
     { key: 'interviewRate', label: '面接実施率', format: 'pct' },
     { key: 'naiteiCount', label: '内定', clickable: 'industry:NAITEI' },
-    { key: 'fugokakuCount', label: '不合格' },
+    { key: 'fugokakuCount', label: '不合格', clickable: 'v2:rejects' },
     { key: 'barashiLostCount', label: 'バラシ/失注' },
     { key: 'initialPayment', label: '初回入金', format: 'yen', highlight: true },
     { key: 'expectedRevenue', label: '見込売上', format: 'yen' },
@@ -613,12 +612,55 @@ export default function AnalyticsPage() {
   // ディスパッチ: col.clickable に応じて適切なモーダルを開く
   const dispatchCellClick = (col, data, userId, name) => {
     if (!col.clickable) return;
+    // 新CPA(v2)モードで「全体」セル + 内定/面接系 → v2 由来モーダルを開く
+    if (cpaMode === 'v2' && !userId && col.clickable.startsWith('industry:') && data?.dateFrom) {
+      const status = col.clickable.split(':')[1];
+      const ym = String(data.dateFrom).slice(0, 7) + '-01';
+      // dateFrom と dateTo が同じ月内なら v2 モーダルを開く (それ以外は旧モーダル)
+      if (data.dateTo && data.dateTo.slice(0, 7) === data.dateFrom.slice(0, 7)) {
+        if (status === 'NAITEI') return openV2Offers(ym);
+        if (status === 'LOST' || status === 'BARASHI') { /* v2 にない指標は従来通り */ }
+      }
+    }
     if (col.clickable === 'waiting') {
       openWaitingDetail(data, userId, name);
+    } else if (col.clickable === 'v2:interviews') {
+      // v2 面接数モーダル (全体行のみ)
+      if (cpaMode === 'v2' && !userId && data?.dateFrom) {
+        const ym = String(data.dateFrom).slice(0, 7) + '-01';
+        if (data.dateTo && data.dateTo.slice(0, 7) === data.dateFrom.slice(0, 7)) {
+          return openV2Interviews(ym, 'all');
+        }
+      }
+    } else if (col.clickable === 'v2:rejects') {
+      if (cpaMode === 'v2' && !userId && data?.dateFrom) {
+        const ym = String(data.dateFrom).slice(0, 7) + '-01';
+        if (data.dateTo && data.dateTo.slice(0, 7) === data.dateFrom.slice(0, 7)) {
+          return openV2Interviews(ym, 'rejects');
+        }
+      }
     } else if (col.clickable.startsWith('industry:')) {
       const status = col.clickable.split(':')[1];
       openIndustryDetail(data, userId, name, status);
     }
+  };
+
+  // ---- 新CPA(v2) 内訳モーダル開く ----
+  const openV2Offers = async (month) => {
+    setV2Modal({ type: 'offers', month, data: null, loading: true });
+    try {
+      const { data } = await api.get('/api/cpa-v2/offers', { params: { month, basis: 'acquired' } });
+      if (data.success) setV2Modal(prev => prev && prev.month === month ? { ...prev, data: data.data, loading: false } : prev);
+      else { setV2Modal(null); toast.error('取得失敗'); }
+    } catch (e) { setV2Modal(null); toast.error('取得失敗: ' + (e.response?.data?.message || e.message)); }
+  };
+  const openV2Interviews = async (month, kind = 'all') => {
+    setV2Modal({ type: kind === 'rejects' ? 'rejects' : 'interviews', month, data: null, loading: true });
+    try {
+      const { data } = await api.get('/api/cpa-v2/interviews', { params: { month, basis: 'acquired', kind } });
+      if (data.success) setV2Modal(prev => prev ? { ...prev, data: data.data, loading: false } : prev);
+      else { setV2Modal(null); toast.error('取得失敗'); }
+    } catch (e) { setV2Modal(null); toast.error('取得失敗: ' + (e.response?.data?.message || e.message)); }
   };
 
   // 業種別内訳モーダル
@@ -1942,6 +1984,189 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* ===== 新CPA(v2) 内訳モーダル ===== */}
+      {v2Modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setV2Modal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[1280px] max-w-[96vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-gray-200 bg-emerald-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  {v2Modal.type === 'offers' ? '内定社内訳' : v2Modal.type === 'rejects' ? '不合格内訳' : '面接内訳'} — {String(v2Modal.month).slice(0, 7).replace('-', '年')}月
+                </h2>
+                <p className="text-[11px] text-gray-500 mt-0.5">basis=acquired / source_kind='架電バイト'</p>
+              </div>
+              <button onClick={() => setV2Modal(null)} className="text-gray-400 hover:text-gray-700 p-1 text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-auto px-5 py-3">
+              {v2Modal.loading && <div className="text-center py-10 text-gray-400 text-sm">読み込み中...</div>}
+              {!v2Modal.loading && v2Modal.type === 'offers' && <V2OffersTable rows={v2Modal.data?.rows || []} />}
+              {!v2Modal.loading && (v2Modal.type === 'interviews' || v2Modal.type === 'rejects') && (
+                <V2InterviewsTable rows={v2Modal.data?.rows || []} offerOnly={v2Modal.data?.offerOnly || []} kind={v2Modal.type} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
+  );
+}
+
+// ===== 新CPA(v2) 内定社内訳テーブル =====
+function V2OffersTable({ rows }) {
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString('ja-JP') : '-';
+  const yen = (n) => '¥' + (Number(n) || 0).toLocaleString();
+  let lastKey = null;
+  const countByKey = {};
+  for (const r of rows) {
+    const k = (r.job_number && r.job_number.trim()) || r.company_name || '?';
+    countByKey[k] = (countByKey[k] || 0) + 1;
+  }
+  const totals = rows.reduce((s, r) => ({
+    hires: s.hires + 1,
+    initial: s.initial + (Number(r.first_payment) || 0),
+    expected: s.expected + (Number(r.expected_revenue) || 0),
+    actual: s.actual + (Number(r.payment_actual) || 0),
+  }), { hires: 0, initial: 0, expected: 0, actual: 0 });
+  const cancelCount = rows.filter(r => r.is_cancelled).length;
+  const declineCount = rows.filter(r => r.is_declined).length;
+  const uniqueOfferCompanies = Object.keys(countByKey).length;
+  return (
+    <div>
+      <div className="text-xs text-gray-600 mb-2">
+        案件シート(『ビザ申請 進捗』)より / 取消・辞退も含む全件 (売上は0で記録)
+        <span className="ml-3 font-bold">内定 {uniqueOfferCompanies} 社</span>
+        <span className="ml-2">/ 合格者 {totals.hires} 名</span>
+        <span className="ml-2 text-gray-400">(取消 {cancelCount} / 辞退 {declineCount})</span>
+      </div>
+      <table className="w-full text-xs border-collapse">
+        <thead className="bg-gray-50 sticky top-0">
+          <tr>
+            <th className="border px-2 py-1.5 text-left">状態</th>
+            <th className="border px-2 py-1.5 text-left">内定日</th>
+            <th className="border px-2 py-1.5 text-left">案件取得日</th>
+            <th className="border px-2 py-1.5 text-left">求人番号</th>
+            <th className="border px-2 py-1.5 text-left">会社名</th>
+            <th className="border px-2 py-1.5 text-right">合格人数</th>
+            <th className="border px-2 py-1.5 text-left">登録番号</th>
+            <th className="border px-2 py-1.5 text-left">営業担当</th>
+            <th className="border px-2 py-1.5 text-left bg-amber-50">架電担当</th>
+            <th className="border px-2 py-1.5 text-left">業種</th>
+            <th className="border px-2 py-1.5 text-right">初回入金</th>
+            <th className="border px-2 py-1.5 text-right">見込売上</th>
+            <th className="border px-2 py-1.5 text-right">入金実績</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, idx) => {
+            const k = (r.job_number && r.job_number.trim()) || r.company_name || '?';
+            const isFirst = k !== lastKey; lastKey = k;
+            const label = r.is_cancelled ? '取消' : r.is_declined ? '辞退' : '通常';
+            const labelCls = r.is_cancelled ? 'bg-red-100 text-red-700' : r.is_declined ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700';
+            return (
+              <tr key={r.id || idx} className="hover:bg-gray-50">
+                <td className="border px-2 py-1"><span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${labelCls}`}>{label}</span></td>
+                <td className="border px-2 py-1">{fmtDate(r.offer_date)}</td>
+                <td className="border px-2 py-1">{fmtDate(r.acquired_date)}</td>
+                <td className="border px-2 py-1 font-mono text-[11px]">{isFirst ? r.job_number : <span className="text-gray-300">〃</span>}</td>
+                <td className="border px-2 py-1">{isFirst ? (r.company_name || '-') : <span className="text-gray-300">〃</span>}</td>
+                <td className="border px-2 py-1 text-right">{isFirst ? `${countByKey[k]}名` : ''}</td>
+                <td className="border px-2 py-1 font-mono text-[11px]">{r.candidate_registration_no || '-'}</td>
+                <td className="border px-2 py-1">{r.sales_owner || '-'}</td>
+                <td className="border px-2 py-1 bg-amber-50/30">{r.caller_name || '-'}</td>
+                <td className="border px-2 py-1">{r.industry || '-'}</td>
+                <td className="border px-2 py-1 text-right text-emerald-700">{r.first_payment > 0 ? yen(r.first_payment) : '¥0'}</td>
+                <td className="border px-2 py-1 text-right text-blue-700">{r.expected_revenue > 0 ? yen(r.expected_revenue) : '¥0'}</td>
+                <td className="border px-2 py-1 text-right text-red-600 font-bold">{r.payment_actual > 0 ? yen(r.payment_actual) : '¥0'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+          <tr className="font-bold">
+            <td colSpan={5} className="border px-2 py-2 text-right">内定 {uniqueOfferCompanies} 社 / 合格者 {totals.hires} 名 (取消 {cancelCount} / 辞退 {declineCount})</td>
+            <td className="border px-2 py-2 text-right">{totals.hires}名</td>
+            <td colSpan={4} className="border"></td>
+            <td className="border px-2 py-2 text-right text-emerald-700">{yen(totals.initial)}</td>
+            <td className="border px-2 py-2 text-right text-blue-700">{yen(totals.expected)}</td>
+            <td className="border px-2 py-2 text-right text-red-600">{yen(totals.actual)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ===== 新CPA(v2) 面接/不合格内訳テーブル =====
+function V2InterviewsTable({ rows, offerOnly, kind }) {
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString('ja-JP') : '-';
+  const totalCompanies = new Set(rows.map(r => (r.job_number && r.job_number.trim()) || r.company_name)).size;
+  const offerOnlyCount = offerOnly?.length || 0;
+  const resultCls = (l) => l === '合格' ? 'bg-emerald-100 text-emerald-700'
+                          : l === '不合格' ? 'bg-red-100 text-red-700'
+                          : 'bg-gray-100 text-gray-600';
+  return (
+    <div>
+      <div className="text-xs text-gray-600 mb-2">
+        面接シート(『2024_面接内訳』)より / 同一求人は1社カウント
+        <span className="ml-3 font-bold">{totalCompanies + offerOnlyCount} 社 ({kind === 'rejects' ? '不合格' : '面接実施'})</span>
+        {offerOnlyCount > 0 && <span className="ml-2 text-gray-400">(うち {offerOnlyCount} 社は内定のみ加算分)</span>}
+      </div>
+      <table className="w-full text-xs border-collapse">
+        <thead className="bg-gray-50 sticky top-0">
+          <tr>
+            <th className="border px-2 py-1.5 text-left">面接日</th>
+            <th className="border px-2 py-1.5 text-left">案件取得日</th>
+            <th className="border px-2 py-1.5 text-left">求人番号</th>
+            <th className="border px-2 py-1.5 text-left">会社名</th>
+            <th className="border px-2 py-1.5 text-right">面接人数</th>
+            <th className="border px-2 py-1.5 text-right">合格者数</th>
+            <th className="border px-2 py-1.5 text-center">面接結果</th>
+            <th className="border px-2 py-1.5 text-left">営業担当</th>
+            <th className="border px-2 py-1.5 text-left bg-amber-50">架電担当</th>
+            <th className="border px-2 py-1.5 text-left">業種</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, idx) => (
+            <tr key={r.id || idx} className="hover:bg-gray-50">
+              <td className="border px-2 py-1">{fmtDate(r.interview_date)}</td>
+              <td className="border px-2 py-1">{fmtDate(r.acquired_date)}</td>
+              <td className="border px-2 py-1 font-mono text-[11px]">{r.job_number || '-'}</td>
+              <td className="border px-2 py-1">{r.company_name || '-'}</td>
+              <td className="border px-2 py-1 text-right">{r.interview_count}</td>
+              <td className="border px-2 py-1 text-right">{r.pass_count == null ? '(空)' : r.pass_count}</td>
+              <td className="border px-2 py-1 text-center">
+                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${resultCls(r.result_label)}`}>{r.result_label || '-'}</span>
+              </td>
+              <td className="border px-2 py-1">{r.sales_owner || '-'}</td>
+              <td className="border px-2 py-1 bg-amber-50/30">{r.caller_name || '-'}</td>
+              <td className="border px-2 py-1">{r.industry || '-'}</td>
+            </tr>
+          ))}
+          {offerOnly && offerOnly.length > 0 && (
+            <>
+              <tr><td colSpan={10} className="border-t-2 border-gray-300 px-2 py-1.5 bg-amber-50 text-xs text-gray-600">
+                ↓ 内定はあるが面接記録に無い企業（UNION 加算分）
+              </td></tr>
+              {offerOnly.map((r, idx) => (
+                <tr key={`o-${r.id || idx}`} className="bg-amber-50/30 hover:bg-amber-50">
+                  <td className="border px-2 py-1 text-gray-400">-</td>
+                  <td className="border px-2 py-1">{fmtDate(r.acquired_date)}</td>
+                  <td className="border px-2 py-1 font-mono text-[11px]">{r.job_number || '-'}</td>
+                  <td className="border px-2 py-1">{r.company_name || '-'}</td>
+                  <td className="border px-2 py-1 text-right text-gray-400">-</td>
+                  <td className="border px-2 py-1 text-right text-gray-400">-</td>
+                  <td className="border px-2 py-1 text-center"><span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">合格(内定)</span></td>
+                  <td className="border px-2 py-1">{r.sales_owner || '-'}</td>
+                  <td className="border px-2 py-1 bg-amber-50/30">{r.caller_name || '-'}</td>
+                  <td className="border px-2 py-1">{r.industry || '-'}</td>
+                </tr>
+              ))}
+            </>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
