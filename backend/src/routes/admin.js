@@ -38,6 +38,7 @@ const {
   diagnoseProjectCount,
   diagnoseVisaPayment,
   backfillRecruitmentStartDate,
+  backfillJobNumbers,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -146,5 +147,8 @@ router.get('/diagnose-visa-payment', requireManager, diagnoseVisaPayment);
 
 // 募集開始日の一括補完 (書類選考あり&募集中&未入力 → 案件獲得日と同日)
 router.post('/backfill-recruitment-start-date', requireEditor, backfillRecruitmentStartDate);
+
+// 求人番号の自動取得 (未入力案件 → 同企業の他案件の求人番号をコピー)
+router.post('/backfill-job-numbers', requireEditor, backfillJobNumbers);
 
 module.exports = router;

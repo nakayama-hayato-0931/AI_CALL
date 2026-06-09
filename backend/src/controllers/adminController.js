@@ -1282,7 +1282,61 @@ module.exports = {
   diagnoseProjectCount,
   diagnoseVisaPayment,
   backfillRecruitmentStartDate,
+  backfillJobNumbers,
 };
+
+/**
+ * POST /api/admin/backfill-job-numbers
+ * 求人番号が未入力の案件について、自動取得して埋める。
+ * ソース優先順:
+ *   1. 同じ company_id の他案件で求人番号があるもの(最新)
+ *   2. (将来) job_postings_v2 から company_name でマッチ
+ * 対象: is_legacy=0 AND is_prospect=0 AND (job_number IS NULL OR job_number='')
+ */
+async function backfillJobNumbers(req, res, next) {
+  try {
+    // 1) 求人番号未入力の対象案件を取得
+    const [targets] = await pool.query(
+      `SELECT p.id, p.company_id, COALESCE(c.company_name, p.legacy_company_name) AS company_name
+         FROM projects p
+         LEFT JOIN companies c ON p.company_id = c.id
+        WHERE p.is_legacy = 0 AND p.is_prospect = 0
+          AND (p.job_number IS NULL OR p.job_number = '')`
+    );
+    if (targets.length === 0) {
+      return ApiResponse.success(res, { scanned: 0, updated: 0, bySource: { same_company: 0 } }, '未入力案件なし');
+    }
+    let updated = 0;
+    const bySource = { same_company: 0 };
+    for (const t of targets) {
+      let foundJobNumber = null;
+      let source = null;
+      // 1) 同じ company_id の他案件から最新の求人番号
+      if (t.company_id) {
+        const [rows] = await pool.query(
+          `SELECT job_number FROM projects
+            WHERE company_id = ? AND id != ?
+              AND job_number IS NOT NULL AND job_number != ''
+            ORDER BY created_at DESC LIMIT 1`,
+          [t.company_id, t.id]
+        );
+        if (rows.length > 0) { foundJobNumber = rows[0].job_number; source = 'same_company'; }
+      }
+      if (foundJobNumber) {
+        await pool.execute(
+          `UPDATE projects SET job_number = ? WHERE id = ? AND (job_number IS NULL OR job_number = '')`,
+          [foundJobNumber, t.id]
+        );
+        updated++;
+        bySource[source] = (bySource[source] || 0) + 1;
+      }
+    }
+    logger.info(`[backfillJobNumbers] scanned=${targets.length}, updated=${updated}`);
+    return ApiResponse.success(res, { scanned: targets.length, updated, bySource }, `${updated}件 / ${targets.length}件中 を自動取得しました`);
+  } catch (err) {
+    next(err);
+  }
+}
 
 /**
  * POST /api/admin/backfill-recruitment-start-date
