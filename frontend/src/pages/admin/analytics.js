@@ -109,6 +109,11 @@ export default function AnalyticsPage() {
   const [extraCostsList, setExtraCostsList] = useState([]);
   const [extraCostsLoading, setExtraCostsLoading] = useState(false);
   const [newExtra, setNewExtra] = useState({ period_ym: '', category: 'コンサル料', amount: '', memo: '' });
+  // 新CPA(β) モーダル
+  const [cpaV2Open, setCpaV2Open] = useState(false);
+  const [cpaV2Loading, setCpaV2Loading] = useState(false);
+  const [cpaV2Basis, setCpaV2Basis] = useState('acquired');
+  const [cpaV2Data, setCpaV2Data] = useState(null); // { rows, syncRes, probe }
 
   const openExtraCostsModal = async () => {
     setExtraCostsOpen(true);
@@ -1025,10 +1030,18 @@ export default function AnalyticsPage() {
           <div>
             <label className="input-label">&nbsp;</label>
             <button
-              onClick={async () => {
-                const basis = window.confirm('OK=案件獲得日基準 / キャンセル=内定日基準') ? 'acquired' : 'offer';
+              onClick={() => { setCpaV2Data(null); setCpaV2Open(true); }}
+              title="fax-crm 互換のCPA集計プレビュー (モーダルで表示)"
+              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 rounded-md shadow-sm whitespace-nowrap"
+            >
+              新CPA(β)
+            </button>
+          </div>
+          {/* === dead code: 旧 popup 実装 (ブラウザのポップアップブロックで使えなかった) === */}
+          {false && (<button onClick={async () => {
+                const basis = 'acquired';
                 let syncRes = null;
-                if (window.confirm('まず Google Sheets 同期を実行しますか? (初回必須・10〜30秒)')) {
+                if (false) {
                   try {
                     const { data: s } = await api.post('/api/cpa-v2/sync');
                     if (!s.success) { toast.error(s.message || '同期失敗'); return; }
@@ -1102,12 +1115,11 @@ export default function AnalyticsPage() {
                   toast.error('取得失敗: ' + (e.response?.data?.message || e.message));
                 }
               }}
-              title="fax-crm 互換のCPA集計プレビュー（売上シート/求人情報/面接内訳の3シートから集計）"
-              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 rounded-md shadow-sm whitespace-nowrap"
+              title="dead"
+              className="hidden"
             >
-              新CPA(β)
-            </button>
-          </div>
+              旧
+            </button>)}
         </div>
 
         {/* データ取り込み */}
@@ -1535,6 +1547,143 @@ export default function AnalyticsPage() {
 
       {/* 打刻ログ重複確認モーダル */}
       {/* 追加コスト管理モーダル */}
+      {/* 新CPA(β) モーダル — ポップアップ非依存 */}
+      {cpaV2Open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCpaV2Open(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* ヘッダ */}
+            <div className="px-5 py-3 border-b border-gray-200 bg-teal-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">新CPA(β) — source_kind='架電バイト'</h2>
+                <p className="text-[11px] text-gray-500 mt-0.5">fax-crm と同一ロジック (集計コア)。3シート (ビザ申請 進捗/求人情報/2024_面接内訳)</p>
+              </div>
+              <button onClick={() => setCpaV2Open(false)} className="text-gray-400 hover:text-gray-700 p-1">×</button>
+            </div>
+            {/* 操作バー */}
+            <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3 bg-gray-50">
+              <div className="flex gap-0.5 bg-gray-100 rounded-md p-0.5">
+                {[{v:'acquired',l:'案件獲得日'},{v:'offer',l:'内定日'}].map(b => (
+                  <button key={b.v} onClick={() => setCpaV2Basis(b.v)}
+                    className={`px-3 py-1 text-xs font-medium rounded ${cpaV2Basis === b.v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>{b.l}</button>
+                ))}
+              </div>
+              <button disabled={cpaV2Loading}
+                onClick={async () => {
+                  setCpaV2Loading(true);
+                  try {
+                    const monthlyRes = await api.get('/api/cpa-v2/monthly', { params: { basis: cpaV2Basis, months: 12 } });
+                    let probe = null;
+                    try { const p = await api.get('/api/cpa-v2/probe'); probe = p.data.success ? p.data.data : null; } catch {}
+                    setCpaV2Data({
+                      rows: monthlyRes.data.data?.rows || [],
+                      probe,
+                      syncRes: null,
+                    });
+                  } catch (e) { toast.error('取得失敗: ' + (e.response?.data?.message || e.message)); }
+                  finally { setCpaV2Loading(false); }
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50">
+                {cpaV2Loading ? '取得中...' : '集計を取得'}
+              </button>
+              <button disabled={cpaV2Loading}
+                onClick={async () => {
+                  if (!window.confirm('Google Sheets 同期を実行します (10〜90秒)。続行?')) return;
+                  setCpaV2Loading(true);
+                  try {
+                    const s = await api.post('/api/cpa-v2/sync');
+                    if (!s.data.success) { toast.error('同期失敗'); setCpaV2Loading(false); return; }
+                    const syncRes = s.data.data;
+                    const monthlyRes = await api.get('/api/cpa-v2/monthly', { params: { basis: cpaV2Basis, months: 12 } });
+                    setCpaV2Data({
+                      rows: monthlyRes.data.data?.rows || [],
+                      probe: null,
+                      syncRes,
+                    });
+                    toast.success('同期完了');
+                  } catch (e) { toast.error('同期失敗: ' + (e.response?.data?.message || e.message)); }
+                  finally { setCpaV2Loading(false); }
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded disabled:opacity-50">
+                シート同期+集計
+              </button>
+              {cpaV2Data?.rows?.length > 0 && (
+                <span className="text-[11px] text-gray-500 ml-auto">{cpaV2Data.rows.length}ヶ月分</span>
+              )}
+            </div>
+            {/* 本体 */}
+            <div className="flex-1 overflow-auto px-5 py-3">
+              {!cpaV2Data && !cpaV2Loading && (
+                <div className="text-center text-gray-400 text-sm py-10">「集計を取得」を押してください<br/>(初回はシート未同期なら「シート同期+集計」を)</div>
+              )}
+              {cpaV2Loading && (<div className="text-center text-gray-500 text-sm py-10">処理中... (最大90秒)</div>)}
+              {cpaV2Data && (
+                <div className="space-y-3">
+                  {cpaV2Data.syncRes && (
+                    <details open className="bg-gray-50 border border-gray-200 rounded p-2">
+                      <summary className="text-xs font-bold cursor-pointer">シート同期結果</summary>
+                      <pre className="text-[10px] mt-2 bg-white border p-2 overflow-auto max-h-40">{JSON.stringify(cpaV2Data.syncRes, null, 2)}</pre>
+                    </details>
+                  )}
+                  {cpaV2Data.probe && (
+                    <details open className="bg-gray-50 border border-gray-200 rounded p-2">
+                      <summary className="text-xs font-bold cursor-pointer">シート診断 (期待値: <span className="bg-emerald-100 px-1 rounded">架電バイト</span>)</summary>
+                      <div className="mt-2 space-y-1">
+                        {[['売上シート (BE列)', cpaV2Data.probe.projects], ['求人情報 (H列)', cpaV2Data.probe.jobs], ['面接内訳 (NR列)', cpaV2Data.probe.interviews]].map(([label, p]) => (
+                          <div key={label} className="text-xs">
+                            <b>{label}</b>: {!p?.ok ? <span className="text-red-600">失敗 {p?.error}</span> : (
+                              <span className="ml-1">
+                                (全{p.totalDataRows}行)
+                                {Object.entries(p.byKindValue || {}).sort((a,b)=>b[1]-a[1]).map(([k, v]) => (
+                                  <span key={k} className={`inline-block px-1.5 py-0.5 mx-0.5 rounded text-[10px] ${k==='架電バイト'?'bg-emerald-100':k==='FAX受電'?'bg-amber-100':'bg-gray-100'}`}>
+                                    <code>{k}</code>:{v}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                  {cpaV2Data.rows.length === 0 ? (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                      集計結果0行。シート診断で「架電バイト」列の件数を確認してください。0件ならシートに該当データなし、件数があれば同期エラーの可能性。
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs border-collapse">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {['月','案件数','バラシ','面接数','不合格','内定社数','内定率','面接実施率','初回入金','見込売上','入金実績'].map(h => (
+                            <th key={h} className="border px-2 py-1.5 text-left">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cpaV2Data.rows.map(r => (
+                          <tr key={r.month} className="hover:bg-gray-50">
+                            <td className="border px-2 py-1">{r.month}</td>
+                            <td className="border px-2 py-1 text-right">{r.projects}</td>
+                            <td className="border px-2 py-1 text-right">{r.cancels}</td>
+                            <td className="border px-2 py-1 text-right">{r.interviews}</td>
+                            <td className="border px-2 py-1 text-right">{r.rejects}</td>
+                            <td className="border px-2 py-1 text-right font-bold">{r.offers}</td>
+                            <td className="border px-2 py-1 text-right">{r.offer_rate}%</td>
+                            <td className="border px-2 py-1 text-right">{r.interview_rate}%</td>
+                            <td className="border px-2 py-1 text-right">¥{Number(r.first_payment).toLocaleString()}</td>
+                            <td className="border px-2 py-1 text-right">¥{Number(r.expected_revenue).toLocaleString()}</td>
+                            <td className="border px-2 py-1 text-right text-red-600 font-bold">¥{Number(r.payment_actual).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {extraCostsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setExtraCostsOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
