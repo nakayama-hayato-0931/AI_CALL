@@ -207,11 +207,14 @@ export default function AnalyticsPage() {
     }
   }, [user]);
 
+  // cpaBase ('acquisition' | 'naitei') → v2 API の basis ('acquired' | 'offer')
+  const v2Basis = () => (cpaBase === 'naitei' ? 'offer' : 'acquired');
+
   // 新CPA(v2) 月別データを取得して { 'YYYY-MM': row } のマップを返す。
-  // 取得失敗時は空マップ (旧CPAにフォールバック)。basis=acquired 固定。
+  // 取得失敗時は空マップ (旧CPAにフォールバック)。
   const fetchV2Monthly = async () => {
     try {
-      const { data } = await api.get('/api/cpa-v2/monthly', { params: { basis: 'acquired', months: 36 } });
+      const { data } = await api.get('/api/cpa-v2/monthly', { params: { basis: v2Basis(), months: 36 } });
       if (!data?.success) return new Map();
       const map = new Map();
       for (const r of data.data?.rows || []) {
@@ -645,11 +648,11 @@ export default function AnalyticsPage() {
     }
   };
 
-  // ---- 新CPA(v2) 内訳モーダル開く ----
+  // ---- 新CPA(v2) 内訳モーダル開く (集計基準 cpaBase に従って basis を渡す) ----
   const openV2Offers = async (month) => {
     setV2Modal({ type: 'offers', month, data: null, loading: true });
     try {
-      const { data } = await api.get('/api/cpa-v2/offers', { params: { month, basis: 'acquired' } });
+      const { data } = await api.get('/api/cpa-v2/offers', { params: { month, basis: v2Basis() } });
       if (data.success) setV2Modal(prev => prev && prev.month === month ? { ...prev, data: data.data, loading: false } : prev);
       else { setV2Modal(null); toast.error('取得失敗'); }
     } catch (e) { setV2Modal(null); toast.error('取得失敗: ' + (e.response?.data?.message || e.message)); }
@@ -657,7 +660,7 @@ export default function AnalyticsPage() {
   const openV2Interviews = async (month, kind = 'all') => {
     setV2Modal({ type: kind === 'rejects' ? 'rejects' : 'interviews', month, data: null, loading: true });
     try {
-      const { data } = await api.get('/api/cpa-v2/interviews', { params: { month, basis: 'acquired', kind } });
+      const { data } = await api.get('/api/cpa-v2/interviews', { params: { month, basis: v2Basis(), kind } });
       if (data.success) setV2Modal(prev => prev ? { ...prev, data: data.data, loading: false } : prev);
       else { setV2Modal(null); toast.error('取得失敗'); }
     } catch (e) { setV2Modal(null); toast.error('取得失敗: ' + (e.response?.data?.message || e.message)); }
