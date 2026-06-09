@@ -159,6 +159,12 @@ router.get('/probe', async (req, res) => {
       interviews: { at: icfg?.interviews_last_synced_at, status: icfg?.interviews_last_sync_status, message: icfg?.interviews_last_sync_message },
     };
     out.expectedKeepValue = '架電バイト';
+    out.serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
+    out.spreadsheetIds = {
+      projects:   pcfg?.projects_sheet_id || null,
+      jobs:       jcfg?.jobs_sheet_id || null,
+      interviews: icfg?.interviews_sheet_id || null,
+    };
     return ApiResponse.success(res, out);
   } catch (err) {
     logger.error(`[cpa-v2 probe] ${err.message}`);

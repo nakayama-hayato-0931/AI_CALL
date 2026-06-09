@@ -1627,10 +1627,20 @@ export default function AnalyticsPage() {
                   {cpaV2Data.probe && (
                     <details open className="bg-gray-50 border border-gray-200 rounded p-2">
                       <summary className="text-xs font-bold cursor-pointer">シート診断 (期待値: <span className="bg-emerald-100 px-1 rounded">架電バイト</span>)</summary>
+                      {cpaV2Data.probe.serviceAccountEmail && (
+                        <div className="mt-2 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800">
+                          <b>失敗シートはこのサービスアカウントに「閲覧者」で共有してください:</b><br/>
+                          <code className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-amber-300 mt-0.5 inline-block select-all">{cpaV2Data.probe.serviceAccountEmail}</code>
+                        </div>
+                      )}
                       <div className="mt-2 space-y-1">
-                        {[['売上シート (BE列)', cpaV2Data.probe.projects], ['求人情報 (H列)', cpaV2Data.probe.jobs], ['面接内訳 (NR列)', cpaV2Data.probe.interviews]].map(([label, p]) => (
+                        {[
+                          ['売上シート (BE列)', cpaV2Data.probe.projects, cpaV2Data.probe.spreadsheetIds?.projects],
+                          ['求人情報 (H列)',     cpaV2Data.probe.jobs,     cpaV2Data.probe.spreadsheetIds?.jobs],
+                          ['面接内訳 (NR列)',    cpaV2Data.probe.interviews, cpaV2Data.probe.spreadsheetIds?.interviews],
+                        ].map(([label, p, sid]) => (
                           <div key={label} className="text-xs">
-                            <b>{label}</b>: {!p?.ok ? <span className="text-red-600">失敗 {p?.error}</span> : (
+                            <b>{label}</b>{sid && (<a href={`https://docs.google.com/spreadsheets/d/${sid}/edit`} target="_blank" rel="noopener noreferrer" className="ml-1 text-[10px] text-blue-500 hover:underline">[開く]</a>)}: {!p?.ok ? <span className="text-red-600">失敗 {p?.error}</span> : (
                               <span className="ml-1">
                                 (全{p.totalDataRows}行)
                                 {Object.entries(p.byKindValue || {}).sort((a,b)=>b[1]-a[1]).map(([k, v]) => (
