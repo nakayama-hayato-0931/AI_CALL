@@ -8,7 +8,6 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
 import api, { directApi } from '../../utils/api';
-import CpaV2View from '../../components/admin/CpaV2View';
 import toast from 'react-hot-toast';
 
 const MONTHS = [];
@@ -206,9 +205,68 @@ export default function AnalyticsPage() {
     }
   }, [user]);
 
+  // 新CPA(v2) 月別データを取得して { 'YYYY-MM': row } のマップを返す。
+  // 取得失敗時は空マップ (旧CPAにフォールバック)。basis=acquired 固定。
+  const fetchV2Monthly = async () => {
+    try {
+      const { data } = await api.get('/api/cpa-v2/monthly', { params: { basis: 'acquired', months: 36 } });
+      if (!data?.success) return new Map();
+      const map = new Map();
+      for (const r of data.data?.rows || []) {
+        const ym = String(r.month).slice(0, 7); // 'YYYY-MM'
+        map.set(ym, r);
+      }
+      return map;
+    } catch (e) { return new Map(); }
+  };
+
+  // v1のteam(または個人)行に v2 由来の「内定/入金/面接/不合格/バラシ/初回入金/見込売上」を被せる。
+  // - cost / コール数 / 案件数 / 案件化率 etc は v1 のまま
+  // - 派生指標 (案件CPA / 面接CPA / 面接実施率 / ROAS / actualRoas) は再計算
+  // - 個人別行や週別は v2 由来データがないため未マージ (旧CPAのまま)
+  const mergeV2Into = (cpaData, v2Map, ym) => {
+    if (!cpaData || !v2Map || !ym) return cpaData;
+    const v2 = v2Map.get(ym);
+    if (!v2) return cpaData;
+    const team = cpaData.team || {};
+    const cost = Number(team.cost) || 0;
+    const calls = Number(team.callCount) || 0;
+    const pc = Number(v2.offers) || 0;             // 内定社数 (v2)
+    const ic = Number(v2.interviews) || 0;
+    const ip = Number(v2.first_payment) || 0;
+    const er = Number(v2.expected_revenue) || 0;
+    const ap = Number(v2.payment_actual) || 0;
+    const projects = Number(v2.projects) || 0;     // 案件数 (v2)
+    const fugokaku = Number(v2.rejects) || 0;
+    const barashi = Number(v2.cancels) || 0;       // バラシ
+    const newTeam = {
+      ...team,
+      // v2 由来で上書き
+      projectCount: projects,
+      naiteiCount: pc,
+      interviewCount: ic,
+      fugokakuCount: fugokaku,
+      barashiLostCount: barashi,
+      initialPayment: ip,
+      expectedRevenue: er,
+      actualPayment: ap,
+      // 派生指標 再計算
+      projectRate:  calls > 0 ? Math.round(projects / calls * 10000) / 100 : 0,
+      projectCpa:   projects > 0 ? Math.round(cost / projects) : 0,
+      interviewCpa: ic > 0 ? Math.round(cost / ic) : 0,
+      interviewRate: projects > 0 ? Math.round(ic / projects * 10000) / 100 : 0,
+      roas:         cost > 0 ? Math.round(ip / cost * 10000) / 100 : 0,
+      actualRoas:   cost > 0 ? Math.round(ap / cost * 10000) / 100 : 0,
+      _v2Merged: true,
+    };
+    return { ...cpaData, team: newTeam };
+  };
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      // 新CPAモード時は v2 月別データを並行取得 (失敗時は空 → 旧CPAにフォールバック)
+      const v2Map = cpaMode === 'v2' ? await fetchV2Monthly() : new Map();
       if (periodMode === 'compare') {
         // 比較モード: 直近Nヶ月 + 各月の週
         const now = new Date();
@@ -236,10 +294,13 @@ export default function AnalyticsPage() {
             }),
           ]);
           const [cM, qM, ...weekPairs] = responses;
-          const block = [{ label: `${m}月`, isMonth: true, ym, cpa: cM.data.data, qual: qM.data.data }];
+          // 月行: v2 由来の指標を上書き (v1全体行を v2 で merge)
+          const mergedMonthCpa = mergeV2Into(cM.data.data, v2Map, ym);
+          const block = [{ label: `${m}月`, isMonth: true, ym, cpa: mergedMonthCpa, qual: qM.data.data }];
           weeks.forEach((w, wi) => {
             const c = weekPairs[wi * 2];
             const q = weekPairs[wi * 2 + 1];
+            // 週行: v2 は月単位のためマージ無し(旧CPAのまま)
             block.push({ label: w.label, isMonth: false, ym, cpa: c.data.data, qual: q.data.data });
           });
           return block;
@@ -291,7 +352,11 @@ export default function AnalyticsPage() {
           api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
           api.get('/api/analytics/quality-all', { params }),
         ]);
-        setCpaData(cpaRes.data.data);
+        // 単一月内に収まるなら v2 マージ可能
+        const fromYM = customFrom?.slice(0, 7);
+        const toYM = customTo?.slice(0, 7);
+        const mergedCpa = (fromYM && fromYM === toYM) ? mergeV2Into(cpaRes.data.data, v2Map, fromYM) : cpaRes.data.data;
+        setCpaData(mergedCpa);
         setQualData(qualRes.data.data);
         setWeeklyData([]);
       } else {
@@ -303,7 +368,11 @@ export default function AnalyticsPage() {
           api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
           api.get('/api/analytics/quality-all', { params }),
         ]);
-        setCpaData(cpaRes.data.data);
+        // monthly のみ v2 マージ (cumulative は複数月跨ぐためそのまま)
+        const mergedCpa = periodMode === 'monthly'
+          ? mergeV2Into(cpaRes.data.data, v2Map, selectedMonth)
+          : cpaRes.data.data;
+        setCpaData(mergedCpa);
         setQualData(qualRes.data.data);
         setWeeklyData([]);
       }
@@ -312,7 +381,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths, cpaBase]);
+  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths, cpaBase, cpaMode]);
 
   useEffect(() => {
     if (user && (['admin','manager','consultant'].includes(user.role))) {
@@ -810,29 +879,43 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">CPA / 案件質分析</h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            {cpaMode === 'v2'
-              ? 'fax-crm 互換ロジック (Google Sheets 直接集計、source_kind=架電バイト)'
-              : '全オペレーター比較 - コスト・案件化率・面接・売上の分析 (旧)'}
+            全オペレーター比較 - コスト・案件化率・面接・売上の分析
+            {cpaMode === 'v2' && <span className="ml-2 text-emerald-600">(新CPA: 内定/入金/面接/不合格/バラシ/初回入金/見込売上 は fax-crm 互換ロジックで上書き)</span>}
+            {cpaMode === 'v1' && <span className="ml-2 text-gray-400">(旧)</span>}
           </p>
         </div>
-        {/* 旧CPA / 新CPA 切替トグル (デフォルト: 新CPA) */}
-        <div>
-          <label className="input-label">表示モード</label>
-          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
-            <button onClick={() => setCpaMode('v2')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v2' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              新CPA
-            </button>
-            <button onClick={() => setCpaMode('v1')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v1' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              旧CPA
-            </button>
+        <div className="flex items-end gap-2">
+          {/* 旧CPA / 新CPA 切替トグル (デフォルト: 新CPA) */}
+          <div>
+            <label className="input-label">表示モード</label>
+            <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              <button onClick={() => setCpaMode('v2')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v2' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                新CPA
+              </button>
+              <button onClick={() => setCpaMode('v1')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v1' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                旧CPA
+              </button>
+            </div>
           </div>
+          {/* 新CPA モード時のみ: Sheets 同期 */}
+          {cpaMode === 'v2' && (
+            <button
+              onClick={async () => {
+                if (!window.confirm('Google Sheets 同期を実行します (10〜90秒)。続行?')) return;
+                try {
+                  const { data } = await api.post('/api/cpa-v2/sync');
+                  if (data.success) { toast.success('同期完了'); fetchData(); }
+                  else toast.error('同期失敗');
+                } catch (e) { toast.error('同期失敗: ' + (e.response?.data?.message || e.message)); }
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded shadow-sm whitespace-nowrap">
+              Sheets同期
+            </button>
+          )}
         </div>
       </div>
-
-      {cpaMode === 'v2' && <CpaV2View />}
-      {cpaMode === 'v1' && (<>
 
       {/* コントロール */}
       <div className="card p-4 mb-5 space-y-3">
@@ -1859,7 +1942,6 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
-      </>)}
     </Layout>
   );
 }
