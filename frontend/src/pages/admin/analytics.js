@@ -113,6 +113,8 @@ export default function AnalyticsPage() {
   const [cpaMode, setCpaMode] = useState('v2');
   // 新CPA(v2) 内訳モーダル: { type:'offers'|'interviews'|'rejects', month, data, loading }
   const [v2Modal, setV2Modal] = useState(null);
+  // 書類選考中 詳細モーダル: { title, data, loading }
+  const [screeningModal, setScreeningModal] = useState(null);
 
   const openExtraCostsModal = async () => {
     setExtraCostsOpen(true);
@@ -509,7 +511,7 @@ export default function AnalyticsPage() {
     { key: 'total', label: '案件数' },
     { key: 'lost', label: '失注', pctKey: 'lostPct', clickable: 'industry:LOST' },
     { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: 'waiting' },
-    { key: 'screeningInProgress', label: '書類選考中', pctKey: 'screeningInProgressPct' },
+    { key: 'screeningInProgress', label: '書類選考中', pctKey: 'screeningInProgressPct', clickable: 'screening' },
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
@@ -627,6 +629,8 @@ export default function AnalyticsPage() {
     }
     if (col.clickable === 'waiting') {
       openWaitingDetail(data, userId, name);
+    } else if (col.clickable === 'screening') {
+      openScreeningDetail(data, userId, name);
     } else if (col.clickable === 'v2:interviews') {
       // v2 面接数モーダル (全体行のみ)
       if (cpaMode === 'v2' && !userId && data?.dateFrom) {
@@ -711,6 +715,26 @@ export default function AnalyticsPage() {
     } catch (err) {
       toast.error('明細の取得に失敗しました');
       setWaitingModal(null);
+    }
+  };
+
+  // 書類選考中 明細モーダル: document_screening='required' AND status='BOSHUCHU'
+  const openScreeningDetail = async (data, userId, name) => {
+    if (!data) return;
+    const dateFrom = data.dateFrom || '2026-04-01';
+    const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
+    setScreeningModal({
+      title: `${name || '全体'}の書類選考中 明細`, userId, dateFrom, dateTo,
+      data: null, loading: true,
+    });
+    try {
+      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      if (userId) params.append('user_id', userId);
+      const { data: res } = await api.get(`/api/analytics/screening-in-progress?${params}`);
+      if (res.success) setScreeningModal(prev => prev ? { ...prev, data: res.data, loading: false } : null);
+      else { setScreeningModal(null); toast.error('取得失敗'); }
+    } catch (err) {
+      toast.error('明細の取得に失敗しました'); setScreeningModal(null);
     }
   };
 
@@ -1983,6 +2007,60 @@ export default function AnalyticsPage() {
                 className="w-full px-4 py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors">
                 キャンセル
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 書類選考中 明細モーダル ===== */}
+      {screeningModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setScreeningModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[1200px] max-w-[96vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-gray-200 bg-blue-50 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">{screeningModal.title}</h2>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  書類選考あり + ステータス=募集中 / 期間: {screeningModal.dateFrom} 〜 {screeningModal.dateTo}
+                  {screeningModal.data && <span className="ml-3 font-bold">{screeningModal.data.total} 件</span>}
+                </p>
+              </div>
+              <button onClick={() => setScreeningModal(null)} className="text-gray-400 hover:text-gray-700 p-1 text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-auto px-5 py-3">
+              {screeningModal.loading && <div className="text-center py-10 text-gray-400 text-sm">読み込み中...</div>}
+              {!screeningModal.loading && screeningModal.data && (screeningModal.data.rows || []).length === 0 && (
+                <div className="text-center py-10 text-gray-400 text-sm">該当する案件はありません</div>
+              )}
+              {!screeningModal.loading && screeningModal.data && (screeningModal.data.rows || []).length > 0 && (
+                <table className="w-full text-xs border-collapse">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="border px-2 py-1.5 text-left">案件獲得日</th>
+                      <th className="border px-2 py-1.5 text-left">求人番号</th>
+                      <th className="border px-2 py-1.5 text-left">企業名</th>
+                      <th className="border px-2 py-1.5 text-left">担当営業</th>
+                      <th className="border px-2 py-1.5 text-left bg-amber-50">架電担当</th>
+                      <th className="border px-2 py-1.5 text-left">募集開始日</th>
+                      <th className="border px-2 py-1.5 text-left">履歴書送付日</th>
+                      <th className="border px-2 py-1.5 text-left">面接日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {screeningModal.data.rows.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="border px-2 py-1">{r.acquiredDate ? new Date(r.acquiredDate).toLocaleDateString('ja-JP') : '-'}</td>
+                        <td className="border px-2 py-1 font-mono text-[11px]">{r.jobNumber || '-'}</td>
+                        <td className="border px-2 py-1">{r.companyName || '-'}</td>
+                        <td className="border px-2 py-1">{r.salesName || '-'}</td>
+                        <td className="border px-2 py-1 bg-amber-50/30">{r.callerName || '-'}</td>
+                        <td className="border px-2 py-1">{r.recruitmentStartDate ? new Date(r.recruitmentStartDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
+                        <td className="border px-2 py-1">{r.resumeSentDate ? new Date(r.resumeSentDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
+                        <td className="border px-2 py-1">{r.interviewDate ? new Date(r.interviewDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

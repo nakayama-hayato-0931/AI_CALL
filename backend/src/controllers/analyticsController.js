@@ -238,7 +238,7 @@ const getQualityMetrics = async (req, res, next) => {
          COUNT(*) as total,
          CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
          CAST(SUM(CASE WHEN COALESCE(p.mail_replied, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-         CAST(SUM(CASE WHEN p.status = 'SHORUI_CHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
+         CAST(SUM(CASE WHEN p.document_screening = 'required' AND p.status = 'BOSHUCHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
                 AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
                 AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI'))
@@ -1289,7 +1289,7 @@ const getQualityAll = async (req, res, next) => {
           COUNT(*) as total,
           CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
           CAST(SUM(CASE WHEN COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
-          CAST(SUM(CASE WHEN p.status = 'SHORUI_CHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
+          CAST(SUM(CASE WHEN p.document_screening = 'required' AND p.status = 'BOSHUCHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
           CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
                 AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
                 AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI'))
@@ -1314,7 +1314,7 @@ const getQualityAll = async (req, res, next) => {
           project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?` },
           q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?` },
           q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND DATE(p.created_at) = ?` },
-          q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'SHORUI_CHU' AND DATE(p.created_at) = ?` },
+          q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening = 'required' AND p.status = 'BOSHUCHU' AND DATE(p.created_at) = ?` },
           q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')) AND DATE(p.created_at) = ?` },
           q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?` },
           q_barashi: { rowKey: 'barashi', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'BARASHI' AND DATE(p.created_at) = ?` },
@@ -2966,4 +2966,58 @@ const deleteExtraCost = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx, listExtraCosts, upsertExtraCost, deleteExtraCost };
+/**
+ * GET /api/analytics/screening-in-progress
+ * 書類選考あり (document_screening='required') + 募集中 (status='BOSHUCHU') の案件詳細。
+ * Query: date_from, date_to, user_id(任意=owner_user_id)
+ * 列: 案件獲得日(created_at) / 求人番号 / 企業名 / 担当営業 / 架電担当(owner) /
+ *     募集開始日 / 履歴書送付日 / 面接日
+ */
+const getScreeningInProgressDetail = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id } = req.query;
+    const where = [
+      `p.is_legacy = 0`, `p.is_prospect = 0`,
+      `p.document_screening = 'required'`,
+      `p.status = 'BOSHUCHU'`,
+    ];
+    const params = [];
+    if (date_from) { where.push(`DATE(p.created_at) >= ?`); params.push(date_from); }
+    if (date_to)   { where.push(`DATE(p.created_at) <= ?`); params.push(date_to); }
+    if (user_id)   { where.push(`p.owner_user_id = ?`);     params.push(user_id); }
+    const [rows] = await pool.query(
+      `SELECT p.id, p.job_number, p.created_at AS acquired_at,
+              COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+              su.name AS sales_name,
+              ou.name AS caller_name,
+              p.recruitment_start_date, p.resume_sent_date, p.interview_date
+         FROM projects p
+         LEFT JOIN companies c ON p.company_id = c.id
+         LEFT JOIN users su ON p.sales_user_id = su.id
+         LEFT JOIN users ou ON p.owner_user_id = ou.id
+        WHERE ${where.join(' AND ')}
+        ORDER BY p.created_at DESC, p.id DESC`,
+      params
+    );
+    return ApiResponse.success(res, {
+      dateFrom: date_from || null, dateTo: date_to || null,
+      total: rows.length,
+      rows: rows.map(r => ({
+        id: r.id,
+        jobNumber: r.job_number,
+        acquiredDate: r.acquired_at ? String(r.acquired_at).slice(0, 10) : null,
+        companyName: r.company_name,
+        salesName: r.sales_name,
+        callerName: r.caller_name,
+        recruitmentStartDate: r.recruitment_start_date ? String(r.recruitment_start_date).slice(0, 10) : null,
+        resumeSentDate: r.resume_sent_date ? String(r.resume_sent_date).slice(0, 10) : null,
+        interviewDate: r.interview_date ? String(r.interview_date).slice(0, 10) : null,
+      })),
+    });
+  } catch (err) {
+    logger.error(`[getScreeningInProgressDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx, listExtraCosts, upsertExtraCost, deleteExtraCost, getScreeningInProgressDetail };

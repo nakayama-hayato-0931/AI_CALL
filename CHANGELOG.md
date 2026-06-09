@@ -6,6 +6,13 @@
 
 ## 2026年6月 〜 直近
 
+### 案件質: 書類選考中 定義変更 + 詳細モーダル追加
+- 「書類選考中」の集計を `status='SHORUI_CHU'` → `document_screening='required' AND status='BOSHUCHU'` (書類選考あり+募集中) に変更。
+- 手動補正の actualSql も同じ条件に揃えた。
+- 案件質テーブルの「書類選考中」セルクリックで詳細モーダルを開けるように。
+- 詳細モーダル列: 案件獲得日 / 求人番号 / 企業名 / 担当営業 / 架電担当(owner) / 募集開始日 / 履歴書送付日 / 面接日。未入力は薄いグレーで「未入力」表示。
+- 新エンドポイント `GET /api/analytics/screening-in-progress?date_from=&date_to=&user_id=` (requireManager)。
+
 ### インセンティブ管理: 新CPA(v2)データで内定日ベース集計
 - 既存の callcenter.projects ベース集計から、sales_projects_v2 (架電バイト/fax-crm互換) ベース集計に変更。
 - オペレーター紐付け: sales_projects_v2.job_number → callcenter.projects.owner_user_id → users.name で解決。
