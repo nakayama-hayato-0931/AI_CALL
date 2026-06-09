@@ -238,16 +238,15 @@ export default function AnalyticsPage() {
     const er = Number(v2.expected_revenue) || 0;
     const ap = Number(v2.payment_actual) || 0;
     const fugokaku = Number(v2.rejects) || 0;
-    const barashi = Number(v2.cancels) || 0;       // バラシ
-    // 案件数は v1 のまま (取得方法は既存通り)
+    // 案件数とバラシ/失注は v1 のまま (取得方法は既存通り)
     const projectsForCpa = Number(team.projectCount) || 0;
     const newTeam = {
       ...team,
-      // v2 由来で上書き (内定/面接/不合格/バラシ失注/初回入金/見込売上/入金実績)
+      // v2 由来で上書き (内定/面接/不合格/初回入金/見込売上/入金実績)
       naiteiCount: pc,
       interviewCount: ic,
       fugokakuCount: fugokaku,
-      barashiLostCount: barashi,
+      // barashiLostCount は v1 のまま (上書きしない)
       initialPayment: ip,
       expectedRevenue: er,
       actualPayment: ap,
@@ -271,7 +270,8 @@ export default function AnalyticsPage() {
         const now = new Date();
         const rows = [];
         const monthList = [];
-        for (let i = compareMonths - 1; i >= 0; i--) {
+        // 表示は新→旧の降順 (例: 6月→5月→4月...)
+        for (let i = 0; i < compareMonths; i++) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
           monthList.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
         }
