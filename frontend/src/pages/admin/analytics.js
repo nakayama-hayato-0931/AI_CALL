@@ -8,6 +8,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
 import useAuth from '../../hooks/useAuth';
 import api, { directApi } from '../../utils/api';
+import CpaV2View from '../../components/admin/CpaV2View';
 import toast from 'react-hot-toast';
 
 const MONTHS = [];
@@ -109,11 +110,8 @@ export default function AnalyticsPage() {
   const [extraCostsList, setExtraCostsList] = useState([]);
   const [extraCostsLoading, setExtraCostsLoading] = useState(false);
   const [newExtra, setNewExtra] = useState({ period_ym: '', category: 'コンサル料', amount: '', memo: '' });
-  // 新CPA(β) モーダル
-  const [cpaV2Open, setCpaV2Open] = useState(false);
-  const [cpaV2Loading, setCpaV2Loading] = useState(false);
-  const [cpaV2Basis, setCpaV2Basis] = useState('acquired');
-  const [cpaV2Data, setCpaV2Data] = useState(null); // { rows, syncRes, probe }
+  // CPA表示モード: 'v2' (デフォルト, fax-crm互換) / 'v1' (旧CPA)
+  const [cpaMode, setCpaMode] = useState('v2');
 
   const openExtraCostsModal = async () => {
     setExtraCostsOpen(true);
@@ -808,10 +806,33 @@ export default function AnalyticsPage() {
 
   return (
     <Layout>
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900 tracking-tight">CPA / 案件質分析</h1>
-        <p className="text-sm text-gray-400 mt-0.5">全オペレーター比較 - コスト・案件化率・面接・売上の分析</p>
+      <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">CPA / 案件質分析</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {cpaMode === 'v2'
+              ? 'fax-crm 互換ロジック (Google Sheets 直接集計、source_kind=架電バイト)'
+              : '全オペレーター比較 - コスト・案件化率・面接・売上の分析 (旧)'}
+          </p>
+        </div>
+        {/* 旧CPA / 新CPA 切替トグル (デフォルト: 新CPA) */}
+        <div>
+          <label className="input-label">表示モード</label>
+          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => setCpaMode('v2')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v2' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              新CPA
+            </button>
+            <button onClick={() => setCpaMode('v1')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cpaMode === 'v1' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              旧CPA
+            </button>
+          </div>
+        </div>
       </div>
+
+      {cpaMode === 'v2' && <CpaV2View />}
+      {cpaMode === 'v1' && (<>
 
       {/* コントロール */}
       <div className="card p-4 mb-5 space-y-3">
@@ -1026,17 +1047,6 @@ export default function AnalyticsPage() {
             </button>
           </div>
 
-          {/* 新CPA (β) - fax-crm 互換ロジック (架電バイト keep) のプレビュー */}
-          <div>
-            <label className="input-label">&nbsp;</label>
-            <button
-              onClick={() => { setCpaV2Data(null); setCpaV2Open(true); }}
-              title="fax-crm 互換のCPA集計プレビュー (モーダルで表示)"
-              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 rounded-md shadow-sm whitespace-nowrap"
-            >
-              新CPA(β)
-            </button>
-          </div>
           {/* === dead code: 旧 popup 実装 (ブラウザのポップアップブロックで使えなかった) === */}
           {false && (<button onClick={async () => {
                 const basis = 'acquired';
@@ -1547,8 +1557,7 @@ export default function AnalyticsPage() {
 
       {/* 打刻ログ重複確認モーダル */}
       {/* 追加コスト管理モーダル */}
-      {/* 新CPA(β) モーダル — ポップアップ非依存 */}
-      {cpaV2Open && (
+      {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCpaV2Open(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             {/* ヘッダ */}
@@ -1850,6 +1859,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
+      </>)}
     </Layout>
   );
 }

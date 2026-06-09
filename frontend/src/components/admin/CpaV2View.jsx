@@ -1,35 +1,23 @@
 /**
- * /admin/cpa-v2 — fax-crm 互換ロジック (架電バイト keep) のCPAページ
- *   - 月別表 + basis 切替トグル
- *   - 内定/面接/不合格 セルクリックで詳細モーダル
- *   - 画像どおりの内定社内訳 (会社名/合格人数/登録番号/営業/業種/初回入金/見込売上/入金実績)
+ * 新CPA (fax-crm 互換, source_kind='架電バイト') ビュー
+ *   - Layout は呼び出し元 (analytics.js) が持つ
+ *   - analytics.js のトグルで旧CPAと切り替えて表示
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import Layout from '../../components/common/Layout';
-import useAuth from '../../hooks/useAuth';
-import { useRouter } from 'next/router';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const yen = (n) => '¥' + (Number(n) || 0).toLocaleString();
 const fmtDate = (s) => s ? new Date(s).toLocaleDateString('ja-JP') : '-';
 
-export default function CpaV2Page() {
-  const { user } = useAuth();
-  const router = useRouter();
+export default function CpaV2View() {
   const [basis, setBasis] = useState('acquired');
   const [months, setMonths] = useState(12);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncRes, setLastSyncRes] = useState(null);
-  // 詳細モーダル: { type:'offers'|'interviews'|'rejects', month, data, loading }
-  const [modal, setModal] = useState(null);
-
-  const isManager = ['admin', 'manager', 'consultant'].includes(user?.role);
-  useEffect(() => {
-    if (user && !isManager) router.push('/');
-  }, [user, isManager, router]);
+  const [modal, setModal] = useState(null); // { type, month, data, loading }
 
   const fetchMonthly = useCallback(async () => {
     setLoading(true);
@@ -42,7 +30,7 @@ export default function CpaV2Page() {
     } finally { setLoading(false); }
   }, [basis, months]);
 
-  useEffect(() => { if (user && isManager) fetchMonthly(); }, [user, isManager, fetchMonthly]);
+  useEffect(() => { fetchMonthly(); }, [fetchMonthly]);
 
   const handleSync = async () => {
     if (!window.confirm('Google Sheets 同期を実行します (10〜90秒)。続行?')) return;
@@ -58,34 +46,25 @@ export default function CpaV2Page() {
     finally { setSyncing(false); }
   };
 
-  // 内定社内訳モーダルを開く (offers)
   const openOffers = async (month) => {
     setModal({ type: 'offers', month, data: null, loading: true });
     try {
       const { data } = await api.get('/api/cpa-v2/offers', { params: { month, basis } });
-      if (data.success) {
-        setModal(prev => prev && prev.month === month ? { ...prev, data: data.data, loading: false } : prev);
-      } else { setModal(null); toast.error('取得失敗'); }
+      if (data.success) setModal(prev => prev && prev.month === month ? { ...prev, data: data.data, loading: false } : prev);
+      else { setModal(null); toast.error('取得失敗'); }
     } catch (e) { setModal(null); toast.error('取得失敗'); }
   };
-  // 面接/不合格モーダル
   const openInterviews = async (month, kind = 'all') => {
     setModal({ type: kind === 'rejects' ? 'rejects' : 'interviews', month, data: null, loading: true });
     try {
       const { data } = await api.get('/api/cpa-v2/interviews', { params: { month, basis, kind } });
-      if (data.success) {
-        setModal(prev => prev ? { ...prev, data: data.data, loading: false } : prev);
-      } else { setModal(null); toast.error('取得失敗'); }
+      if (data.success) setModal(prev => prev ? { ...prev, data: data.data, loading: false } : prev);
+      else { setModal(null); toast.error('取得失敗'); }
     } catch (e) { setModal(null); toast.error('取得失敗'); }
   };
 
   return (
-    <Layout>
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">新CPA (fax-crm 互換)</h1>
-        <p className="text-sm text-gray-400 mt-0.5">source_kind='架電バイト' — 売上シート / 求人情報 / 面接内訳 の3シート集計</p>
-      </div>
-
+    <div>
       {/* 操作バー */}
       <div className="card p-4 mb-5">
         <div className="flex flex-wrap items-center gap-4">
@@ -175,7 +154,6 @@ export default function CpaV2Page() {
         </table>
       </div>
 
-      {/* 詳細モーダル */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setModal(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-[1200px] max-w-[96vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -184,9 +162,7 @@ export default function CpaV2Page() {
                 <h2 className="text-base font-bold text-gray-900">
                   {modal.type === 'offers' ? '内定社内訳' : modal.type === 'rejects' ? '不合格内訳' : '面接内訳'} — {String(modal.month).slice(0, 7).replace('-', '年')}月
                 </h2>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  basis={basis} / source_kind='架電バイト'
-                </p>
+                <p className="text-[11px] text-gray-500 mt-0.5">basis={basis} / source_kind='架電バイト'</p>
               </div>
               <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-700 p-1 text-xl leading-none">×</button>
             </div>
@@ -202,16 +178,12 @@ export default function CpaV2Page() {
           </div>
         </div>
       )}
-    </Layout>
+    </div>
   );
 }
 
-// ---- 内定社内訳テーブル ----
 function OffersTable({ rows }) {
-  // 同一求人番号の行をグループ化（画像どおり、同一企業は最初の行にだけ会社名表示）
   let lastKey = null;
-  let lastCount = 0;
-  // 求人番号ごとの「合格人数」を先に集計
   const countByKey = {};
   for (const r of rows) {
     const k = (r.job_number && r.job_number.trim()) || r.company_name || '?';
@@ -226,7 +198,6 @@ function OffersTable({ rows }) {
   const cancelCount = rows.filter(r => r.is_cancelled).length;
   const declineCount = rows.filter(r => r.is_declined).length;
   const uniqueOfferCompanies = Object.keys(countByKey).length;
-
   return (
     <div>
       <div className="text-xs text-gray-600 mb-2">
@@ -294,7 +265,6 @@ function OffersTable({ rows }) {
   );
 }
 
-// ---- 面接/不合格テーブル ----
 function InterviewsTable({ rows, offerOnly, kind }) {
   const totalCompanies = new Set(rows.map(r => (r.job_number && r.job_number.trim()) || r.company_name)).size;
   const offerOnlyCount = offerOnly?.length || 0;

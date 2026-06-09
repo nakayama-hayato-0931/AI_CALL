@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CPA-v2: 既存CPA画面に統合 (旧/新トグル、デフォルト新CPA)
+- Layout の「新CPA」リンクを削除。`/admin/cpa-v2` ページも削除。
+- 既存 `/admin/analytics`(CPA/案件質分析) 画面のタイトル横に「新CPA / 旧CPA」トグルを追加。デフォルトは新CPA。
+- 新CPAビューを `components/admin/CpaV2View.jsx` に切り出して既存画面から呼び出し。
+- 既存「新CPA(β)」モーダルとボタンは重複のため非表示化。
+
 ### CPA-v2: Phase 2 — 新CPAページ + 詳細モーダル
 - 新ページ `/admin/cpa-v2` を追加。Layout の「分析」セクションに「新CPA (fax-crm互換)」リンク(管理者のみ)。
 - 基本機能:
