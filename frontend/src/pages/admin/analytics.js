@@ -916,7 +916,7 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <Layout>
+    <Layout wide>
       <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">CPA / 案件質分析</h1>

@@ -194,7 +194,7 @@ const ROLE_COLORS = {
   operator: 'from-blue-400 to-blue-600',
 };
 
-export default function Layout({ children }) {
+export default function Layout({ children, wide = false }) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -327,7 +327,7 @@ export default function Layout({ children }) {
             TEST MODE - データは記録されません
           </div>
         )}
-        <div className="p-6 max-w-[1600px]">{children}</div>
+        <div className={wide ? "p-6" : "p-6 max-w-[1600px]"}>{children}</div>
       </main>
     </div>
   );
