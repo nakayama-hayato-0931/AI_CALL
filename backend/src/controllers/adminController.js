@@ -1290,7 +1290,7 @@ module.exports = {
  * 求人番号が未入力の案件について、自動取得して埋める。
  * ソース優先順:
  *   1. 同じ company_id の他案件で求人番号があるもの(最新)
- *   2. (将来) job_postings_v2 から company_name でマッチ
+ *   2. job_postings_v2 (架電バイト求人情報シート) から company_name でマッチ
  * 対象: is_legacy=0 AND is_prospect=0 AND (job_number IS NULL OR job_number='')
  */
 async function backfillJobNumbers(req, res, next) {
@@ -1304,10 +1304,41 @@ async function backfillJobNumbers(req, res, next) {
           AND (p.job_number IS NULL OR p.job_number = '')`
     );
     if (targets.length === 0) {
-      return ApiResponse.success(res, { scanned: 0, updated: 0, bySource: { same_company: 0 } }, '未入力案件なし');
+      return ApiResponse.success(res, { scanned: 0, updated: 0, bySource: { same_company: 0, job_postings_v2: 0 } }, '未入力案件なし');
     }
+
+    // 2) job_postings_v2 をメモリにロード (company_name 完全一致 + 正規化マッチ用)
+    //    取得失敗時は空マップ → 同 company_id ソースのみで補完
+    const v2Map = new Map();        // company_name(原文) → job_number(最新)
+    const v2MapNorm = new Map();    // 正規化後 → job_number
+    const normalize = (s) => String(s || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/[（(]株[)）]|株式会社/g, '')
+      .replace(/[（(]有[)）]|有限会社/g, '')
+      .replace(/[（(]合[)）]|合同会社/g, '')
+      .replace(/[\s　・]/g, '')
+      .toLowerCase();
+    try {
+      const [v2Rows] = await pool.query(
+        `SELECT job_number, company_name, acquired_date
+           FROM job_postings_v2
+          WHERE job_number IS NOT NULL AND job_number != ''
+            AND company_name IS NOT NULL AND company_name != ''
+          ORDER BY acquired_date DESC, id DESC`
+      );
+      for (const r of v2Rows) {
+        if (!v2Map.has(r.company_name)) v2Map.set(r.company_name, r.job_number);
+        const n = normalize(r.company_name);
+        if (n && !v2MapNorm.has(n)) v2MapNorm.set(n, r.job_number);
+      }
+      logger.info(`[backfillJobNumbers] job_postings_v2 loaded: ${v2Rows.length}行 / unique=${v2Map.size}`);
+    } catch (e) {
+      logger.warn(`[backfillJobNumbers] job_postings_v2 取得失敗(同company_idのみで実行): ${e.message}`);
+    }
+
     let updated = 0;
-    const bySource = { same_company: 0 };
+    const bySource = { same_company: 0, job_postings_v2: 0 };
     for (const t of targets) {
       let foundJobNumber = null;
       let source = null;
@@ -1322,6 +1353,15 @@ async function backfillJobNumbers(req, res, next) {
         );
         if (rows.length > 0) { foundJobNumber = rows[0].job_number; source = 'same_company'; }
       }
+      // 2) job_postings_v2 から company_name (完全一致 → 正規化) でマッチ
+      if (!foundJobNumber && t.company_name) {
+        const exact = v2Map.get(t.company_name);
+        if (exact) { foundJobNumber = exact; source = 'job_postings_v2'; }
+        else {
+          const n = normalize(t.company_name);
+          if (n && v2MapNorm.has(n)) { foundJobNumber = v2MapNorm.get(n); source = 'job_postings_v2'; }
+        }
+      }
       if (foundJobNumber) {
         await pool.execute(
           `UPDATE projects SET job_number = ? WHERE id = ? AND (job_number IS NULL OR job_number = '')`,
@@ -1331,8 +1371,9 @@ async function backfillJobNumbers(req, res, next) {
         bySource[source] = (bySource[source] || 0) + 1;
       }
     }
-    logger.info(`[backfillJobNumbers] scanned=${targets.length}, updated=${updated}`);
-    return ApiResponse.success(res, { scanned: targets.length, updated, bySource }, `${updated}件 / ${targets.length}件中 を自動取得しました`);
+    logger.info(`[backfillJobNumbers] scanned=${targets.length}, updated=${updated}, same_company=${bySource.same_company}, job_postings_v2=${bySource.job_postings_v2}`);
+    return ApiResponse.success(res, { scanned: targets.length, updated, bySource },
+      `${updated}件 / ${targets.length}件中 を自動取得しました (同社案件:${bySource.same_company} / 求人情報シート:${bySource.job_postings_v2})`);
   } catch (err) {
     next(err);
   }
