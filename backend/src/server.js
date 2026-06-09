@@ -458,33 +458,52 @@ const runMigrations = async () => {
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_result_code VARCHAR(20) DEFAULT NULL`); } catch (e) {}
   try { await pool.execute(`ALTER TABLE companies ADD COLUMN last_call_user_id INT UNSIGNED DEFAULT NULL`); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
-  // バックフィル: 既存データに対し1回だけ実行（system_settings でフラグ管理）
-  try {
-    const [flag] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'last_call_result_backfilled'");
-    if (flag.length === 0) {
-      logger.info('[Migration] last_call_result_code バックフィル開始...');
-      // 1クエリで一気に: 最終 calls の result_code/user_id を companies に反映
+  // バックフィル: 既存データに対し1回だけ実行（非同期＋チャンク化）。
+  // 起動完了をブロックしない・他リクエストを長時間待たせない設計。
+  // 完了は system_settings.last_call_result_backfilled フラグで管理。
+  setImmediate(async () => {
+    try {
+      const [flag] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'last_call_result_backfilled'");
+      if (flag.length > 0) return;
+      logger.info('[Migration] last_call_result_code バックフィル開始(非同期/チャンク)...');
       const t0 = Date.now();
-      const [r] = await pool.execute(`
-        UPDATE companies c
-        LEFT JOIN (
-          SELECT cl.company_id, cl.result_code, cl.user_id
-          FROM calls cl
-          INNER JOIN (
-            SELECT company_id, MAX(call_started_at) AS latest
-            FROM calls
-            WHERE result_code IS NOT NULL
-            GROUP BY company_id
-          ) m ON m.company_id = cl.company_id AND m.latest = cl.call_started_at
-        ) lc ON lc.company_id = c.id
-        SET c.last_call_result_code = lc.result_code,
-            c.last_call_user_id = lc.user_id
+      // 各 company_id の最終 result_code/user_id を持つ集計を取得（calls側で集計）
+      const [latestRows] = await pool.query(`
+        SELECT cl.company_id, cl.result_code, cl.user_id
+        FROM calls cl
+        INNER JOIN (
+          SELECT company_id, MAX(call_started_at) AS latest
+          FROM calls
+          WHERE result_code IS NOT NULL
+          GROUP BY company_id
+        ) m ON m.company_id = cl.company_id AND m.latest = cl.call_started_at
       `);
+      logger.info(`[Migration] 集計完了: ${latestRows.length}件 → チャンクUPDATE開始`);
+      const CHUNK = 500;
+      let done = 0;
+      for (let i = 0; i < latestRows.length; i += CHUNK) {
+        const batch = latestRows.slice(i, i + CHUNK);
+        // 同時更新を抑えるため軽い直列処理
+        for (const r of batch) {
+          try {
+            await pool.execute(
+              'UPDATE companies SET last_call_result_code = ?, last_call_user_id = ? WHERE id = ?',
+              [r.result_code, r.user_id, r.company_id]
+            );
+          } catch (e) { /* 個別失敗は無視 */ }
+        }
+        done += batch.length;
+        if (done % 5000 === 0) {
+          logger.info(`[Migration] バックフィル進捗: ${done}/${latestRows.length}`);
+          // 他リクエストにCPUを譲る
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
       await pool.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('last_call_result_backfilled', ?)",
-        [JSON.stringify({ affected: r.affectedRows, ms: Date.now() - t0, at: new Date().toISOString() })]);
-      logger.info(`[Migration] last_call_result_code バックフィル完了: ${r.affectedRows}行 (${Date.now() - t0}ms)`);
-    }
-  } catch (e) { logger.warn(`[Migration] last_call_result_code backfill: ${e.message}`); }
+        [JSON.stringify({ affected: done, ms: Date.now() - t0, at: new Date().toISOString() })]);
+      logger.info(`[Migration] last_call_result_code バックフィル完了: ${done}行 (${Date.now() - t0}ms)`);
+    } catch (e) { logger.warn(`[Migration] last_call_result_code backfill: ${e.message}`); }
+  });
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
 
   // companies に industry_category カラム追加 + 事前計算
