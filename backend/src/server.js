@@ -449,6 +449,8 @@ const runMigrations = async () => {
     logger.warn(`region backfill skipped: ${e.message}`);
   }
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
+  // NOT EXISTS の company_id = c.id 検索を高速化
+  try { await pool.execute('CREATE INDEX idx_assignments_company ON company_assignments(company_id, user_id)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status ON recall_tasks(status, company_id)'); } catch (e) {}
 
   // companies に industry_category カラム追加 + 事前計算

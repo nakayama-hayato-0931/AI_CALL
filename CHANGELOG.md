@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト高速化 第2弾（オペレーター効果大）
+- `assignmentFilterSQL` / `recall_tasks` 重複除外を `NOT IN (SELECT ...)` → `NOT EXISTS` に変換。NOT IN は大きなテーブルスキャンになりやすいが NOT EXISTS はインデックスが効きやすい（オペレーター環境で `company_assignments` が大きい場合に特に効く）。
+- キャッシュTTLを 10秒 → 20秒に延長（15秒ポーリングで毎回ヒット）。
+- インデックス追加: `company_assignments(company_id, user_id)`（NOT EXISTS の `company_id = c.id` を高速化）。
+
 ### 架電リスト(getCallList)の高速化（営業/オペレーター両方）
 - Tier 2-5（ゴールデン/未接触/不通リトライ/NGリトライ）を `Promise.all` で並列実行に変更。直列だと各ティアで重いサブクエリを順番に評価していたため遅かった（60万行クラスのDBで顕著）。
 - 10秒インメモリキャッシュ追加（user+mode+industry+callType単位）。15秒ポーリングで2回に1回はDBアクセスなしで即返却。

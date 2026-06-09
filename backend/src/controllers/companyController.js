@@ -12,7 +12,7 @@ const LOCK_TIMEOUT_MINUTES = 60;
 // 架電リスト短期キャッシュ（10秒、user+mode+industry+callType単位）
 // 15秒ポーリングで2回に1回はDBアクセスなしで即返却。
 // 架電完了/結果保存/ロック取得時に invalidateCallListCache() で無効化する。
-const CALL_LIST_CACHE_TTL_MS = 10 * 1000;
+const CALL_LIST_CACHE_TTL_MS = 20 * 1000;
 const callListCache = new Map();
 const buildCallListCacheKey = (userId, callType, mode, industryParam) => `${userId}|${callType}|${mode}|${industryParam || ''}`;
 const invalidateCallListCache = (userId) => {
@@ -281,11 +281,14 @@ const industryRegionFilterSQL = `
 
 /**
  * 割り当てフィルタSQL（自分に割り当て or 未割り当てのみ表示、他OPに割り当て済みは除外）
+ * NOT IN は大きなテーブルスキャンになりやすいので NOT EXISTS にしてインデックス活用。
  */
 const assignmentFilterSQL = `
-  AND (c.id NOT IN (SELECT ca.company_id FROM company_assignments ca)
-       OR c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ?)
-       OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= NOW()))
+  AND (
+    NOT EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id)
+    OR EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?)
+    OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= NOW())
+  )
 `;
 
 /**
@@ -423,7 +426,7 @@ const getNextCallTarget = async (req, res, next) => {
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND ? BETWEEN itr.start_time AND itr.end_time
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
          ${lrFilter}
          ${asFilter}
@@ -444,7 +447,7 @@ const getNextCallTarget = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${asFilter}
          ${irFilter}
@@ -465,7 +468,7 @@ const getNextCallTarget = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
@@ -488,7 +491,7 @@ const getNextCallTarget = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
@@ -737,7 +740,7 @@ const getCallList = async (req, res, next) => {
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND ? BETWEEN itr.start_time AND itr.end_time
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
          ${lrFilter}
          ${lockFilterSQL}
@@ -758,7 +761,7 @@ const getCallList = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -778,7 +781,7 @@ const getCallList = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NO_ANSWER'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
@@ -800,7 +803,7 @@ const getCallList = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
-         AND c.id NOT IN (SELECT rt.company_id FROM recall_tasks rt WHERE rt.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = 'NG'
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
