@@ -953,6 +953,73 @@ export default function AnalyticsPage() {
               手動補正
             </button>
           </div>
+
+          {/* 入金実績診断ボタン */}
+          <div>
+            <label className="input-label">&nbsp;</label>
+            <button
+              onClick={async () => {
+                const from = window.prompt('開始日 YYYY-MM-DD', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+                if (!from) return;
+                const to = window.prompt('終了日 YYYY-MM-DD', new Date().toISOString().slice(0, 10));
+                if (!to) return;
+                try {
+                  const { data } = await api.get('/api/admin/diagnose-visa-payment', { params: { date_from: from, date_to: to } });
+                  if (!data.success) { toast.error(data.message || '取得失敗'); return; }
+                  const d = data.data;
+                  const win = window.open('', '_blank', 'width=1100,height=700');
+                  if (!win) { toast.error('ポップアップがブロックされました'); return; }
+                  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+                  const hiresHtml = (d.hires || []).map(h => `
+                    <tr ${!h.matched ? 'style="background:#fee2e2"' : ''}>
+                      <td>${esc(h.name)}</td>
+                      <td style="font-family:monospace">${esc(h.reg)}</td>
+                      <td>${(h.tokens || []).map(t => `<span style="display:inline-block;padding:1px 4px;margin:1px;border-radius:3px;background:${t.yen > 0 ? '#d1fae5' : '#fee2e2'};font-family:monospace;font-size:11px">${esc(t.token)}=¥${t.yen.toLocaleString()}</span>`).join('')}</td>
+                      <td style="text-align:right">¥${h.totalYen.toLocaleString()}</td>
+                      <td style="text-align:right">¥${h.dbInitialPayment.toLocaleString()}</td>
+                      <td style="text-align:center">${h.matched ? '<span style="color:#059669">OK</span>' : '<span style="color:#dc2626">未マッチ</span>'}</td>
+                    </tr>`).join('');
+                  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>入金実績診断</title>
+                    <style>
+                      body{font-family:sans-serif;font-size:13px;padding:16px;color:#1f2937}
+                      h1{font-size:18px;margin:0 0 8px}
+                      .box{background:#f3f4f6;padding:10px 14px;border-radius:6px;margin-bottom:10px}
+                      .ok{color:#059669;font-weight:bold} .ng{color:#dc2626;font-weight:bold}
+                      .hint{background:#fef3c7;padding:10px 14px;border-radius:6px;border:1px solid #fbbf24;margin-bottom:10px}
+                      table{border-collapse:collapse;width:100%;margin-top:8px}
+                      th,td{border:1px solid #e5e7eb;padding:6px 8px}
+                      th{background:#f9fafb;text-align:left;font-size:12px}
+                    </style></head><body>
+                    <h1>CPA入金実績 診断</h1>
+                    <div class="hint"><b>診断結果:</b> ${esc(d.hint)}</div>
+                    <div class="box">
+                      <div>① シート読み取り: <span class="${d.sheet.ok ? 'ok' : 'ng'}">${d.sheet.ok ? 'OK' : 'FAILED'}</span>
+                        ${d.sheet.ok ? `(全${d.sheet.totalRows}行 / 登録番号あり ${d.sheet.withReg}行 / CC数値あり ${d.sheet.withCcNumber}行)` : `エラー: ${esc(d.sheet.error)}`}</div>
+                      <div>② サービスアカウント: <code>${esc(d.sheet.serviceAccountEmail || '(未設定)')}</code> ← このアカウントにシートを「閲覧者」で共有が必要</div>
+                      <div>③ シートID: <code>${esc(d.sheet.sheetId)}</code></div>
+                      <div>④ 登録番号 → 入金実績マップ: ${d.mapSize}件</div>
+                    </div>
+                    ${d.sheet.ok ? `<div class="box"><b>シート先頭サンプル (登録番号 → CC列の生値):</b><br>${(d.sampleSheetRegs || []).map((r, i) => `<code>${esc(r)}=${esc(d.sheet.sample[i]?.ccRaw)}</code>`).join(' ／ ') || '(なし)'}</div>` : ''}
+                    <div class="box">
+                      <b>対象期間の内定者:</b> ${d.summary.targetHires}件 / マッチ ${d.summary.matched}件 / 未マッチ ${d.summary.unmatched}件 / マッチ合計 ¥${d.summary.totalMatchedYen.toLocaleString()}
+                    </div>
+                    <table>
+                      <thead><tr><th>担当OP</th><th>DB登録番号</th><th>分割トークン×マッチ額</th><th>合計入金実績</th><th>DB初回入金</th><th>状態</th></tr></thead>
+                      <tbody>${hiresHtml}</tbody>
+                    </table>
+                    <p style="color:#9ca3af;font-size:11px;margin-top:12px">※ 赤い行は未マッチ。サンプルシート登録番号とDBの登録番号を比較し、表記ゆれや余分な空白がないか確認してください。</p>
+                    </body></html>`);
+                  win.document.close();
+                } catch (err) {
+                  toast.error(err.response?.data?.message || '診断に失敗しました');
+                }
+              }}
+              title="入金実績がCPAに反映されない原因を切り分け（ビザシート読み取り+登録番号マッチ結果）"
+              className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-500 to-fuchsia-600 hover:from-purple-600 hover:to-fuchsia-700 rounded-md shadow-sm whitespace-nowrap"
+            >
+              入金実績診断
+            </button>
+          </div>
         </div>
 
         {/* データ取り込み */}

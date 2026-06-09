@@ -1280,6 +1280,7 @@ module.exports = {
   updateCustomerMaster,
   importMissingFromFaxCrm,
   diagnoseProjectCount,
+  diagnoseVisaPayment,
 };
 
 /**
@@ -1379,6 +1380,77 @@ async function diagnoseProjectCount(req, res, next) {
       },
       byUser: rows,
       note: 'ダッシュボードは call_type=operator(or sales) で絞り、案件管理は call_type フィルタなし。差分は call_type=null/sales の案件が原因。',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/admin/diagnose-visa-payment?date_from=&date_to=
+ * CPAの入金実績が反映されない原因を切り分ける診断ツール。
+ * 1. ビザシートが読めているか（権限/ID）
+ * 2. 該当期間の内定者登録番号がシートに存在するか（マッチ結果）
+ * を user 別に表示。
+ */
+async function diagnoseVisaPayment(req, res, next) {
+  try {
+    const { date_from, date_to } = req.query;
+    if (!date_from || !date_to) return ApiResponse.badRequest(res, 'date_from と date_to が必要です');
+    const { getVisaPaymentMap, lookupVisaPayment, probeVisaSheet } = require('../services/googleSheetsService');
+
+    // ① シート読み取り状態
+    const sheetStatus = await probeVisaSheet();
+    // ② マップ取得
+    const visaMap = await getVisaPaymentMap();
+    const mapSize = visaMap ? visaMap.size : 0;
+
+    // ③ 該当期間の内定者一覧
+    const [hires] = await pool.query(
+      `SELECT p.owner_user_id, ph.registration_number AS reg, ph.initial_payment, u.name
+       FROM project_hires ph
+       JOIN projects p ON ph.project_id = p.id
+       LEFT JOIN users u ON p.owner_user_id = u.id
+       WHERE p.is_legacy = 0 AND ph.is_cancelled = 0
+         AND p.naitei_date BETWEEN ? AND ?
+         AND ph.registration_number IS NOT NULL AND ph.registration_number != ''`,
+      [date_from, date_to]
+    );
+
+    const sampleSheetRegs = (sheetStatus.sample || []).map(s => s.reg);
+    // ④ マッチ結果
+    const rows = [];
+    let matchedCount = 0, unmatchedCount = 0, matchedYen = 0;
+    for (const h of hires) {
+      const tokens = String(h.reg || '').split(/[,、,\s/／]+/).map(s => s.trim()).filter(Boolean);
+      const perToken = tokens.map(t => ({ token: t, yen: lookupVisaPayment(visaMap, t) }));
+      const yen = perToken.reduce((s, x) => s + x.yen, 0);
+      if (yen > 0) { matchedCount++; matchedYen += yen; } else { unmatchedCount++; }
+      rows.push({
+        owner_user_id: h.owner_user_id, name: h.name, reg: h.reg,
+        tokens: perToken, totalYen: yen, matched: yen > 0,
+        dbInitialPayment: Number(h.initial_payment) || 0,
+      });
+    }
+    rows.sort((a, b) => Number(a.matched) - Number(b.matched));
+
+    return ApiResponse.success(res, {
+      dateFrom: date_from, dateTo: date_to,
+      sheet: sheetStatus,
+      mapSize,
+      summary: {
+        targetHires: hires.length,
+        matched: matchedCount,
+        unmatched: unmatchedCount,
+        totalMatchedYen: matchedYen,
+      },
+      sampleSheetRegs,
+      hires: rows,
+      hint: sheetStatus.ok
+        ? (mapSize === 0 ? 'シートは読めているが登録番号 0件。シートのG列が空 or 別のシート構造の可能性。'
+          : unmatchedCount > 0 ? '登録番号がシートと一致していない可能性。サンプル登録番号とDBの登録番号を比較してください。'
+          : 'すべてマッチ。入金実績は計上されているはず。')
+        : `シート読み取り失敗: ${sheetStatus.error}。サービスアカウント ${sheetStatus.serviceAccountEmail} にシートを共有してください。`,
     });
   } catch (err) {
     next(err);

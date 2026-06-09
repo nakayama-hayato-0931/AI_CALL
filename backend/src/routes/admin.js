@@ -36,6 +36,7 @@ const {
   updateCustomerMaster,
   importMissingFromFaxCrm,
   diagnoseProjectCount,
+  diagnoseVisaPayment,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -138,5 +139,8 @@ router.post('/customer-master/import-missing-from-faxcrm', requireEditor, import
 
 // ダッシュボードと案件管理の案件数差分診断（管理者）
 router.get('/diagnose-projects', requireManager, diagnoseProjectCount);
+
+// CPA入金実績の診断（ビザシート読み取り + 登録番号マッチ結果）
+router.get('/diagnose-visa-payment', requireManager, diagnoseVisaPayment);
 
 module.exports = router;

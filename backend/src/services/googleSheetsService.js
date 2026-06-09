@@ -311,4 +311,37 @@ const lookupVisaPayment = (map, registrationNumber) => {
   return map.get(reg) ?? map.get(reg.toUpperCase()) ?? 0;
 };
 
-module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch, getVisaPaymentMap, lookupVisaPayment };
+/**
+ * ビザシートの状態を診断（管理者向け）。
+ * シート読み取り可否、行数、サンプル行、サービスアカウント email を返す。
+ */
+const probeVisaSheet = async () => {
+  const sheetId = process.env.VISA_PROGRESS_SPREADSHEET_ID || '1wPH1sud7dAwJQihiR6qDrH-otJ3ygAgcCAg-e4ituvw';
+  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
+  try {
+    const sheets = await getClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "'ビザ申請 進捗'!G:CC",
+    });
+    const rows = response.data.values || [];
+    // 登録番号があり CC列に数値が入っている先頭5件をサンプルに
+    const sample = [];
+    for (const row of rows) {
+      const reg = String(row[0] || '').trim();
+      if (!reg) continue;
+      sample.push({ reg, ccRaw: row[74] == null ? null : String(row[74]) });
+      if (sample.length >= 5) break;
+    }
+    const withReg = rows.filter(r => String(r[0] || '').trim()).length;
+    const withCcNumber = rows.filter(r => {
+      const v = parseFloat(String(r[74] == null ? '' : r[74]).replace(/[^0-9.\-]/g, ''));
+      return !isNaN(v) && v !== 0;
+    }).length;
+    return { ok: true, sheetId, serviceAccountEmail, totalRows: rows.length, withReg, withCcNumber, sample };
+  } catch (err) {
+    return { ok: false, sheetId, serviceAccountEmail, error: err.message, errorCode: err.code };
+  }
+};
+
+module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch, getVisaPaymentMap, lookupVisaPayment, probeVisaSheet };
