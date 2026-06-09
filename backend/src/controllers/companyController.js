@@ -9,6 +9,42 @@ const logger = require('../utils/logger');
 // ロックタイムアウト（分）
 const LOCK_TIMEOUT_MINUTES = 60;
 
+// last_call_result_code カラムが存在するかをキャッシュ。
+// 存在しない場合は従来の相関サブクエリにフォールバックして Unknown column エラーを回避。
+// 起動直後に一度 false で初期化し、SHOW COLUMNS で確認。preflightで追加成功すれば true。
+let hasLastCallResultCol = false;
+(async () => {
+  try {
+    const [rows] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
+    hasLastCallResultCol = rows.length > 0;
+    logger.info(`[schemaCheck] last_call_result_code カラム = ${hasLastCallResultCol ? 'あり' : 'なし(フォールバック使用)'}`);
+  } catch (e) {
+    hasLastCallResultCol = false;
+    logger.warn(`[schemaCheck] failed: ${e.message}`);
+  }
+  // 5秒ごとに再確認（preflightが遅れて完了する場合に対応）
+  const recheckInterval = setInterval(async () => {
+    try {
+      const [rows] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
+      const has = rows.length > 0;
+      if (has && !hasLastCallResultCol) {
+        hasLastCallResultCol = true;
+        logger.info('[schemaCheck] last_call_result_code カラム検出 → 高速SQLに切替');
+        clearInterval(recheckInterval);
+      }
+    } catch (e) { /* ignore */ }
+  }, 5000);
+})();
+
+// 最終架電結果フィルタを生成（カラムがあれば高速、無ければ相関サブクエリ）
+const lastResultFilterSQL = (resultCode) => hasLastCallResultCol
+  ? `AND c.last_call_result_code = '${resultCode}'`
+  : `AND (SELECT cl3.result_code FROM calls cl3 WHERE cl3.company_id = c.id ORDER BY cl3.call_started_at DESC LIMIT 1) = '${resultCode}'`;
+// 別オペレーター判定（ティア5用）
+const lastUserNotEqualSQL = () => hasLastCallResultCol
+  ? `AND c.last_call_user_id != ?`
+  : `AND (SELECT cl4.user_id FROM calls cl4 WHERE cl4.company_id = c.id ORDER BY cl4.call_started_at DESC LIMIT 1) != ?`;
+
 // 架電リスト短期キャッシュ（10秒、user+mode+industry+callType単位）
 // 15秒ポーリングで2回に1回はDBアクセスなしで即返却。
 // 架電完了/結果保存/ロック取得時に invalidateCallListCache() で無効化する。
@@ -472,7 +508,7 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND c.last_call_result_code = 'NO_ANSWER'
+         ${lastResultFilterSQL('NO_ANSWER')}
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
@@ -495,9 +531,9 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND c.last_call_result_code = 'NG'
+         ${lastResultFilterSQL('NG')}
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
-         AND c.last_call_user_id != ?
+         ${lastUserNotEqualSQL()}
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
@@ -785,7 +821,7 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND c.last_call_result_code = 'NO_ANSWER'
+         ${lastResultFilterSQL('NO_ANSWER')}
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -807,9 +843,9 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
-         AND c.last_call_result_code = 'NG'
+         ${lastResultFilterSQL('NG')}
          AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
-         AND c.last_call_user_id != ?
+         ${lastUserNotEqualSQL()}
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${asFilter}

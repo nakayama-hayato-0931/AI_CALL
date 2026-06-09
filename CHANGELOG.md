@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト: last_call_result_code のフォールバック実装
+- `c.last_call_result_code` カラムが何らかの理由で存在しない場合でも動作するよう、起動時に `SHOW COLUMNS` でカラム有無を確認し、無ければ従来の相関サブクエリにフォールバック。
+- 5秒ごとに再チェック（preflightが遅れて完了する場合に自動切替）。
+- 「Unknown column」エラーで架電リストが取得できなくなる事故を防止。
+
 ### 起動シーケンス修正: criticalPreflight でカラム追加を先に await
 - これまで `runMigrations()` が await されずに `app.listen()` が始まっていたため、ALTER TABLE 完了前にAPIリクエストが処理され「Unknown column 'c.last_call_result_code'」エラーが発生していた。
 - 新カラム ALTER（`last_call_result_code` / `last_call_user_id`）と関連INDEXを `criticalPreflight()` に分離し、必ず完了してから listen 開始するよう変更。
