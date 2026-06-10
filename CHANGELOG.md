@@ -31,6 +31,11 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電画面: 業種別ピックアップの地域 select UI を一旦非表示
+- UIイメージが要件と合わなかったため、業種別モードの地域 select を一時的に非表示。
+- バックエンドの `GET /api/companies/industry-regions` エンドポイント、`getCallList` / `getNextCallTarget` の region パラメータ受付ロジックはそのまま残置 (再表示時に復活可能)。
+- フロントの state (`selectedRegion`, `availableRegions`) と useEffect の地域 fetch ロジックも残置。
+
 ### 架電画面: 業種別ピックアップに地域絞込を追加 (架電ルール許可地域のみ)
 - 架電画面の業種別モードで、業種に加えて地域 (都道府県) でも絞り込めるように。
 - 選択可能な地域は **架電ルール (industry_region_rules) で設定された地域 ∩ ②自動ピックアップ対象都道府県** のみ。

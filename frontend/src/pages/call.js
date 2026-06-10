@@ -852,32 +852,16 @@ export default function CallPage() {
                 ))}
               </div>
               {pickupMode === 'industry' && (
-                <>
-                  <select
-                    value={selectedIndustry}
-                    onChange={e => setSelectedIndustry(e.target.value)}
-                    className="input text-xs mt-1.5 w-full"
-                  >
-                    <option value="">業種を選択</option>
-                    {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
-                      <option key={ind} value={ind}>{ind}</option>
-                    ))}
-                  </select>
-                  {selectedIndustry && (
-                    <select
-                      value={selectedRegion}
-                      onChange={e => setSelectedRegion(e.target.value)}
-                      disabled={availableRegions.length === 0}
-                      className="input text-xs mt-1.5 w-full disabled:bg-gray-100 disabled:text-gray-400"
-                      title={availableRegions.length === 0 ? '架電ルールに地域が設定されていません' : '架電ルールで設定された地域のみ選択可'}
-                    >
-                      <option value="">地域を選択 (任意・架電ルールの全地域)</option>
-                      {availableRegions.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  )}
-                </>
+                <select
+                  value={selectedIndustry}
+                  onChange={e => setSelectedIndustry(e.target.value)}
+                  className="input text-xs mt-1.5 w-full"
+                >
+                  <option value="">業種を選択</option>
+                  {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
+                    <option key={ind} value={ind}>{ind}</option>
+                  ))}
+                </select>
               )}
               {pickupMode === 'special' && (
                 <div className="mt-2">
