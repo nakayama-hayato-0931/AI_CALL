@@ -251,7 +251,11 @@ export default function CallPage() {
       const status = err.response?.status;
       const detail = err.response?.data?.error;
       console.error('[fetchCallList] error', { status, msg, detail, err });
-      toast.error(detail ? `${msg} [${status}] ${detail}` : `${msg}${status ? ` [${status}]` : ''}`, { duration: 15000 });
+      // 自動ポーリング (forceRefresh=false) は静かに失敗。
+      // 502 連発時のトーストスパムを防ぐためコンソールログのみ。
+      if (forceRefresh) {
+        toast.error(detail ? `${msg} [${status}] ${detail}` : `${msg}${status ? ` [${status}]` : ''}`, { duration: 5000 });
+      }
     } finally {
       setListLoading(false);
     }
