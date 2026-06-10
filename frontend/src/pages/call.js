@@ -76,6 +76,7 @@ export default function CallPage() {
 
   // 架電リスト
   const [targetList, setTargetList] = useState([]);
+  const [listDebug, setListDebug] = useState(null);
   const [selecting, setSelecting] = useState(false); // 選択処理中フラグ（ボタン無効化用）
   const prefetchedListRef = useRef(null); // バックグラウンドで事前取得した次の候補リスト
   const prefetchPromiseRef = useRef(null); // 進行中のprefetchプロミス
@@ -232,6 +233,7 @@ export default function CallPage() {
       }
       const { data } = await api.get('/api/companies/call-list', { params });
       let targets = data.data.targets || [];
+      setListDebug(data.data.debug || null);
       // 二重保険: forceRefresh のときはクライアント側でも Fisher-Yates シャッフル。
       // (バックエンドの ORDER BY RAND() がデプロイ未反映でも確実に並び替わる)
       if (forceRefresh && targets.length > 1) {
@@ -846,7 +848,7 @@ export default function CallPage() {
         {/* 左: 架電リスト */}
         <div className="xl:col-span-1">
           <div className="card p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <h2 className="text-sm font-bold text-gray-800">架電リスト</h2>
               <div className="flex items-center gap-2">
                 <button
@@ -896,6 +898,22 @@ export default function CallPage() {
                 </button>
               </div>
             </div>
+
+            {/* Tier別 ピックアップ件数 (DB全体での該当件数) */}
+            {listDebug && (
+              <div className="text-[10px] text-gray-400 mb-2 flex flex-wrap gap-x-2 gap-y-0.5">
+                <span>リコール:{listDebug.recall ?? 0}</span>
+                <span>ゴールデン:{listDebug.golden ?? 0}</span>
+                <span className={`${Number(listDebug.untouched) === 0 ? 'text-amber-600 font-semibold' : ''}`}>
+                  未架電:{listDebug.untouched ?? 0}
+                </span>
+                <span>過去不通:{listDebug.retry_no_answer ?? 0}</span>
+                <span>過去NG:{listDebug.retry_ng ?? 0}</span>
+                {Number(listDebug.untouched) === 0 && (Number(listDebug.retry_no_answer) > 0 || Number(listDebug.retry_ng) > 0) && (
+                  <span className="basis-full text-amber-700">※ 未架電が枯渇したため過去架電企業を表示中</span>
+                )}
+              </div>
+            )}
 
             {/* ピックアップモード切替 */}
             <div className="mb-3">
