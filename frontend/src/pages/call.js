@@ -871,7 +871,7 @@ export default function CallPage() {
                 <button
                   onClick={() => {
                     manualRefreshAtRef.current = Date.now();
-                    // 即座に現在のリストをシャッフル (recall_due/assigned は先頭固定)
+                    let shuffledCount = 0;
                     setTargetList(prev => {
                       const sticky = prev.filter(t => t.reason === 'assigned' || t.reason === 'recall_due');
                       const rest = prev.filter(t => t.reason !== 'assigned' && t.reason !== 'recall_due');
@@ -879,19 +879,20 @@ export default function CallPage() {
                         const j = Math.floor(Math.random() * (i + 1));
                         [rest[i], rest[j]] = [rest[j], rest[i]];
                       }
+                      shuffledCount = rest.length;
                       return [...sticky, ...rest];
                     });
-                    // バックグラウンドで新しい候補も再取得
+                    toast.success(`${shuffledCount}件をシャッフルしました`, { duration: 1500 });
                     fetchCallList(true);
                   }}
                   disabled={listLoading}
-                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-                  title="即座にシャッフル + サーバーから新候補も取得 (30秒間はポーリング抑止)"
+                  className="text-xs font-semibold text-purple-600 hover:text-purple-800 transition-colors flex items-center gap-1 px-2 py-1 rounded-md bg-purple-50 hover:bg-purple-100"
+                  title="リスト内をランダムに並び替え + サーバーから新候補も取得"
                 >
                   <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                    <polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line>
                   </svg>
-                  更新
+                  シャッフル
                 </button>
               </div>
             </div>
