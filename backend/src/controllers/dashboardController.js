@@ -185,11 +185,13 @@ const getDailyStats = async (req, res, next) => {
     }
 
     // 1クエリで全KPIを集計 (SKIPを除外)
+    // コール数は同一企業への複数回コールを1回として数える (DISTINCT company_id)。
+    // 有効通話/担当者通話/案件化/リコール獲得は実イベント数のままカウント。
     const [statsRows] = await pool.query(
       `SELECT
          MIN(call_started_at) as first_call,
          MAX(COALESCE(call_ended_at, call_started_at)) as last_call,
-         COUNT(*) as call_count,
+         COUNT(DISTINCT c.company_id) as call_count,
          CAST(SUM(CASE WHEN result_code = 'RECALL' THEN 1 ELSE 0 END) AS SIGNED) as recall_gained,
          CAST(SUM(CASE WHEN is_effective_connection = 1 THEN 1 ELSE 0 END) AS SIGNED) as effective_count,
          CAST(SUM(CASE WHEN is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_count,
