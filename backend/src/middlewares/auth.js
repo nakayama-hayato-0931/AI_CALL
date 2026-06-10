@@ -19,6 +19,11 @@ const authenticate = (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // 業務カテゴリ: ヘッダー X-Work-Category (general/specific_skill)。
+    // オペレーターのみログイン時に選択、それ以外は 'general' デフォルト。
+    const rawCategory = req.headers['x-work-category'];
+    const workCategory = rawCategory === 'specific_skill' ? 'specific_skill' : 'general';
+
     // リクエストにユーザー情報を付与
     req.user = {
       id: decoded.id,
@@ -26,6 +31,7 @@ const authenticate = (req, res, next) => {
       role: decoded.role,
       isTestAccount: !!decoded.isTestAccount,
       isServiceAccount: !!decoded.isServiceAccount,
+      workCategory,
     };
 
     next();

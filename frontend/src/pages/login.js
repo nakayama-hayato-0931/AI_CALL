@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [workCategory, setWorkCategory] = useState('general'); // 'general'=技人国 / 'specific_skill'=特定技能
   const [loading, setLoading] = useState(false);
 
   // オペレーター一覧取得
@@ -48,6 +49,10 @@ export default function LoginPage() {
         ? { user_id: Number(selectedUserId), password }
         : { email, password };
       await login(credentials);
+      // オペレーター: 業務カテゴリを localStorage に保存 (general/specific_skill)
+      if (step === 'operator' && typeof window !== 'undefined') {
+        window.localStorage.setItem('work_category', workCategory);
+      }
       toast.success('ログインしました');
     } catch (err) {
       const msg = err.response?.data?.message || 'ログインに失敗しました';
@@ -188,6 +193,35 @@ export default function LoginPage() {
                     placeholder="パスワードを入力"
                     autoComplete="current-password"
                   />
+                </div>
+                <div>
+                  <label className="input-label">業務カテゴリ</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWorkCategory('general')}
+                      className={`flex-1 py-2.5 px-3 text-sm font-medium rounded-lg border transition-colors ${
+                        workCategory === 'general'
+                          ? 'bg-blue-50 border-blue-500 text-blue-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      技人国
+                      <div className="text-[10px] font-normal text-gray-400 mt-0.5">(デフォルト)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkCategory('specific_skill')}
+                      className={`flex-1 py-2.5 px-3 text-sm font-medium rounded-lg border transition-colors ${
+                        workCategory === 'specific_skill'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      特定技能
+                      <div className="text-[10px] font-normal text-gray-400 mt-0.5">(集計を分離)</div>
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="submit"

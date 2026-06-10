@@ -20,6 +20,11 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      // 業務カテゴリ (技人国/特定技能) — オペレーターのみログイン時に選択して localStorage 保存
+      const workCategory = localStorage.getItem('work_category');
+      if (workCategory) {
+        config.headers['X-Work-Category'] = workCategory;
+      }
     }
     return config;
   },
@@ -53,6 +58,8 @@ directApi.interceptors.request.use(
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('token');
       if (token) config.headers.Authorization = `Bearer ${token}`;
+      const workCategory = localStorage.getItem('work_category');
+      if (workCategory) config.headers['X-Work-Category'] = workCategory;
     }
     return config;
   },

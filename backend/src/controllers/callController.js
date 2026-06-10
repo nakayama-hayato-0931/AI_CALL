@@ -61,15 +61,16 @@ const startCall = async (req, res, next) => {
     }
 
     let result;
+    const workCategory = req.user?.workCategory || 'general';
     try {
       [result] = await pool.execute(
-        `INSERT INTO calls (user_id, company_id, call_started_at, call_type)
-         VALUES (?, ?, NOW(), ?)`,
-        [userId, company_id, resolvedCallType]
+        `INSERT INTO calls (user_id, company_id, call_started_at, call_type, work_category)
+         VALUES (?, ?, NOW(), ?, ?)`,
+        [userId, company_id, resolvedCallType, workCategory]
       );
     } catch (insertErr) {
-      // call_type カラムが無い等の場合のフォールバック
-      logger.warn(`[startCall] call_type付きINSERT失敗、フォールバック: ${insertErr.code} ${insertErr.sqlMessage || insertErr.message}`);
+      // work_category または call_type カラムが無い場合のフォールバック
+      logger.warn(`[startCall] work_category付きINSERT失敗、フォールバック: ${insertErr.code} ${insertErr.sqlMessage || insertErr.message}`);
       try {
         [result] = await pool.execute(
           `INSERT INTO calls (user_id, company_id, call_started_at) VALUES (?, ?, NOW())`,
@@ -301,11 +302,23 @@ const endCall = async (req, res, next) => {
     // PROJECT: 案件レコード作成
     if (result_code === 'PROJECT') {
       try {
-        const [projectResult] = await pool.execute(
-          `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
-           VALUES (?, ?, ?, 'NEW', ?, ?)`,
-          [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
-        );
+        // calls.work_category を継承 (集計を技人国/特定技能で分離するため)
+        const callWorkCategory = call.work_category || 'general';
+        let projectResult;
+        try {
+          [projectResult] = await pool.execute(
+            `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type, work_category)
+             VALUES (?, ?, ?, 'NEW', ?, ?, ?)`,
+            [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator', callWorkCategory]
+          );
+        } catch (e) {
+          logger.warn(`[endCall] projects work_category付きINSERT失敗、フォールバック: ${e.code} ${e.sqlMessage || e.message}`);
+          [projectResult] = await pool.execute(
+            `INSERT INTO projects (company_id, created_call_id, owner_user_id, status, is_prospect, call_type)
+             VALUES (?, ?, ?, 'NEW', ?, ?)`,
+            [call.company_id, id, call.user_id, is_prospect ? 1 : 0, call.call_type || 'operator']
+          );
+        }
         projectId = projectResult.insertId;
         // document_screening をデフォルトで 'not_required' に（失敗しても無視）
         try {

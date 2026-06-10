@@ -31,6 +31,16 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ (技人国 / 特定技能) 機能 Phase 1: スキーマ + ログイン選択 + 保存
+- オペレーターのログイン時に「技人国 / 特定技能」を選択できるよう変更。デフォルト=技人国 (general)。
+- スキーマ追加 (criticalPreflight): `calls.work_category VARCHAR(20) DEFAULT 'general'`、`projects.work_category` も同様。インデックスも作成。
+- フロント: ログイン画面のオペレーターステップに技人国/特定技能トグルを追加。選択値を localStorage `work_category` に保存。
+- axios インターセプター: 全 API リクエストに `X-Work-Category` ヘッダーを付与 (api + directApi 両方)。
+- 認証 middleware: ヘッダーを読んで `req.user.workCategory` を設定 ('general'/'specific_skill')。
+- `startCall`: `calls.work_category` に保存 (フォールバック付き)。
+- `endCall` (PROJECT): 案件作成時に `projects.work_category` に継承 (フォールバック付き)。
+- Phase 2 で集計分離 (ダッシュボード/CPA/案件質) と管理者「特定技能管理」メニューを追加予定。
+
 ### 架電リスト: 営業もオペレーターと同じリスト (is_sales_list=0) に統一
 - これまで `call_type='sales'` のとき `c.is_sales_list = 1`、`operator` のとき `c.is_sales_list = 0` で別リストを参照していたのを、両方とも `is_sales_list = 0` に統一。
 - 修正箇所: `getCallList` / `getNextCallTarget` の `salesListFilter` (2箇所)、`diagnoseCallList` の `salesCond` (1箇所)。
