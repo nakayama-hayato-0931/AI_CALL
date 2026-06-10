@@ -246,9 +246,13 @@ export default function CallPage() {
   }, [fetchCallList]);
 
   // 架電中でない時、15秒ごとに自動リフレッシュ（他OPがピックアップした企業を除外するため）
+  const manualRefreshAtRef = useRef(0);
   useEffect(() => {
     if (calling || selecting) return;
     const interval = setInterval(() => {
+      // 直前30秒以内に手動「更新」が押されたらポーリングをスキップ
+      // (決定論的ポーリングがランダム結果を上書きする事象を防ぐ)
+      if (Date.now() - manualRefreshAtRef.current < 30000) return;
       fetchCallList();
     }, 15000);
     return () => clearInterval(interval);
@@ -850,10 +854,10 @@ export default function CallPage() {
                   ロック解除
                 </button>
                 <button
-                  onClick={() => fetchCallList(true)}
+                  onClick={() => { manualRefreshAtRef.current = Date.now(); fetchCallList(true); }}
                   disabled={listLoading}
                   className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-                  title="サーバーキャッシュを無効化して未架電を再ピックアップ"
+                  title="サーバーキャッシュを無効化して未架電を再ピックアップ (30秒間はポーリング抑止)"
                 >
                   <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
