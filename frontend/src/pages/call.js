@@ -226,9 +226,24 @@ export default function CallPage() {
     setListLoading(true);
     try {
       const params = getModeParams();
-      if (forceRefresh) params.refresh = 1;
+      if (forceRefresh) {
+        params.refresh = 1;
+        params._t = Date.now(); // URL cache-buster (ブラウザ/プロキシキャッシュ完全回避)
+      }
       const { data } = await api.get('/api/companies/call-list', { params });
-      setTargetList(data.data.targets || []);
+      let targets = data.data.targets || [];
+      // 二重保険: forceRefresh のときはクライアント側でも Fisher-Yates シャッフル。
+      // (バックエンドの ORDER BY RAND() がデプロイ未反映でも確実に並び替わる)
+      if (forceRefresh && targets.length > 1) {
+        const sticky = targets.filter(t => t.reason === 'assigned' || t.reason === 'recall_due');
+        const rest = targets.filter(t => t.reason !== 'assigned' && t.reason !== 'recall_due');
+        for (let i = rest.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        targets = [...sticky, ...rest];
+      }
+      setTargetList(targets);
     } catch (err) {
       const msg = err.response?.data?.message || '架電リストの取得に失敗しました';
       const status = err.response?.status;
