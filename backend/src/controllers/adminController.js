@@ -2316,6 +2316,9 @@ async function getIncentiveData(req, res, next) {
   try {
     const HOURLY_RATE = 1500;
     const INTERN_HOURLY_RATE = 1250;
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
 
     const now = new Date();
     const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -2387,8 +2390,9 @@ async function getIncentiveData(req, res, next) {
          WHERE p.is_prospect = 0
            AND p.status = 'NAITEI'
            AND p.naitei_date BETWEEN ? AND ?
+           ${wcFilter.sql}
          ORDER BY p.naitei_date DESC`,
-        [dateFrom, dateTo]
+        [dateFrom, dateTo, ...wcFilter.params]
       );
       projects = rows;
     }

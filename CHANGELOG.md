@@ -31,6 +31,14 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ Phase 3: インセンティブ + ダッシュボード URL クエリ受信 + バッジ
+- `getIncentiveData` (v1 フォールバック) に `work_category` フィルタを追加。
+- フロント `index.js` (ダッシュボード): `useRouter` で `?work_category=specific_skill` を取得し、`fetchStats` / `fetchPerfData` の params に追加。
+- 依存配列に `workCategoryQuery` を追加して URL 変更時に再フェッチ。
+- ダッシュボードタイトル横に「特定技能で絞込中」バッジを表示 (絞込時のみ)。
+- 「特定技能管理」画面のリンクからダッシュボードを開くと、自動で特定技能のみの数値に切り替わる。
+- 残作業 (Phase 4): CPA/案件質画面 (analytics.js)、案件管理、架電履歴、analytics の cpa-all/quality-all バックエンド、sales_projects_v2 への work_category 連動。
+
 ### 業務カテゴリ (技人国 / 特定技能) Phase 2: 集計分離 + 管理者「特定技能管理」追加
 - 共通ヘルパー `buildWorkCategoryFilter(req, columnExpr)` を auth.js に追加。
   - オペレーター/営業: `req.user.workCategory` (localStorage 経由) を自動適用

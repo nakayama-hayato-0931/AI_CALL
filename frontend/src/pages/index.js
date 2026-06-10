@@ -3,6 +3,7 @@
  * KPI表示 + グラフ (時間帯別コール、業種別案件化率) + AI総合分析
  */
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import useAuth from '../hooks/useAuth';
 import api, { directApi } from '../utils/api';
@@ -93,6 +94,9 @@ const ScoreCircle = ({ score, size = 64 }) => {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const router = useRouter();
+  // URL クエリの ?work_category=specific_skill を集計絞込に渡す (管理者の特定技能管理リンク用)
+  const workCategoryQuery = typeof router.query.work_category === 'string' ? router.query.work_category : '';
   const [freshUser, setFreshUser] = useState(null);
   // KPI編集（管理者のみ）
   const [editingKpi, setEditingKpi] = useState(null); // { userId, field, value }
@@ -397,7 +401,7 @@ export default function DashboardPage() {
     if (isManager) fetchPerfData();
     // 営業ロール: 自分のチーム(sales)一覧を取得
     if (user?.role === 'sales') fetchPerfData();
-  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo, customFrom, customTo]);
+  }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo, customFrom, customTo, workCategoryQuery]);
 
   const fetchStats = async () => {
     try {
@@ -407,6 +411,7 @@ export default function DashboardPage() {
       if (kpiScope === 'operator' && kpiTargetUserId) {
         params.target_user_id = kpiTargetUserId;
       }
+      if (workCategoryQuery) params.work_category = workCategoryQuery;
       const res = await api.get('/api/dashboard/stats', { params });
       const statsData = res.data.data;
       setStats(statsData);
@@ -448,7 +453,8 @@ export default function DashboardPage() {
       const rangeQs =
         kpiPeriod === 'cumulative' ? `&date_from=${cumFrom}&date_to=${cumTo}` :
         kpiPeriod === 'custom' ? `&date_from=${customFrom}&date_to=${customTo}` : '';
-      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}${rangeQs}`);
+      const wcQs = workCategoryQuery ? `&work_category=${encodeURIComponent(workCategoryQuery)}` : '';
+      const { data: res } = await api.get(`/api/admin/performance?period=${kpiPeriod}&date=${kpiDate}&call_type=${callType}${rangeQs}${wcQs}`);
       if (res.success) setPerfData(res.data);
     } catch (err) {
       console.error('オペレーター実績取得失敗:', err);
@@ -593,7 +599,12 @@ export default function DashboardPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">ダッシュボード</h1>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+              ダッシュボード
+              {workCategoryQuery === 'specific_skill' && (
+                <span className="ml-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md align-middle">特定技能で絞込中</span>
+              )}
+            </h1>
             <div className="flex items-center gap-3 mt-0.5">
               <p className="text-sm text-gray-400">営業活動サマリー</p>
               <button onClick={handleCopyCallData}
