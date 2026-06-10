@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト(障害fix): is_auto カラムを criticalPreflight に移し起動順序競合を解消
+- 「架電リスト取得に失敗しました」が一部ユーザーで出ていた事象を修正。
+- 原因: 直前のコミットで `company_assignments.is_auto` カラムを参照する SQL を Tier 0 / assignBypassWrap / is_assigned に入れたが、ALTER TABLE は `app.listen()` 後の migrations() 内で実行していた。起動直後のリクエストで「Unknown column 'is_auto'」エラーで 500。
+- 修正: `criticalPreflight()` 内に移動し `app.listen()` 前に確実に追加。
+- 追加: フロントのエラートーストにステータスコード+detail を出すよう改修 (原因切り分け補助)。
+
 ### 架電リスト: 更新ボタンで結果をシャッフル + キャッシュ保存もスキップ
 - 「更新を押しても表示企業が変わらない」事象を強化修正。
 - `?refresh=1` のとき: Tier 0 (assigned) と Tier 1 (recall) は先頭固定、Tier 2-5 を Fisher-Yates でシャッフルして毎回違う候補を表示。

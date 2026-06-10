@@ -231,7 +231,10 @@ export default function CallPage() {
       setTargetList(data.data.targets || []);
     } catch (err) {
       const msg = err.response?.data?.message || '架電リストの取得に失敗しました';
-      toast.error(msg, { duration: 10000 });
+      const status = err.response?.status;
+      const detail = err.response?.data?.error;
+      console.error('[fetchCallList] error', { status, msg, detail, err });
+      toast.error(detail ? `${msg} [${status}] ${detail}` : `${msg}${status ? ` [${status}]` : ''}`, { duration: 15000 });
     } finally {
       setListLoading(false);
     }

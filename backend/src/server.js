@@ -305,6 +305,14 @@ const criticalPreflight = async () => {
     } catch (e) { logger.error(`[Preflight] add last_call_user_id FAILED: ${e.code} ${e.message}`); }
   }
   try { await pool.execute('CREATE INDEX idx_companies_last_call_result ON companies(last_call_result_code, last_called_at)'); } catch (e) {}
+  // company_assignments.is_auto: Tier 0 ロジックが参照するので app.listen() 前に必ず追加
+  try {
+    const [r] = await pool.query("SHOW COLUMNS FROM company_assignments LIKE 'is_auto'");
+    if (r.length === 0) {
+      await pool.execute('ALTER TABLE company_assignments ADD COLUMN is_auto TINYINT(1) NOT NULL DEFAULT 0');
+      logger.info('[Preflight] company_assignments.is_auto 追加完了');
+    }
+  } catch (e) { logger.error(`[Preflight] add is_auto FAILED: ${e.code} ${e.message}`); }
   // 最終確認
   try {
     const [r] = await pool.query("SHOW COLUMNS FROM companies LIKE 'last_call_result_code'");
