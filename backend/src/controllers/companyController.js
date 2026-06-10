@@ -759,8 +759,8 @@ const getCallList = async (req, res, next) => {
     }
 
     // 1. リコール期限（自分のリコールのみ）
-    // リコールはユーザーが明示的に指定したものなので、1時間以内除外フィルタ・
-    // 業種地域フィルタ・モード絞込はバイパスして必ずピックアップする
+    // リコールはユーザーが明示的に指定したものなので、1時間以内除外・業種地域フィルタは
+    // バイパス。ただし業種別モード時は modeFilterSQL を適用して業種絞込を尊重する。
     const [recallRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'recall_due' as reason, rt.recall_at
@@ -769,9 +769,10 @@ const getCallList = async (req, res, next) => {
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
          ${lockFilterSQL}
+         ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
-      [userId, now, userId, LIST_SIZE]
+      [userId, now, userId, ...modeFilterParams, LIST_SIZE]
     );
     targets.push(...recallRows);
     excludeIds = targets.map(t => t.id);
@@ -785,9 +786,10 @@ const getCallList = async (req, res, next) => {
     // ===== Tier 0: 自分割り当て中の企業を必ず先頭に表示 =====
     // 管理画面で「○○割り当て中」とオレンジ表示される企業は、本人がオペレーター画面でも
     // 必ず架電できるようにする。
-    // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED)・業種地域フィルタ・モードフィルタ・
-    // last_called_at 経過日数条件をバイパスし、ロック・1時間以内・recall除外を適用。
-    // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用する。
+    // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED)・業種地域フィルタ・last_called_at 経過日数条件
+    // をバイパスし、ロック・1時間以内・recall除外を適用。
+    // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用。
+    // 業種別モード時は modeFilterSQL も適用して業種絞込を尊重 (業種別が効かない事象の修正)。
     const [assignedRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'assigned' as reason,
@@ -799,10 +801,11 @@ const getCallList = async (req, res, next) => {
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${prefectureFilter}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...prefectureParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
     // Tier 1 と重複しないように追加
     const seenIds = new Set(targets.map(t => t.id));
