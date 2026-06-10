@@ -1634,6 +1634,12 @@ export default function AnalyticsPage() {
                   <section>
                     <h3 className="font-bold text-sm text-gray-700 mb-2">案件明細</h3>
                     <div className="overflow-x-auto">
+                      {(() => {
+                        const isNaitei = industryModal.status === 'NAITEI';
+                        const isBarashiLost = ['BARASHI', 'LOST', 'BARASHI_LOST'].includes(industryModal.status);
+                        const fmtScreen = (v) => v === 'required' ? 'あり' : (v === 'not_required' ? 'なし' : '-');
+                        const fmtMethod = (v) => v === 'online' ? 'オンライン' : (v === 'onsite' ? '対面' : (v === 'document' ? '書類' : '-'));
+                        return (
                       <table className="w-full text-xs border">
                         <thead className="bg-gray-100">
                           <tr>
@@ -1643,15 +1649,21 @@ export default function AnalyticsPage() {
                             <th className="text-left px-2 py-1.5">担当OP</th>
                             <th className="text-left px-2 py-1.5">担当営業</th>
                             <th className="text-left px-2 py-1.5">案件獲得日</th>
-                            {industryModal.status === 'NAITEI' && (
-                              <th className="text-left px-2 py-1.5">内定日</th>
+                            {isNaitei && (<th className="text-left px-2 py-1.5">内定日</th>)}
+                            {isNaitei && (<th className="text-left px-2 py-1.5">登録番号</th>)}
+                            {isBarashiLost ? (
+                              <>
+                                <th className="text-center px-2 py-1.5">書類選考</th>
+                                <th className="text-center px-2 py-1.5">面接方法</th>
+                                <th className="text-left px-2 py-1.5">面接日</th>
+                              </>
+                            ) : (
+                              <>
+                                <th className="text-right px-2 py-1.5">内定人数</th>
+                                <th className="text-right px-2 py-1.5">初回入金</th>
+                                <th className="text-right px-2 py-1.5">見込売上</th>
+                              </>
                             )}
-                            {industryModal.status === 'NAITEI' && (
-                              <th className="text-left px-2 py-1.5">登録番号</th>
-                            )}
-                            <th className="text-right px-2 py-1.5">内定人数</th>
-                            <th className="text-right px-2 py-1.5">初回入金</th>
-                            <th className="text-right px-2 py-1.5">見込売上</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1671,33 +1683,53 @@ export default function AnalyticsPage() {
                               <td className="px-2 py-1">{p.owner_name || '-'}</td>
                               <td className="px-2 py-1">{p.sales_name || '-'}</td>
                               <td className="px-2 py-1">{p.created_at ? new Date(p.created_at).toLocaleDateString('ja-JP') : '-'}</td>
-                              {industryModal.status === 'NAITEI' && (
+                              {isNaitei && (
                                 <td className="px-2 py-1 font-semibold text-emerald-700">
                                   {p.naitei_date ? new Date(p.naitei_date).toLocaleDateString('ja-JP') : '-'}
                                 </td>
                               )}
-                              {industryModal.status === 'NAITEI' && (
+                              {isNaitei && (
                                 <td className="px-2 py-1 font-mono text-gray-700">{p.registration_numbers || '-'}</td>
                               )}
-                              <td className="px-2 py-1 text-right">{Number(p.hires_count) > 0 ? `${p.hires_count}名` : '-'}</td>
-                              <td className="px-2 py-1 text-right text-emerald-700">{Number(p.initial_payment) > 0 ? `¥${Number(p.initial_payment).toLocaleString()}` : '-'}</td>
-                              <td className="px-2 py-1 text-right text-blue-700">{Number(p.expected_revenue) > 0 ? `¥${Number(p.expected_revenue).toLocaleString()}` : '-'}</td>
+                              {isBarashiLost ? (
+                                <>
+                                  <td className="px-2 py-1 text-center">{fmtScreen(p.document_screening)}</td>
+                                  <td className="px-2 py-1 text-center">{fmtMethod(p.interview_type)}</td>
+                                  <td className="px-2 py-1">{p.interview_date ? new Date(p.interview_date).toLocaleDateString('ja-JP') : '-'}</td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="px-2 py-1 text-right">{Number(p.hires_count) > 0 ? `${p.hires_count}名` : '-'}</td>
+                                  <td className="px-2 py-1 text-right text-emerald-700">{Number(p.initial_payment) > 0 ? `¥${Number(p.initial_payment).toLocaleString()}` : '-'}</td>
+                                  <td className="px-2 py-1 text-right text-blue-700">{Number(p.expected_revenue) > 0 ? `¥${Number(p.expected_revenue).toLocaleString()}` : '-'}</td>
+                                </>
+                              )}
                             </tr>
                           ))}
                         </tbody>
                         {industryModal.data.totals && (
                           <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
                             <tr>
-                              <td colSpan={industryModal.status === 'NAITEI' ? 8 : 6} className="px-2 py-1.5 text-right text-gray-700">
-                                合計 ({industryModal.data.total}件)
-                              </td>
-                              <td className="px-2 py-1.5 text-right">{Number(industryModal.data.totals.hires) || 0}名</td>
-                              <td className="px-2 py-1.5 text-right text-emerald-700">¥{Number(industryModal.data.totals.initial || 0).toLocaleString()}</td>
-                              <td className="px-2 py-1.5 text-right text-blue-700">¥{Number(industryModal.data.totals.expected || 0).toLocaleString()}</td>
+                              {isBarashiLost ? (
+                                <td colSpan={isNaitei ? 11 : 9} className="px-2 py-1.5 text-right text-gray-700">
+                                  合計 ({industryModal.data.total}件)
+                                </td>
+                              ) : (
+                                <>
+                                  <td colSpan={isNaitei ? 8 : 6} className="px-2 py-1.5 text-right text-gray-700">
+                                    合計 ({industryModal.data.total}件)
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">{Number(industryModal.data.totals.hires) || 0}名</td>
+                                  <td className="px-2 py-1.5 text-right text-emerald-700">¥{Number(industryModal.data.totals.initial || 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right text-blue-700">¥{Number(industryModal.data.totals.expected || 0).toLocaleString()}</td>
+                                </>
+                              )}
                             </tr>
                           </tfoot>
                         )}
                       </table>
+                        );
+                      })()}
                     </div>
                   </section>
                 </>

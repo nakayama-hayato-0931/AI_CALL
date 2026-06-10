@@ -2327,6 +2327,7 @@ const getQualityIndustryDetail = async (req, res, next) => {
     const detailParams = [...statusBind, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
     const [detailRows] = await pool.query(
       `SELECT p.id, p.company_id, p.job_number, p.status, p.created_at, p.naitei_date,
+              p.document_screening, p.interview_type, p.interview_date,
               ${CAT} AS industry_cat,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
               ou.name AS owner_name, su.name AS sales_name,

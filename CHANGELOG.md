@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: バラシ/失注 業種別内訳モーダルの右3列を差し替え
+- バラシ/失注には内定人数/初回入金/見込売上が存在しないため、右3列を「書類選考の有無 / 面接方法 / 面接日」に変更。
+- バックエンド: `getQualityIndustryDetail` の明細クエリに `p.document_screening, p.interview_type, p.interview_date` を追加。
+- フロント: status が BARASHI/LOST/BARASHI_LOST のとき列構成を分岐。合計行は「合計N件」のみ表示。
+- 内定 (NAITEI) / その他 (LOST単独/BARASHI単独でも数値表示が要らない=このパッチ対象) のヘッダー/フッターも同期。
+
 ### ダッシュボード: コール数を企業ユニーク数に変更 (同一企業の複数回コールは1回扱い)
 - ダッシュボードKPIの「コール数」を `COUNT(*)` → `COUNT(DISTINCT c.company_id)` に変更。
 - 同じ企業に何度かけても1社=1コール扱い。
