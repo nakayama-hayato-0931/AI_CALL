@@ -1926,12 +1926,17 @@ const getWaitingContactDetail = async (req, res, next) => {
     if (dateFrom < SYSTEM_START) dateFrom = SYSTEM_START;
     const dateTo = date_to || new Date().toISOString().slice(0, 10);
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
+
     const params = [dateFrom, dateTo];
     let userFilter = '';
     if (user_id) {
       userFilter = 'AND p.owner_user_id = ?';
       params.push(user_id);
     }
+    params.push(...wcFilter.params);
 
     const [rows] = await pool.query(
       `SELECT p.id, p.job_number, p.status, p.created_at, p.interview_date, p.memo,
@@ -1948,6 +1953,7 @@ const getWaitingContactDetail = async (req, res, next) => {
          AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU'))
          AND DATE(p.created_at) BETWEEN ? AND ?
          ${userFilter}
+         ${wcFilter.sql}
        ORDER BY p.interview_date IS NULL, p.interview_date ASC, p.created_at DESC`,
       params
     );
@@ -1996,6 +2002,10 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
     const months = Math.min(24, Math.max(1, parseInt(req.query.months, 10) || 6));
     const gbq = req.query.group_by;
     const groupBy = gbq === 'region' ? 'region' : (gbq === 'both' ? 'both' : 'industry');
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcProjFilter = buildWorkCategoryFilter(req, 'p.work_category');
+    const wcCallFilter = buildWorkCategoryFilter(req, 'cl.work_category');
     const now = new Date();
     const monthList = [];
     for (let i = months - 1; i >= 0; i--) {
@@ -2053,8 +2063,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          LEFT JOIN companies c ON p.company_id = c.id
          WHERE p.is_prospect = 0 AND p.is_legacy = 0
            AND DATE(p.created_at) BETWEEN ? AND ?
+           ${wcProjFilter.sql}
          GROUP BY DATE_FORMAT(p.created_at, '%Y-%m'), ${INDUSTRY_CAT}, ${REGION_EXPR}`,
-        [rangeFrom, rangeTo]
+        [rangeFrom, rangeTo, ...wcProjFilter.params]
       );
       const [callAll2] = await pool.query(
         `SELECT
@@ -2066,8 +2077,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
          LEFT JOIN companies c ON cl.company_id = c.id
          WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
            AND DATE(cl.call_started_at) BETWEEN ? AND ?
+           ${wcCallFilter.sql}
          GROUP BY DATE_FORMAT(cl.call_started_at, '%Y-%m'), ${INDUSTRY_CAT}, ${REGION_EXPR}`,
-        [rangeFrom, rangeTo]
+        [rangeFrom, rangeTo, ...wcCallFilter.params]
       );
       const SHOW = new Set(['飲食','製造','小売','建設','宿泊','清掃']);
       const normInd = (c) => SHOW.has(c) ? c : 'その他';
@@ -2170,8 +2182,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
        LEFT JOIN companies c ON p.company_id = c.id
        WHERE p.is_prospect = 0 AND p.is_legacy = 0
          AND DATE(p.created_at) BETWEEN ? AND ?
+         ${wcProjFilter.sql}
        GROUP BY DATE_FORMAT(p.created_at, '%Y-%m'), ${CAT}`,
-      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
+      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo, ...wcProjFilter.params]
     );
 
     // コール数 (有効な架電のみ。SKIP除外)
@@ -2184,8 +2197,9 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
        LEFT JOIN companies c ON cl.company_id = c.id
        WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
          AND DATE(cl.call_started_at) BETWEEN ? AND ?
+         ${wcCallFilter.sql}
        GROUP BY DATE_FORMAT(cl.call_started_at, '%Y-%m'), ${CAT}`,
-      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo]
+      [monthList[0].dateFrom, monthList[monthList.length - 1].dateTo, ...wcCallFilter.params]
     );
 
     // 業種モード: 飲食/製造/小売/建設/宿泊 + その他
@@ -2325,12 +2339,16 @@ const getQualityIndustryDetail = async (req, res, next) => {
     }
     const dateFrom = date_from || '2026-04-01';
     const dateTo = date_to || new Date().toISOString().slice(0, 10);
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
     const params = [dateFrom, dateTo];
     let userFilter = '';
     if (user_id) {
       userFilter = 'AND p.owner_user_id = ?';
       params.push(user_id);
     }
+    params.push(...wcFilter.params);
     // NAITEI の日付基準: date_base='created' なら獲得日、それ以外(既定)は内定日。
     // LOST/BARASHI/BARASHI_LOST は獲得日(created_at)。
     const dateCol = status === 'NAITEI'
@@ -2350,13 +2368,14 @@ const getQualityIndustryDetail = async (req, res, next) => {
          AND ${statusSql}
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
+         ${wcFilter.sql}
        GROUP BY ${CAT}
        ORDER BY cnt DESC`,
       [...statusBind, ...params]
     );
 
     // 明細も取得（内定人数 / 初回入金 / 見込売上 を含む）
-    const detailParams = [...statusBind, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
+    const detailParams = [...statusBind, dateFrom, dateTo, ...(user_id ? [user_id] : []), ...wcFilter.params];
     const [detailRows] = await pool.query(
       `SELECT p.id, p.company_id, p.job_number, p.status, p.created_at, p.naitei_date,
               p.document_screening, p.interview_type, p.interview_date,
@@ -2384,6 +2403,7 @@ const getQualityIndustryDetail = async (req, res, next) => {
          AND ${statusSql}
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
+         ${wcFilter.sql}
        ORDER BY ${dateCol} DESC`,
       detailParams
     );
@@ -2463,6 +2483,10 @@ const getIndustryPeriodDetail = async (req, res, next) => {
       ? `${INDUSTRY_CAT} = ? AND ${REGION_EXPR} = ?`
       : `${CAT} = ?`;
     const industryParams = useBoth ? [industry, regionParam] : [industry];
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcProjFilter = buildWorkCategoryFilter(req, 'p.work_category');
+    const wcCallFilter = buildWorkCategoryFilter(req, 'cl.work_category');
 
     if (type === 'call') {
       // コール明細
@@ -2477,9 +2501,10 @@ const getIndustryPeriodDetail = async (req, res, next) => {
          WHERE cl.result_code IS NOT NULL AND cl.result_code != 'SKIP'
            AND DATE(cl.call_started_at) BETWEEN ? AND ?
            AND ${industryWhere}
+           ${wcCallFilter.sql}
          ORDER BY cl.call_started_at DESC
          LIMIT 500`,
-        [dateFrom, dateTo, ...industryParams]
+        [dateFrom, dateTo, ...industryParams, ...wcCallFilter.params]
       );
       return ApiResponse.success(res, { type, industry, month, count: rows.length, calls: rows });
     }
@@ -2527,9 +2552,10 @@ const getIndustryPeriodDetail = async (req, res, next) => {
          AND DATE(p.created_at) BETWEEN ? AND ?
          AND ${industryWhere}
          ${statusFilter}
+         ${wcProjFilter.sql}
        ORDER BY p.created_at DESC
        LIMIT 500`,
-      params
+      [...params, ...wcProjFilter.params]
     );
     // 合計フッター用
     const totals = rows.reduce((s, r) => ({
@@ -3013,6 +3039,9 @@ const deleteExtraCost = async (req, res, next) => {
 const getScreeningInProgressDetail = async (req, res, next) => {
   try {
     const { date_from, date_to, user_id } = req.query;
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
     const where = [
       `p.is_legacy = 0`, `p.is_prospect = 0`,
       `p.document_screening = 'required'`,
@@ -3022,6 +3051,10 @@ const getScreeningInProgressDetail = async (req, res, next) => {
     if (date_from) { where.push(`DATE(p.created_at) >= ?`); params.push(date_from); }
     if (date_to)   { where.push(`DATE(p.created_at) <= ?`); params.push(date_to); }
     if (user_id)   { where.push(`p.owner_user_id = ?`);     params.push(user_id); }
+    if (wcFilter.sql) {
+      where.push(wcFilter.sql.replace(/^\s*AND\s+/i, ''));
+      params.push(...wcFilter.params);
+    }
     const [rows] = await pool.query(
       `SELECT p.id, p.job_number, p.created_at AS acquired_at,
               COALESCE(c.company_name, p.legacy_company_name) AS company_name,
