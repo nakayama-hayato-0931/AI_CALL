@@ -360,7 +360,9 @@ const getNextCallTarget = async (req, res, next) => {
 
     // 架電種別（営業 or オペレーター）
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
-    const salesListFilter = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
+    // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
+    // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
+    const salesListFilter = 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
@@ -592,7 +594,9 @@ const getCallList = async (req, res, next) => {
         return ApiResponse.success(res, cached.payload);
       }
     }
-    const salesListFilter = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
+    // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
+    // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
+    const salesListFilter = 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
@@ -1132,7 +1136,8 @@ const diagnoseCallList = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
-    const salesCond = callType === 'sales' ? 'AND c.is_sales_list = 1' : 'AND c.is_sales_list = 0';
+    // 営業もオペレーターと同じリストを参照するよう統一 (架電リスト統一)
+    const salesCond = 'AND c.is_sales_list = 0';
 
     const steps = [];
     const runCount = async (label, sql, params = []) => {

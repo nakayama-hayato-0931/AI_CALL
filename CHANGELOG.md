@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト: 営業もオペレーターと同じリスト (is_sales_list=0) に統一
+- これまで `call_type='sales'` のとき `c.is_sales_list = 1`、`operator` のとき `c.is_sales_list = 0` で別リストを参照していたのを、両方とも `is_sales_list = 0` に統一。
+- 修正箇所: `getCallList` / `getNextCallTarget` の `salesListFilter` (2箇所)、`diagnoseCallList` の `salesCond` (1箇所)。
+- **案件化 (projects テーブル) は引き続き `call_type='sales'` / `'operator'` で分離**。架電結果集計・CPA・案件管理画面の挙動は変わらない。
+- `is_sales_list = 1` のデータは参照されなくなるが、削除はしない (将来のデータ整理は別タスク)。
+
 ### 架電リスト: 「架電済みより未架電優先」に Tier 結合順を変更
 - 「シャッフルしても時間がたつと割り当て中(=過去架電あり)が上に上がってくる」事象を修正。
 - 修正前の Tier 順: recall > assigned > golden > untouched > retry_na > retry_ng
