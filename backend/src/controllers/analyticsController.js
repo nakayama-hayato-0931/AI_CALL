@@ -973,14 +973,20 @@ const getCpaAll = async (req, res, next) => {
     // コストはcost_recordsを常に使用（3月分の打刻データを含めるため）
     const useCostRecords = true;
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcCallFilter = buildWorkCategoryFilter(req, 'c.work_category');
+    const wcProjFilter = buildWorkCategoryFilter(req, 'p.work_category');
+
     // コール数（全員分一括）- 4月以降のみ
     let callMap = new Map();
     if (systemDateFrom) {
       const [callAll] = await pool.query(
         `SELECT c.user_id, COUNT(*) as cnt
          FROM calls c WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
+         ${wcCallFilter.sql}
          GROUP BY c.user_id`,
-        [systemDateFrom, systemDateTo]
+        [systemDateFrom, systemDateTo, ...wcCallFilter.params]
       );
       callMap = new Map(callAll.map(r => [r.user_id, Number(r.cnt)]));
     }
@@ -1008,10 +1014,11 @@ const getCpaAll = async (req, res, next) => {
            OR (p.status IN ('NAITEI','NAITEI_TORIKESHI','FUGOKAKU','KEKKA_MACHI') AND ${intvDateCol} BETWEEN ? AND ?)
            OR (p.status IN ('NAITEI','FUGOKAKU','BARASHI','LOST') AND ${outDateCol} BETWEEN ? AND ?)
          )
+         ${wcProjFilter.sql}
          GROUP BY p.owner_user_id`,
         [systemDateFrom, systemDateTo, systemDateFrom, systemDateTo, systemDateFrom, systemDateTo,
          systemDateFrom, systemDateTo, systemDateFrom, systemDateTo, systemDateFrom, systemDateTo,
-         systemDateFrom, systemDateTo, systemDateFrom, systemDateTo]
+         systemDateFrom, systemDateTo, systemDateFrom, systemDateTo, ...wcProjFilter.params]
       );
       projAll = rows;
     }
@@ -1031,8 +1038,9 @@ const getCpaAll = async (req, res, next) => {
             // その日の実績案件数を取得して差し引き、補正値を加算
             const [r] = await pool.query(
               `SELECT COUNT(*) as cnt FROM projects p
-               WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?`,
-              [uid, adj.date]
+               WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?
+               ${wcProjFilter.sql}`,
+              [uid, adj.date, ...wcProjFilter.params]
             );
             const actual = Number(r[0]?.cnt) || 0;
             const delta = Number(adj.value) - actual;
@@ -1046,8 +1054,9 @@ const getCpaAll = async (req, res, next) => {
           } else if (adj.field === 'call_count') {
             const [r] = await pool.query(
               `SELECT COUNT(*) as cnt FROM calls
-               WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code IS NOT NULL AND result_code != 'SKIP'`,
-              [uid, adj.date]
+               WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code IS NOT NULL AND result_code != 'SKIP'
+               ${wcCallFilter.sql.replace(/c\.work_category/g, 'work_category')}`,
+              [uid, adj.date, ...wcCallFilter.params]
             );
             const actual = Number(r[0]?.cnt) || 0;
             const delta = Number(adj.value) - actual;
@@ -1067,8 +1076,9 @@ const getCpaAll = async (req, res, next) => {
           COALESCE(SUM(ph.initial_payment), 0) as ip, COALESCE(SUM(ph.expected_revenue), 0) as er
          FROM project_hires ph JOIN projects p ON ph.project_id = p.id
          WHERE p.is_legacy = 0 AND ${finDateCol} BETWEEN ? AND ? AND ph.is_cancelled = 0
+         ${wcProjFilter.sql}
          GROUP BY p.owner_user_id`,
-        [systemDateFrom, systemDateTo]
+        [systemDateFrom, systemDateTo, ...wcProjFilter.params]
       );
       finAll = rows;
     }
@@ -1086,8 +1096,9 @@ const getCpaAll = async (req, res, next) => {
             `SELECT p.owner_user_id as user_id, ph.registration_number as reg
              FROM project_hires ph JOIN projects p ON ph.project_id = p.id
              WHERE p.is_legacy = 0 AND ${finDateCol} BETWEEN ? AND ? AND ph.is_cancelled = 0
-               AND ph.registration_number IS NOT NULL AND ph.registration_number != ''`,
-            [systemDateFrom, systemDateTo]
+               AND ph.registration_number IS NOT NULL AND ph.registration_number != ''
+             ${wcProjFilter.sql}`,
+            [systemDateFrom, systemDateTo, ...wcProjFilter.params]
           );
           for (const r of regRows) {
             // 登録番号が1セルに複数入る場合があるため区切り文字で分割し、1件ずつ照合・合算
@@ -1289,6 +1300,10 @@ const getQualityAll = async (req, res, next) => {
       dateTo = range.dateTo;
     }
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
+
     const [users] = await pool.execute(
       "SELECT id, name, role, is_active, operator_level, target_work_hours, target_calls_per_h, target_effective_per_h, target_person_per_h, target_project_hours FROM users WHERE role = 'operator' AND is_test_account = 0 ORDER BY id ASC"
     );
@@ -1315,8 +1330,8 @@ const getQualityAll = async (req, res, next) => {
           CAST(SUM(CASE WHEN p.interview_type = 'online' THEN 1 ELSE 0 END) AS SIGNED) as online_interview,
           CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
           CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
-         FROM projects p WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) BETWEEN ? AND ? GROUP BY p.owner_user_id`,
-        [qSystemFrom, dateTo]
+         FROM projects p WHERE p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) BETWEEN ? AND ? ${wcFilter.sql} GROUP BY p.owner_user_id`,
+        [qSystemFrom, dateTo, ...wcFilter.params]
       );
       rows = r;
     }

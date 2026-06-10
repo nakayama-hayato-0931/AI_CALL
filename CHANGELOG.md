@@ -31,6 +31,17 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ Phase 5: analytics cpa-all/quality-all バックエンドに work_category フィルタ
+- `analyticsController.getCpaAll`:
+  - callMap (コール数集計) クエリに wcCallFilter 適用
+  - projAll (案件数/内定/不合格/バラシ失注) クエリに wcProjFilter 適用
+  - kpi_adjustments の実績照合クエリ (projects/calls 両方) に wcFilter 適用
+  - finAll (初回入金/見込売上) クエリに wcProjFilter 適用
+  - visa map 照合 (registration_number 抽出) クエリに wcProjFilter 適用
+- `analyticsController.getQualityAll`: メイン集計クエリに wcFilter 適用
+- これで CPA/案件質分析ページが `?work_category=specific_skill` 付きで開かれたとき、各オペレーターのテーブル数値も特定技能のみに正しく絞り込まれる。
+- 残作業 (Phase 6): KPI 補正 (actualSql 内のテンプレート文字列), 業種別/期間別の analytics 詳細エンドポイント, sales_projects_v2 (インセンティブ v2) への work_category 連動。
+
 ### 業務カテゴリ Phase 4: 案件管理 + 架電履歴 + CPA分析 への絞込伝播
 - バックエンド:
   - `projectController.getProjects` (案件一覧) に `work_category` フィルタ適用。
