@@ -263,6 +263,9 @@ const getAllOperatorPerformance = async (req, res, next) => {
     }
     const targetRoles = call_type === 'sales' ? "'sales'" : "'operator','intern'";
     const callTypeFilter = call_type === 'sales' ? "AND c.call_type = 'sales'" : "AND c.call_type = 'operator'";
+    // 業務カテゴリ (技人国/特定技能) フィルタ。LEFT JOIN の ON 句で適用するため SQL に直接埋め込む。
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'c.work_category');
 
     const [rows] = await pool.query(
       `SELECT
@@ -279,12 +282,12 @@ const getAllOperatorPerformance = async (req, res, next) => {
         COALESCE(ROUND(AVG(ae.rebuttal_score), 1), 0) as avg_rebuttal,
         COALESCE(ROUND(AVG(ae.closing_score), 1), 0) as avg_closing
       FROM users u
-      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}
+      LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}${wcFilter.sql}
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role IN (${targetRoles}) AND u.is_test_account = 0
       GROUP BY u.id, u.name, u.role, u.is_active
       ORDER BY u.id ASC`,
-      [dateFrom, dateTo]
+      [dateFrom, dateTo, ...wcFilter.params]
     );
 
     // 平均通話時間（秒）を一括取得（ai_evaluations を JOIN しない素の calls で算出）

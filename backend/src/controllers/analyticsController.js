@@ -82,6 +82,11 @@ const getCpaMetrics = async (req, res, next) => {
     if (!range) return ApiResponse.badRequest(res, '無効な期間です');
     const { dateFrom, dateTo } = range;
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcCallFilter = buildWorkCategoryFilter(req, 'c.work_category');
+    const wcProjFilter = buildWorkCategoryFilter(req, 'p.work_category');
+
     // ユーザー条件
     let callUserCond = '';
     let projUserCond = '';
@@ -98,6 +103,11 @@ const getCpaMetrics = async (req, res, next) => {
       whUserCond = 'AND wh.user_id = ?';
       whParams.push(targetUserId);
     }
+    // 業務カテゴリフィルタ SQL を userCond の末尾に連結
+    callUserCond += wcCallFilter.sql;
+    projUserCond += wcProjFilter.sql;
+    callParams.push(...wcCallFilter.params);
+    projParams.push(...wcProjFilter.params);
 
     // コスト（CSVインポート出勤記録 × 時給 + 交通費）
     const [costRows] = await pool.query(
@@ -226,12 +236,18 @@ const getQualityMetrics = async (req, res, next) => {
     if (!range) return ApiResponse.badRequest(res, '無効な期間です');
     const { dateFrom, dateTo } = range;
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
+
     let userCond = '';
     const params = [dateFrom, dateTo];
     if (scope === 'operator' && targetUserId) {
       userCond = 'AND p.owner_user_id = ?';
       params.push(targetUserId);
     }
+    userCond += wcFilter.sql;
+    params.push(...wcFilter.params);
 
     const [rows] = await pool.query(
       `SELECT

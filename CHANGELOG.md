@@ -31,6 +31,19 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ (技人国 / 特定技能) Phase 2: 集計分離 + 管理者「特定技能管理」追加
+- 共通ヘルパー `buildWorkCategoryFilter(req, columnExpr)` を auth.js に追加。
+  - オペレーター/営業: `req.user.workCategory` (localStorage 経由) を自動適用
+  - 管理者: `req.query.work_category` で明示指定したときのみフィルタ (未指定は全体)
+- 集計エンドポイントに適用:
+  - `dashboardController.getDashboardStats` (calls)
+  - `adminController.getAllOperatorPerformance` (calls)
+  - `analyticsController.getCpaMetrics` (calls + projects)
+  - `analyticsController.getQualityMetrics` (projects)
+- 管理者メニューに「特定技能管理」を追加 (`/admin/specific-skill`)。
+- `/admin/specific-skill` ページ: 特定技能で稼働したオペレーター一覧 + 既存ページ (ダッシュボード/CPA/案件管理/架電履歴) への `?work_category=specific_skill` 絞込リンク。
+- 残作業 (Phase 3): 既存ページ側で URL クエリ `work_category` を読んで API 呼び出しに渡す、その他の analytics クエリにも漏れなく適用。
+
 ### 業務カテゴリ (技人国 / 特定技能) 機能 Phase 1: スキーマ + ログイン選択 + 保存
 - オペレーターのログイン時に「技人国 / 特定技能」を選択できるよう変更。デフォルト=技人国 (general)。
 - スキーマ追加 (criticalPreflight): `calls.work_category VARCHAR(20) DEFAULT 'general'`、`projects.work_category` も同様。インデックスも作成。

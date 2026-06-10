@@ -77,4 +77,29 @@ const requireEditor = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireAdmin, requireManager, requireEditor };
+/**
+ * 業務カテゴリフィルタを構築するヘルパー。
+ * - req.query.work_category が明示指定されていればそれを使う (管理者の特定技能管理画面など)
+ * - そうでなければオペレーター/営業ロールは自身のログイン時選択を使う (req.user.workCategory)
+ * - 管理者ロール(admin/manager/consultant)は明示指定がない限り全体表示 (フィルタなし)
+ *
+ * @param {object} req
+ * @param {string} columnExpr - 例 'c.work_category' (SQL のカラム式)
+ * @returns {{ sql: string, params: any[] }} - SQL片と params (' AND col=?'またはempty)
+ */
+const buildWorkCategoryFilter = (req, columnExpr = 'work_category') => {
+  let value = null;
+  if (req.query && req.query.work_category) {
+    value = req.query.work_category;
+  } else if (req.user) {
+    const role = req.user.role;
+    const isOperatorOrSales = ['operator', 'intern', 'sales'].includes(role);
+    if (isOperatorOrSales) {
+      value = req.user.workCategory || 'general';
+    }
+  }
+  if (!value) return { sql: '', params: [] };
+  return { sql: ` AND ${columnExpr} = ?`, params: [value] };
+};
+
+module.exports = { authenticate, requireAdmin, requireManager, requireEditor, buildWorkCategoryFilter };

@@ -5,6 +5,7 @@
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const { getDateRange } = require('../utils/periodHelper');
+const { buildWorkCategoryFilter } = require('../middlewares/auth');
 
 /**
  * 業種を大分類にまとめるマッピング
@@ -184,6 +185,9 @@ const getDailyStats = async (req, res, next) => {
       userParams = [req.user.id];
     }
 
+    // 業務カテゴリフィルタ (技人国/特定技能)
+    const wcFilter = buildWorkCategoryFilter(req, 'c.work_category');
+
     // 1クエリで全KPIを集計 (SKIPを除外)
     // コール数は同一企業への複数回コールを1回として数える (DISTINCT company_id)。
     // 有効通話/担当者通話/案件化/リコール獲得は実イベント数のままカウント。
@@ -199,8 +203,8 @@ const getDailyStats = async (req, res, next) => {
        FROM calls c
        ${userJoin}
        WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
-         ${callTypeFilter} ${userCondition}`,
-      [dateFrom, dateTo, ...userParams]
+         ${callTypeFilter} ${userCondition}${wcFilter.sql}`,
+      [dateFrom, dateTo, ...userParams, ...wcFilter.params]
     );
 
     // リコール消化数
