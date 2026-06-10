@@ -50,7 +50,7 @@ const lastUserNotEqualSQL = () => hasLastCallResultCol
 // 架電完了/結果保存/ロック取得時に invalidateCallListCache() で無効化する。
 const CALL_LIST_CACHE_TTL_MS = 20 * 1000;
 const callListCache = new Map();
-const buildCallListCacheKey = (userId, callType, mode, industryParam) => `${userId}|${callType}|${mode}|${industryParam || ''}`;
+const buildCallListCacheKey = (userId, callType, mode, industryParam, regionParam) => `${userId}|${callType}|${mode}|${industryParam || ''}|${regionParam || ''}`;
 const invalidateCallListCache = (userId) => {
   if (userId == null) { callListCache.clear(); return; }
   for (const k of callListCache.keys()) if (k.startsWith(`${userId}|`)) callListCache.delete(k);
@@ -579,7 +579,7 @@ const getCallList = async (req, res, next) => {
     // ===== 短期キャッシュ（10秒） =====
     // 15秒間隔ポーリング前提で、2回に1回はDBクエリを丸ごとスキップ。
     // excludeパラメータ（直前完了企業ID）付きは「次の架電先を取りに来た」操作なのでキャッシュしない。
-    const cacheKey = buildCallListCacheKey(userId, callType, req.query.mode || 'auto', req.query.industry || '');
+    const cacheKey = buildCallListCacheKey(userId, callType, req.query.mode || 'auto', req.query.industry || '', req.query.region || '');
     if (!req.query.exclude) {
       const cached = callListCache.get(cacheKey);
       if (cached && (Date.now() - cached.at) < CALL_LIST_CACHE_TTL_MS) {

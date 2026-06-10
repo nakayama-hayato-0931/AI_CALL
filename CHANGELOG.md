@@ -6,6 +6,11 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト(緊急fix): キャッシュキーに region パラメータを追加
+- 「業種別が選択でピックアップ職種が変わらない」事象を修正。
+- 原因: `buildCallListCacheKey` が `(userId, callType, mode, industry)` の4つだけで構成されており、地域 (region) パラメータが含まれていなかった。地域変更や業種変更時にキャッシュヒットして古い結果が返っていた。
+- 修正: `region` も cacheKey の構成要素に追加。`${userId}|${callType}|${mode}|${industry}|${region}`。
+
 ### 架電リスト: 自動割り当て(NO_ANSWER経由)を Tier 0 から除外、繰り返し表示を解消
 - 「一度割り当てられている企業がリストに残り続ける」事象を修正。
 - 原因: `endCall` の NO_ANSWER 処理で `company_assignments` に自動 INSERT されるが、これを Tier 0 (assigned) が「自分割り当て」として永久除外バイパスで表示し続けていた。
