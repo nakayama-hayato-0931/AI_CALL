@@ -395,6 +395,8 @@ export default function DashboardPage() {
     fetchStats();
     fetchChartData();
     if (isManager) fetchPerfData();
+    // 営業ロール: 自分のチーム(sales)一覧を取得
+    if (user?.role === 'sales') fetchPerfData();
   }, [kpiPeriod, kpiDate, kpiScope, kpiTargetUserId, callType, cumFrom, cumTo, customFrom, customTo]);
 
   const fetchStats = async () => {
@@ -951,6 +953,75 @@ export default function DashboardPage() {
           );
         })()
       )}
+
+      {/* 営業メンバー一覧（営業ロールのみ。自分先頭、他は稼働順） */}
+      {user?.role === 'sales' && perfData?.operators && (() => {
+        const all = perfData.operators;
+        const self = all.find(u => u.user_id === user.id);
+        const others = all.filter(u => u.user_id !== user.id);
+        others.sort((a, b) => {
+          const aActive = (Number(a.total_calls) > 0 || Number(a.work_minutes) > 0) ? 1 : 0;
+          const bActive = (Number(b.total_calls) > 0 || Number(b.work_minutes) > 0) ? 1 : 0;
+          if (aActive !== bActive) return bActive - aActive;
+          return (Number(b.total_calls) || 0) - (Number(a.total_calls) || 0);
+        });
+        const sorted = self ? [self, ...others] : others;
+        const fmtAvg = (sec) => {
+          const s = Number(sec) || 0;
+          if (!s) return '-';
+          return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        };
+        return (
+          <div className="card overflow-hidden mb-6">
+            <div className="px-3 py-2 bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-600">
+              営業メンバー一覧 <span className="text-[10px] text-gray-400 ml-2">自分先頭・稼働者優先</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50/80 border-b border-gray-200">
+                    <th className="table-header text-left">営業</th>
+                    <th className="table-header text-right">稼働</th>
+                    <th className="table-header text-right">コール</th>
+                    <th className="table-header text-right">有効接続</th>
+                    <th className="table-header text-right">担当接続</th>
+                    <th className="table-header text-right">案件</th>
+                    <th className="table-header text-right">リコール獲得</th>
+                    <th className="table-header text-right">リコール消化</th>
+                    <th className="table-header text-right">平均通話</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(u => {
+                    const isSelf = u.user_id === user.id;
+                    const wm = Number(u.work_minutes) || 0;
+                    const hours = wm > 0 ? `${(wm / 60).toFixed(1)}h` : '-';
+                    return (
+                      <tr key={u.user_id} className={`border-b border-gray-100 ${isSelf ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}>
+                        <td className="table-cell">
+                          <span className={isSelf ? 'font-bold text-blue-700' : 'text-gray-800'}>{u.name}</span>
+                          {isSelf && <span className="ml-1 text-[10px] text-blue-500">(自分)</span>}
+                        </td>
+                        <td className="table-cell text-right text-gray-500">{hours}</td>
+                        <td className="table-cell text-right font-semibold">{Number(u.total_calls) || 0}</td>
+                        <td className="table-cell text-right">{Number(u.effective_connections) || 0}</td>
+                        <td className="table-cell text-right">{Number(u.person_connections) || 0}</td>
+                        <td className="table-cell text-right text-blue-600 font-semibold">{Number(u.projects) || 0}</td>
+                        <td className="table-cell text-right">{Number(u.recall_gained) || 0}</td>
+                        <td className="table-cell text-right">{Number(u.recall_done) || 0}</td>
+                        <td className="table-cell text-right text-gray-500">{fmtAvg(u.avg_call_seconds)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {sorted.length === 0 && (
+              <div className="text-center py-6 text-gray-400 text-xs">データがありません</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 稼働時間入力モーダル */}
       {showWorkHoursModal && (

@@ -55,7 +55,12 @@ router.put('/users/:id', requireAdmin, updateUser);
 router.delete('/users/:id', requireAdmin, deleteUser);
 
 // オペレーター成績 (admin + manager + consultant閲覧可)
-router.get('/performance', requireManager, getAllOperatorPerformance);
+// 営業ロールは call_type=sales のとき自身のチーム閲覧可
+router.get('/performance', (req, res, next) => {
+  if (['admin', 'manager', 'consultant'].includes(req.user.role)) return next();
+  if (req.user.role === 'sales' && req.query.call_type === 'sales') return next();
+  return res.status(403).json({ success: false, message: '権限がありません' });
+}, getAllOperatorPerformance);
 
 // 架電リスト管理 (閲覧: manager+consultant、編集: editor)
 router.get('/companies', requireManager, getCompanies);
