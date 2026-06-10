@@ -11,6 +11,7 @@ const {
   getNextCallTarget,
   getCallList,
   getIndustryRegions,
+  unlockAllForSelf,
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
@@ -35,6 +36,9 @@ router.get('/call-list/next', getNextCallTarget);
 
 // GET /api/companies/industry-regions?industry=飲食 - 業種別ピックアップ用の選択可能地域
 router.get('/industry-regions', getIndustryRegions);
+
+// POST /api/companies/unlock-all - 自分のピックアップロックを一括解除
+router.post('/unlock-all', unlockAllForSelf);
 
 // GET /api/companies - 企業一覧
 router.get('/', getCompanies);

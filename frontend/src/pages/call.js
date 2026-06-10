@@ -823,16 +823,37 @@ export default function CallPage() {
           <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-gray-800">架電リスト</h2>
-              <button
-                onClick={fetchCallList}
-                disabled={listLoading}
-                className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-              >
-                <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-                </svg>
-                更新
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const { data } = await api.post('/api/companies/unlock-all');
+                      const n = data?.data?.released ?? 0;
+                      toast.success(n > 0 ? `${n}件のロックを解除しました` : '解除対象がありません');
+                      fetchCallList();
+                    } catch (err) {
+                      toast.error('ロック解除に失敗しました');
+                    }
+                  }}
+                  className="text-[11px] text-amber-600 hover:text-amber-700 transition-colors flex items-center gap-1"
+                  title="自分が架電中扱いで残っているピックアップロックを一括解除"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path>
+                  </svg>
+                  ロック解除
+                </button>
+                <button
+                  onClick={fetchCallList}
+                  disabled={listLoading}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+                >
+                  <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                  </svg>
+                  更新
+                </button>
+              </div>
             </div>
 
             {/* ピックアップモード切替 */}

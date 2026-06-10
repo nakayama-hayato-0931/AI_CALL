@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電画面: 自分のピックアップロックを一括解除するボタンを追加
+- 各オペレーター/営業の架電画面の「架電リスト」見出し右に「ロック解除」ボタンを追加。
+- 自分が `locked_by_user_id` として持っている全企業のロックを一括解除し、解除件数をトーストで表示。
+- 解除後 `fetchCallList()` を呼び自動的にリスト更新。
+- バックエンド: `POST /api/companies/unlock-all` を新規追加 (`UPDATE companies SET locked_by_user_id=NULL, locked_at=NULL WHERE locked_by_user_id=?`)。
+
 ### 架電画面: 業種別ピックアップの地域 select UI を一旦非表示
 - UIイメージが要件と合わなかったため、業種別モードの地域 select を一時的に非表示。
 - バックエンドの `GET /api/companies/industry-regions` エンドポイント、`getCallList` / `getNextCallTarget` の region パラメータ受付ロジックはそのまま残置 (再表示時に復活可能)。

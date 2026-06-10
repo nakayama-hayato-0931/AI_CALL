@@ -1380,6 +1380,27 @@ const deleteCompanyAction = async (req, res, next) => {
 };
 
 /**
+ * POST /api/companies/unlock-all
+ * 自分が現在ロック中の企業を一括解除 (架電画面の「ピックアップロック解除」ボタン)
+ */
+const unlockAllForSelf = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return ApiResponse.success(res, { released: 0 }, '認証なし');
+    const [result] = await pool.execute(
+      'UPDATE companies SET locked_by_user_id = NULL, locked_at = NULL WHERE locked_by_user_id = ?',
+      [userId]
+    );
+    invalidateCallListCache();
+    logger.info(`[unlockAllForSelf] user=${userId} released=${result.affectedRows}`);
+    return ApiResponse.success(res, { released: result.affectedRows }, 'ロックを解除しました');
+  } catch (err) {
+    logger.error(`[unlockAllForSelf] ${err.message}`);
+    return ApiResponse.error(res, 'ロック解除に失敗しました', 500);
+  }
+};
+
+/**
  * GET /api/companies/industry-regions?industry=飲食
  * 業種別ピックアップ用に「その業種で設定されている都道府県」を返す。
  * 架電ルール (industry_region_rules) で設定されている地域のみ ∩ ②自動ピックアップ対象都道府県。
@@ -1429,6 +1450,7 @@ module.exports = {
   getNextCallTarget,
   getCallList,
   getIndustryRegions,
+  unlockAllForSelf,
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
