@@ -770,7 +770,8 @@ const getCallList = async (req, res, next) => {
     // 管理画面で「○○割り当て中」とオレンジ表示される企業は、本人がオペレーター画面でも
     // 必ず架電できるようにする。
     // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED)・業種地域フィルタ・モードフィルタ・
-    // last_called_at 経過日数条件をすべてバイパスし、ロック・1時間以内・recall除外のみ適用。
+    // last_called_at 経過日数条件をバイパスし、ロック・1時間以内・recall除外を適用。
+    // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用する。
     const [assignedRows] = await pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'assigned' as reason,
@@ -781,10 +782,11 @@ const getCallList = async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lockFilterSQL}
          ${recentCallFilterSQL}
+         ${prefectureFilter}
          ${notInClause(excludeIds)}
        ORDER BY c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
     // Tier 1 と重複しないように追加
     const seenIds = new Set(targets.map(t => t.id));
@@ -808,12 +810,13 @@ const getCallList = async (req, res, next) => {
     // Tier 1(recall) の結果のみを exclude として渡し、Tier 2-5 は独立クエリとして並列実行。
     // 結果は優先順位順に Map で重複排除して結合 → LIMIT で切る。
     //
-    // 自分に割り当てがある企業はピックアップ条件 (業種地域/業種除外/都道府県/モード)
-    // を全部バイパスして必ず表示する (オペレーターが「自分の企業が見えない」事象の修正)。
+    // 自分に割り当てがある企業はピックアップ条件 (業種地域/業種除外/モード) をバイパス。
+    // ただし ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として
+    // バイパス対象から外し、Tier 2-5 の SQL 本体側で別途 AND 適用する。
     const assignBypassWrap = `
        AND (
          EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ?)
-         OR (1=1 ${irFilter} ${goldenIndFilter} ${prefectureFilter} ${modeFilterSQL})
+         OR (1=1 ${irFilter} ${goldenIndFilter} ${modeFilterSQL})
        )`;
     const tier2Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -830,10 +833,11 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${prefectureFilter}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
     const tier3Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -847,10 +851,11 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${prefectureFilter}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
     // フォールバック時（last_call_result_code カラム未追加）はティア4/5を完全スキップ。
     // 相関サブクエリで60万行に対し毎行評価され壊滅的に遅くなるため。
@@ -870,10 +875,11 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${prefectureFilter}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
     const tier5Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -890,10 +896,11 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${prefectureFilter}
          ${notInClause(excludeIds)}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
 
     if (!useFast) {

@@ -6,6 +6,13 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト: ②自動ピックアップ対象都道府県 を最優先=絶対条件に格上げ
+- 「② で除外した県の企業が業種別ルール (③) や自分割り当て経由で出てくる」事象 (例: 製造の東北がピックアップ) を修正。
+- ② (`prefectureFilter`) は `assignBypassWrap` のバイパス対象から除外し、各Tier (Tier 0/2/3/4/5) で必ず AND 適用。
+- ③ (業種地域ルール `irFilter`)・業種除外 (`goldenIndFilter`)・モードフィルタは引き続き「自分割り当て」でバイパス可能。
+- 適用順イメージ: ② で許可された都道府県の中で、③のルールを満たす企業を表示。② 東京/大阪 & ③ 全国 → 東京/大阪のみ。
+- 影響Tier: Tier 0 (assigned)・Tier 2 (golden)・Tier 3 (untouched)・Tier 4 (retry_no_answer)・Tier 5 (retry_ng)。Tier 1 (recall) は引き続き例外 (本人がセットしたタスクのため)。
+
 ### CPA: バラシ/失注 業種別内訳モーダルの右3列を差し替え
 - バラシ/失注には内定人数/初回入金/見込売上が存在しないため、右3列を「書類選考の有無 / 面接方法 / 面接日」に変更。
 - バックエンド: `getQualityIndustryDetail` の明細クエリに `p.document_screening, p.interview_type, p.interview_date` を追加。
