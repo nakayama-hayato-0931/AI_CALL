@@ -6,6 +6,15 @@
 
 ## 2026年6月 〜 直近
 
+### 架電画面: 業種別ピックアップに地域絞込を追加 (架電ルール許可地域のみ)
+- 架電画面の業種別モードで、業種に加えて地域 (都道府県) でも絞り込めるように。
+- 選択可能な地域は **架電ルール (industry_region_rules) で設定された地域 ∩ ②自動ピックアップ対象都道府県** のみ。
+- ルール未設定の業種は地域 select が disabled。
+- バックエンド:
+  - `GET /api/companies/industry-regions?industry=X` を新規追加 (`industry_region_rules` × `auto_pickup_prefectures` で絞った都道府県を返す)。
+  - `getCallList` / `getNextCallTarget` で `region` パラメータを受け付け、`modeFilterSQL` に `(c.region IN (full, short) OR c.address LIKE 'region%')` を AND。
+- フロント (call.js): selectedIndustry 変更時に availableRegions を fetch、業種 select の直下に地域 select を表示。
+
 ### ダッシュボード: 営業ロールにメンバー一覧テーブルを追加 (sales のみ)
 - 営業ロール (role='sales') のダッシュボードに「営業メンバー一覧」セクションを追加。
 - 自分の KPI カードはそのまま、その下にチーム全員の数値テーブル。

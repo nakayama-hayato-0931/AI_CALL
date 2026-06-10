@@ -118,6 +118,8 @@ export default function CallPage() {
   // ピックアップモード
   const [pickupMode, setPickupMode] = useState('auto'); // 'auto' | 'industry' | 'mylist' | 'special'
   const [selectedIndustry, setSelectedIndustry] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState(''); // 業種別モード時の地域絞込 (任意)
+  const [availableRegions, setAvailableRegions] = useState([]); // 業種別ルールで設定されている地域
 
   // 特別リスト手動追加
   const [showSpecialAdd, setShowSpecialAdd] = useState(false);
@@ -170,8 +172,10 @@ export default function CallPage() {
   // モードの最新値をrefで保持（async関数内のクロージャ問題を回避）
   const pickupModeRef = useRef(pickupMode);
   const selectedIndustryRef = useRef(selectedIndustry);
+  const selectedRegionRef = useRef(selectedRegion);
   pickupModeRef.current = pickupMode;
   selectedIndustryRef.current = selectedIndustry;
+  selectedRegionRef.current = selectedRegion;
 
   // 架電種別（営業 or オペレーター）
   const callType = user?.role === 'sales' ? 'sales' : 'operator';
@@ -180,10 +184,40 @@ export default function CallPage() {
   const getModeParams = useCallback(() => {
     const params = {};
     if (pickupMode !== 'auto') params.mode = pickupMode;
-    if (pickupMode === 'industry' && selectedIndustry) params.industry = selectedIndustry;
+    if (pickupMode === 'industry' && selectedIndustry) {
+      params.industry = selectedIndustry;
+      if (selectedRegion) params.region = selectedRegion;
+    }
     params.call_type = callType;
     return params;
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupMode, selectedIndustry, selectedRegion]);
+
+  // 業種選択時: 選択可能な地域リストを取得
+  useEffect(() => {
+    if (pickupMode !== 'industry' || !selectedIndustry) {
+      setAvailableRegions([]);
+      setSelectedRegion('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/api/companies/industry-regions', {
+          params: { industry: selectedIndustry },
+        });
+        if (cancelled) return;
+        const regions = data?.data?.regions || [];
+        setAvailableRegions(regions);
+        if (selectedRegion && !regions.includes(selectedRegion)) {
+          setSelectedRegion('');
+        }
+      } catch (e) {
+        if (!cancelled) setAvailableRegions([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupMode, selectedIndustry]);
 
   // 架電リスト取得
@@ -427,7 +461,7 @@ export default function CallPage() {
       // 最新リストを取得（refから最新モード値を取得）
       const params = {};
       if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
-      if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
+      if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) { params.industry = selectedIndustryRef.current; if (selectedRegionRef.current) params.region = selectedRegionRef.current; }
       if (excludeId) params.exclude = excludeId;
       const { data } = await api.get('/api/companies/call-list', { params });
       const targets = data.data.targets || [];
@@ -486,7 +520,7 @@ export default function CallPage() {
   const prefetchNextCallList = (excludeId = null) => {
     const params = {};
     if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
-    if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
+    if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) { params.industry = selectedIndustryRef.current; if (selectedRegionRef.current) params.region = selectedRegionRef.current; }
     if (excludeId) params.exclude = excludeId;
     const p = api.get('/api/companies/call-list', { params })
       .then(res => {
@@ -512,7 +546,7 @@ export default function CallPage() {
       } else {
         const params = {};
         if (pickupModeRef.current !== 'auto') params.mode = pickupModeRef.current;
-        if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) params.industry = selectedIndustryRef.current;
+        if (pickupModeRef.current === 'industry' && selectedIndustryRef.current) { params.industry = selectedIndustryRef.current; if (selectedRegionRef.current) params.region = selectedRegionRef.current; }
         if (excludeId) params.exclude = excludeId;
         const { data } = await api.get('/api/companies/call-list', { params });
         targets = data.data.targets || [];
@@ -818,16 +852,32 @@ export default function CallPage() {
                 ))}
               </div>
               {pickupMode === 'industry' && (
-                <select
-                  value={selectedIndustry}
-                  onChange={e => setSelectedIndustry(e.target.value)}
-                  className="input text-xs mt-1.5 w-full"
-                >
-                  <option value="">業種を選択</option>
-                  {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
-                    <option key={ind} value={ind}>{ind}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={selectedIndustry}
+                    onChange={e => setSelectedIndustry(e.target.value)}
+                    className="input text-xs mt-1.5 w-full"
+                  >
+                    <option value="">業種を選択</option>
+                    {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
+                      <option key={ind} value={ind}>{ind}</option>
+                    ))}
+                  </select>
+                  {selectedIndustry && (
+                    <select
+                      value={selectedRegion}
+                      onChange={e => setSelectedRegion(e.target.value)}
+                      disabled={availableRegions.length === 0}
+                      className="input text-xs mt-1.5 w-full disabled:bg-gray-100 disabled:text-gray-400"
+                      title={availableRegions.length === 0 ? '架電ルールに地域が設定されていません' : '架電ルールで設定された地域のみ選択可'}
+                    >
+                      <option value="">地域を選択 (任意・架電ルールの全地域)</option>
+                      {availableRegions.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  )}
+                </>
               )}
               {pickupMode === 'special' && (
                 <div className="mt-2">

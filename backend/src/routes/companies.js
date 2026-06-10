@@ -10,6 +10,7 @@ const {
   updateCompany,
   getNextCallTarget,
   getCallList,
+  getIndustryRegions,
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
@@ -31,6 +32,9 @@ router.get('/call-list/diagnose', diagnoseCallList);
 
 // GET /api/companies/call-list/next - 次の架電先取得 (1件)
 router.get('/call-list/next', getNextCallTarget);
+
+// GET /api/companies/industry-regions?industry=飲食 - 業種別ピックアップ用の選択可能地域
+router.get('/industry-regions', getIndustryRegions);
 
 // GET /api/companies - 企業一覧
 router.get('/', getCompanies);

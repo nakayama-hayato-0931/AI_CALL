@@ -361,6 +361,7 @@ const getNextCallTarget = async (req, res, next) => {
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
     const industryParam = req.query.industry || '';
+    const regionParam = req.query.region || ''; // 業種別モード時の都道府県絞込 (任意)
     const isMyList = mode === 'mylist';
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
@@ -375,6 +376,12 @@ const getNextCallTarget = async (req, res, next) => {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
         modeFilterParams = [industryParam];
+      }
+      // 地域指定: 「東京都」「東京」両形式 + 住所先頭マッチ
+      if (regionParam) {
+        const short = regionParam.replace(/(都|道|府|県)$/, '');
+        modeFilterSQL += ` AND (c.region IN (?, ?) OR c.address LIKE CONCAT(?, '%'))`;
+        modeFilterParams.push(regionParam, short || regionParam, regionParam);
       }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
@@ -582,6 +589,7 @@ const getCallList = async (req, res, next) => {
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
     const industryParam = req.query.industry || '';
+    const regionParam = req.query.region || ''; // 業種別モード時の都道府県絞込 (任意)
     const isMyList = mode === 'mylist';
     const isSpecialList = mode === 'special';
     let modeFilterSQL = '';
@@ -596,6 +604,12 @@ const getCallList = async (req, res, next) => {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
         modeFilterParams = [industryParam];
+      }
+      // 地域指定: 「東京都」「東京」両形式 + 住所先頭マッチ
+      if (regionParam) {
+        const short = regionParam.replace(/(都|道|府|県)$/, '');
+        modeFilterSQL += ` AND (c.region IN (?, ?) OR c.address LIKE CONCAT(?, '%'))`;
+        modeFilterParams.push(regionParam, short || regionParam, regionParam);
       }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
@@ -1355,6 +1369,48 @@ const deleteCompanyAction = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/companies/industry-regions?industry=飲食
+ * 業種別ピックアップ用に「その業種で設定されている都道府県」を返す。
+ * 架電ルール (industry_region_rules) で設定されている地域のみ ∩ ②自動ピックアップ対象都道府県。
+ */
+const getIndustryRegions = async (req, res, next) => {
+  try {
+    const industry = (req.query.industry || '').trim();
+    if (!industry) return ApiResponse.badRequest(res, 'industry は必須');
+
+    const [rows] = await pool.query(
+      'SELECT DISTINCT region FROM industry_region_rules WHERE industry_name = ? ORDER BY region',
+      [industry]
+    );
+    let regions = rows.map(r => r.region).filter(Boolean);
+
+    // ②自動ピックアップ対象都道府県と AND
+    try {
+      const [prefRows] = await pool.execute(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+      );
+      if (prefRows.length > 0) {
+        const prefMap = JSON.parse(prefRows[0].setting_value || '{}');
+        const entries = Object.entries(prefMap);
+        if (entries.length > 0) {
+          const enabledPrefs = new Set(
+            entries.filter(([, v]) => v === true).map(([k]) => k)
+          );
+          const enabledShort = new Set(
+            [...enabledPrefs].map(p => p.replace(/(都|道|府|県)$/, ''))
+          );
+          regions = regions.filter(r => enabledPrefs.has(r) || enabledShort.has(r));
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    return ApiResponse.success(res, { regions });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCompanies,
   getCompanyById,
@@ -1362,6 +1418,7 @@ module.exports = {
   updateCompany,
   getNextCallTarget,
   getCallList,
+  getIndustryRegions,
   lockCallTarget,
   unlockCallTarget,
   diagnoseCallList,
