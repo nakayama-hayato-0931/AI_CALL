@@ -6,6 +6,13 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト: Tier 0 (自分割り当て専用) を追加、永久除外も含めて必ず架電可能に
+- 管理画面で「○○割り当て中」とオレンジ表示される企業を、本人がオペレーター画面で必ず架電できるように。
+- Tier 1(recall) と Tier 2-5 の間に Tier 0 を挿入。reason='assigned'。
+- バイパス条件: `lastResultExclusionSQL` (SKIP/PROJECT/RECALL/INTERESTED 永久除外) / 業種地域 / モード / `last_called_at IS NULL`等の経過条件 すべて。
+- 残す条件: ロック (`lockFilterSQL`) / 1時間以内除外 (`recentCallFilterSQL`) / recall_tasks pending除外 / exclusion_flag・is_special。
+- これで「自分割り当て & 前回INTERESTED/SKIP」のような企業も本人架電画面に出る。
+
 ### 架電リスト: 自分に割り当てがある企業は業種地域/都道府県/モードフィルタをバイパス
 - オペレーターが「自分に割り当てた企業が自分にも出てこない」事象を修正。
 - 原因: 各Tier (golden_time/untouched/retry_no_answer/retry_ng) で適用される `irFilter` (業種地域ルール) / `goldenIndFilter` (ゴールデン業種除外) / `prefectureFilter` (自動ピックアップ都道府県) / `modeFilterSQL` (auto モード業種フィルタ) が、自分割り当て企業も除外していた。

@@ -766,6 +766,43 @@ const getCallList = async (req, res, next) => {
       return ApiResponse.success(res, payload);
     }
 
+    // ===== Tier 0: 自分割り当て中の企業を必ず先頭に表示 =====
+    // 管理画面で「○○割り当て中」とオレンジ表示される企業は、本人がオペレーター画面でも
+    // 必ず架電できるようにする。
+    // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED)・業種地域フィルタ・モードフィルタ・
+    // last_called_at 経過日数条件をすべてバイパスし、ロック・1時間以内・recall除外のみ適用。
+    const [assignedRows] = await pool.query(
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+              'assigned' as reason,
+              1 as is_assigned
+       FROM companies c
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0
+         AND EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
+         ${lockFilterSQL}
+         ${recentCallFilterSQL}
+         ${notInClause(excludeIds)}
+       ORDER BY c.priority_score DESC, c.last_called_at ASC
+       LIMIT ?`,
+      [userId, userId, userId, ...excludeIds, LIST_SIZE]
+    );
+    // Tier 1 と重複しないように追加
+    const seenIds = new Set(targets.map(t => t.id));
+    for (const r of assignedRows) {
+      if (!seenIds.has(r.id)) {
+        targets.push(r);
+        seenIds.add(r.id);
+        if (targets.length >= LIST_SIZE) break;
+      }
+    }
+    excludeIds = targets.map(t => t.id);
+
+    if (targets.length >= LIST_SIZE) {
+      const payload = { targets: targets.slice(0, LIST_SIZE) };
+      if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+      return ApiResponse.success(res, payload);
+    }
+
     // ===== Tier 2-5 を並列実行 =====
     // 直列だと各ティアで重いサブクエリを毎回評価するため遅い（60万行クラスのDBで顕著）。
     // Tier 1(recall) の結果のみを exclude として渡し、Tier 2-5 は独立クエリとして並列実行。
