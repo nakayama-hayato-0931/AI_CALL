@@ -962,14 +962,28 @@ const getCallList = async (req, res, next) => {
     // デバッグ: 各ティアの件数をログ出力
     logger.info(`[getCallList] mode=${mode} user=${userId} recall=${recallRows.length} golden=${goldenRows.length} untouched=${untouchedRows.length} retry_na=${retryRows.length} retry_ng=${ngRetryRows.length} total=${targets.length}`);
 
-    const payload = { targets: targets.slice(0, LIST_SIZE), debug: {
+    let finalTargets = targets.slice(0, LIST_SIZE);
+    // refresh=1 のとき: Tier 0 (assigned) と Tier 1 (recall) を先頭に固定し、
+    // それ以外の Tier 2-5 を Fisher-Yates でシャッフルして「押すたびに違う候補」を見せる。
+    if (req.query.refresh) {
+      const stickyReasons = new Set(['assigned', 'recall_due']);
+      const sticky = finalTargets.filter(t => stickyReasons.has(t.reason));
+      const rest = finalTargets.filter(t => !stickyReasons.has(t.reason));
+      for (let i = rest.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rest[i], rest[j]] = [rest[j], rest[i]];
+      }
+      finalTargets = [...sticky, ...rest];
+    }
+    const payload = { targets: finalTargets, debug: {
       recall: recallRows.length,
       golden: goldenRows.length,
       untouched: untouchedRows.length,
       retry_no_answer: retryRows.length,
       retry_ng: ngRetryRows.length,
     } };
-    if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
+    // refresh のときはキャッシュ保存もしない (毎回ランダム結果を返したい)
+    if (!req.query.exclude && !req.query.refresh) callListCache.set(cacheKey, { at: Date.now(), payload });
     return ApiResponse.success(res, payload);
   } catch (err) {
     logger.error(`[getCallList] ${err.code} ${err.message} sqlMessage=${err.sqlMessage} sql=${(err.sql || '').slice(0, 500)}`);
