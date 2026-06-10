@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト: 自分に割り当てがある企業は業種地域/都道府県/モードフィルタをバイパス
+- オペレーターが「自分に割り当てた企業が自分にも出てこない」事象を修正。
+- 原因: 各Tier (golden_time/untouched/retry_no_answer/retry_ng) で適用される `irFilter` (業種地域ルール) / `goldenIndFilter` (ゴールデン業種除外) / `prefectureFilter` (自動ピックアップ都道府県) / `modeFilterSQL` (auto モード業種フィルタ) が、自分割り当て企業も除外していた。
+- 修正: 4つのフィルタを `assignBypassWrap` で包み、`EXISTS (company_assignments where user_id = ?)` のときバイパス。各Tier params に `userId` を1つ追加。
+- 影響: 旧来「自動ピックアップで拾われない条件」の企業も、自分に割り当てがあれば必ず架電リスト先頭(is_assigned DESC)に出る。
+
 ### CPA: バラシ/失注 セルクリックで業種別内訳モーダル
 - CPA指標テーブルの「バラシ/失注」セルをクリックで業種別内訳モーダルを開けるように。
 - バックエンド: `getQualityIndustryDetail` の `status` に `BARASHI_LOST` を追加 (`p.status IN ('BARASHI','LOST')` で集計)。
