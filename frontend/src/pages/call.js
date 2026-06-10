@@ -877,11 +877,13 @@ export default function CallPage() {
                 <button
                   onClick={() => {
                     manualRefreshAtRef.current = Date.now();
+                    // sticky は recall_due のみ。assigned(自分割り当て) もシャッフル対象に含める。
+                    // 過去架電あり+割り当て中の企業が常に先頭固定されるのを防ぐ。
                     let shuffledCount = 0;
                     let stickyCount = 0;
                     setTargetList(prev => {
-                      const sticky = prev.filter(t => t.reason === 'assigned' || t.reason === 'recall_due');
-                      const rest = prev.filter(t => t.reason !== 'assigned' && t.reason !== 'recall_due');
+                      const sticky = prev.filter(t => t.reason === 'recall_due');
+                      const rest = prev.filter(t => t.reason !== 'recall_due');
                       for (let i = rest.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
                         [rest[i], rest[j]] = [rest[j], rest[i]];
@@ -893,7 +895,7 @@ export default function CallPage() {
                     if (shuffledCount > 0) {
                       toast.success(`${shuffledCount}件をシャッフルしました`, { duration: 1500 });
                     } else if (stickyCount > 0) {
-                      toast(`全${stickyCount}件がリコール/割り当てのため並び替え対象なし`, { duration: 3000, icon: 'i' });
+                      toast(`全${stickyCount}件がリコールのため並び替え対象なし`, { duration: 3000, icon: 'i' });
                     } else {
                       toast.error('リストが空です', { duration: 2000 });
                     }
