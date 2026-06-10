@@ -935,10 +935,15 @@ const getCallList = async (req, res, next) => {
       }
       return false;
     };
+    // Tier 4(retry_no_answer) / Tier 5(retry_ng) は「未架電(Tier 3)が完全に枯渇」したときだけ採用。
+    // 未架電が1件でもある限り、過去不通の再架電は表示しない方針。
+    const hasUntouched = untouchedRows.length > 0;
     if (!pushUnique(goldenRows)) {
       if (!pushUnique(untouchedRows)) {
-        if (!pushUnique(retryRows)) {
-          pushUnique(ngRetryRows);
+        if (!hasUntouched) {
+          if (!pushUnique(retryRows)) {
+            pushUnique(ngRetryRows);
+          }
         }
       }
     }
