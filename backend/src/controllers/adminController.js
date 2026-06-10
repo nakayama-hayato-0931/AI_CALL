@@ -2347,6 +2347,11 @@ async function getIncentiveData(req, res, next) {
     // - 取消/辞退も内定社1としてカウント(売上は0で記録、CPAv2と同じ仕様)
     let projects = [];
     try {
+      // 業務カテゴリで絞るときは projects テーブルの work_category を引き当てる EXISTS を付与。
+      // sales_projects_v2 には work_category カラムが無いため、job_number 経由で projects と紐付ける。
+      const wcExistsClause = wcFilter.sql
+        ? `AND EXISTS (SELECT 1 FROM projects p2 WHERE p2.job_number = sp.job_number AND p2.is_legacy = 0 ${wcFilter.sql.replace(/p\.work_category/g, 'p2.work_category')})`
+        : '';
       const [rows] = await pool.query(
         `SELECT
            sp.id AS project_id,
@@ -2365,8 +2370,9 @@ async function getIncentiveData(req, res, next) {
              ORDER BY p.created_at DESC LIMIT 1) AS owner_user_id
          FROM sales_projects_v2 sp
          WHERE sp.offer_date BETWEEN ? AND ?
+         ${wcExistsClause}
          ORDER BY sp.offer_date DESC`,
-        [dateFrom, dateTo]
+        [dateFrom, dateTo, ...wcFilter.params]
       );
       projects = rows;
     } catch (e) {

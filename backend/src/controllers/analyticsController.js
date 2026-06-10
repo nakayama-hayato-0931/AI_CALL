@@ -1340,18 +1340,19 @@ const getQualityAll = async (req, res, next) => {
     // kpi_adjustments を反映（CPAと一致させる）
     if (qSystemFrom) {
       try {
-        // field → rowのキー と 実績算出SQL条件のマップ
+        // 業務カテゴリフィルタを各 actualSql の末尾に付与
+        const wcSql = wcFilter.sql; // ' AND p.work_category = ?' または ''
         const adjustMap = {
-          project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?` },
-          q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?` },
-          q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND DATE(p.created_at) = ?` },
-          q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening = 'required' AND p.status = 'BOSHUCHU' AND DATE(p.created_at) = ?` },
-          q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')) AND DATE(p.created_at) = ?` },
-          q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?` },
-          q_barashi: { rowKey: 'barashi', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'BARASHI' AND DATE(p.created_at) = ?` },
-          q_online_interview: { rowKey: 'online_interview', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_type = 'online' AND DATE(p.created_at) = ?` },
-          q_no_screening: { rowKey: 'no_screening', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening IN ('not_required','なし') AND DATE(p.created_at) = ?` },
-          q_screening_failed: { rowKey: 'screening_failed', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'SHORUI_OCHI' AND DATE(p.created_at) = ?` },
+          project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?${wcSql}` },
+          q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?${wcSql}` },
+          q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND DATE(p.created_at) = ?${wcSql}` },
+          q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening = 'required' AND p.status = 'BOSHUCHU' AND DATE(p.created_at) = ?${wcSql}` },
+          q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')) AND DATE(p.created_at) = ?${wcSql}` },
+          q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?${wcSql}` },
+          q_barashi: { rowKey: 'barashi', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'BARASHI' AND DATE(p.created_at) = ?${wcSql}` },
+          q_online_interview: { rowKey: 'online_interview', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_type = 'online' AND DATE(p.created_at) = ?${wcSql}` },
+          q_no_screening: { rowKey: 'no_screening', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening IN ('not_required','なし') AND DATE(p.created_at) = ?${wcSql}` },
+          q_screening_failed: { rowKey: 'screening_failed', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'SHORUI_OCHI' AND DATE(p.created_at) = ?${wcSql}` },
         };
         const [adjRows] = await pool.query(
           `SELECT user_id, date, field, value FROM kpi_adjustments
@@ -1362,7 +1363,7 @@ const getQualityAll = async (req, res, next) => {
           const cfg = adjustMap[adj.field];
           if (!cfg) continue;
           const uid = adj.user_id;
-          const [rActual] = await pool.query(cfg.actualSql, [uid, adj.date]);
+          const [rActual] = await pool.query(cfg.actualSql, [uid, adj.date, ...wcFilter.params]);
           const actual = Number(rActual[0]?.cnt) || 0;
           const delta = Number(adj.value) - actual;
           let row = qMap.get(uid);

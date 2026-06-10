@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ Phase 6: KPI補正テンプレート + sales_projects_v2 連動
+- `analyticsController.getQualityAll` の KPI 補正 (`actualSql`) テンプレート 10 種すべてに `${wcSql}` を埋め込み、`pool.query` の params に `wcFilter.params` を追加。
+- `adminController.getIncentiveData` (v2 パス) で `sales_projects_v2` に対し `EXISTS (SELECT 1 FROM projects p2 WHERE p2.job_number = sp.job_number AND p2.work_category = ?)` を付与。`sales_projects_v2` 自体は work_category カラムを持たないため、job_number 経由で `projects` と紐付けて絞る方式。
+- これでインセンティブ管理画面（内定者リスト）も特定技能のみに正しく絞り込み可能。
+- 残作業 (Phase 7): 業種別分析 (`getIndustryMonthlyAnalysis` / `getIndustryPeriodDetail` / `getQualityIndustryDetail`)、業種別詳細・期間別詳細などの analytics 詳細エンドポイント。
+
 ### 業務カテゴリ Phase 5: analytics cpa-all/quality-all バックエンドに work_category フィルタ
 - `analyticsController.getCpaAll`:
   - callMap (コール数集計) クエリに wcCallFilter 適用
