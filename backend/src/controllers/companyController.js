@@ -843,6 +843,18 @@ const getCallList = async (req, res, next) => {
          EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ? AND ca2.is_auto = 0)
          OR (1=1 ${irFilter} ${goldenIndFilter} ${modeFilterSQL})
        )`;
+    // refresh=1 のとき: 各Tier の母集団から RAND() で抽出して「押すたびに違う25件」を返す。
+    // is_assigned DESC は維持 (自分割り当ては常に先頭)。
+    const useRandom = !!req.query.refresh;
+    const tier2Order = useRandom
+      ? 'is_assigned DESC, RAND()'
+      : 'is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC';
+    const tier3Order = useRandom
+      ? 'is_assigned DESC, RAND()'
+      : 'is_assigned DESC, c.priority_score DESC, c.created_at ASC';
+    const tier45Order = useRandom
+      ? 'is_assigned DESC, RAND()'
+      : 'is_assigned DESC, c.last_called_at ASC';
     const tier2Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
@@ -860,7 +872,7 @@ const getCallList = async (req, res, next) => {
          ${assignBypassWrap}
          ${prefectureFilter}
          ${notInClause(excludeIds)}
-       ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
+       ORDER BY ${tier2Order}
        LIMIT ?`,
       [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
@@ -878,7 +890,7 @@ const getCallList = async (req, res, next) => {
          ${assignBypassWrap}
          ${prefectureFilter}
          ${notInClause(excludeIds)}
-       ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
+       ORDER BY ${tier3Order}
        LIMIT ?`,
       [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
@@ -902,7 +914,7 @@ const getCallList = async (req, res, next) => {
          ${assignBypassWrap}
          ${prefectureFilter}
          ${notInClause(excludeIds)}
-       ORDER BY is_assigned DESC, c.last_called_at ASC
+       ORDER BY ${tier45Order}
        LIMIT ?`,
       [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
@@ -923,7 +935,7 @@ const getCallList = async (req, res, next) => {
          ${assignBypassWrap}
          ${prefectureFilter}
          ${notInClause(excludeIds)}
-       ORDER BY is_assigned DESC, c.last_called_at ASC
+       ORDER BY ${tier45Order}
        LIMIT ?`,
       [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);

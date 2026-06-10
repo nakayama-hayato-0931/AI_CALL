@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト: refresh=1 のとき SQL レベルで RAND() 化、押すたびに違う25件
+- 「更新を押してもリコール以外も変わらない」事象を強化修正。
+- 原因: 各Tier の LIMIT 25 が SQL の決定論的 ORDER BY で固定 → 結合後のシャッフルでは「同じ25件の並び替え」しか起こらず、母集団から別の25件を引き出せていなかった。
+- 修正: `req.query.refresh` のとき各Tier の ORDER BY を `is_assigned DESC, RAND()` に切り替え。母集団からランダムに25件抽出 → 押すたびに違う候補が出る。
+- 通常 (auto) は決定論的 ORDER BY のまま (高速インデックス活用)。
+- 自分割り当て (is_assigned=1) は引き続き先頭固定。
+
 ### 架電リスト(障害fix): is_auto カラムを criticalPreflight に移し起動順序競合を解消
 - 「架電リスト取得に失敗しました」が一部ユーザーで出ていた事象を修正。
 - 原因: 直前のコミットで `company_assignments.is_auto` カラムを参照する SQL を Tier 0 / assignBypassWrap / is_assigned に入れたが、ALTER TABLE は `app.listen()` 後の migrations() 内で実行していた。起動直後のリクエストで「Unknown column 'is_auto'」エラーで 500。
