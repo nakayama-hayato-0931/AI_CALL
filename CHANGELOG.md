@@ -6,6 +6,12 @@
 
 ## 2026年6月 〜 直近
 
+### CPA: バラシ/失注 セルクリックで業種別内訳モーダル
+- CPA指標テーブルの「バラシ/失注」セルをクリックで業種別内訳モーダルを開けるように。
+- バックエンド: `getQualityIndustryDetail` の `status` に `BARASHI_LOST` を追加 (`p.status IN ('BARASHI','LOST')` で集計)。
+- フロント: cpaColumns に `clickable: 'industry:BARASHI_LOST'` 追加、labelMap に「バラシ/失注」追加。
+- 取得元は v1 (callcenter.projects テーブル、status=BARASHI or LOST)、バラシ/失注 列の表示と一貫。
+
 ### 案件管理: 求人番号 自動取得ボタン
 - 求人番号が未入力の案件について、自動でソースから取得して埋める。
 - ソース優先順:

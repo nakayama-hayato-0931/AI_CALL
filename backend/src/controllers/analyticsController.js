@@ -2286,9 +2286,10 @@ const getIndustryMonthlyAnalysis = async (req, res, next) => {
 const getQualityIndustryDetail = async (req, res, next) => {
   try {
     const { date_from, date_to, user_id, status } = req.query;
-    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI'];
+    // BARASHI_LOST = バラシ(BARASHI) と 失注(LOST) を両方含む
+    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI', 'BARASHI_LOST'];
     if (!allowedStatuses.includes(status)) {
-      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI のいずれか');
+      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI/BARASHI_LOST のいずれか');
     }
     const dateFrom = date_from || '2026-04-01';
     const dateTo = date_to || new Date().toISOString().slice(0, 10);
@@ -2299,11 +2300,14 @@ const getQualityIndustryDetail = async (req, res, next) => {
       params.push(user_id);
     }
     // NAITEI の日付基準: date_base='created' なら獲得日、それ以外(既定)は内定日。
-    //   （CPA一覧の集計基準=date_base に合わせてドリルダウンを一致させる）
-    // LOST/BARASHI は従来通り獲得日(created_at)。
+    // LOST/BARASHI/BARASHI_LOST は獲得日(created_at)。
     const dateCol = status === 'NAITEI'
       ? (req.query.date_base === 'created' ? 'DATE(p.created_at)' : 'p.naitei_date')
       : 'DATE(p.created_at)';
+
+    // status 条件: BARASHI_LOST のときは IN 句、それ以外は等号
+    const statusSql = status === 'BARASHI_LOST' ? `p.status IN ('BARASHI','LOST')` : `p.status = ?`;
+    const statusBind = status === 'BARASHI_LOST' ? [] : [status];
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
     const [rows] = await pool.query(
@@ -2311,16 +2315,16 @@ const getQualityIndustryDetail = async (req, res, next) => {
        FROM projects p
        LEFT JOIN companies c ON p.company_id = c.id
        WHERE p.is_prospect = 0 AND p.is_legacy = 0
-         AND p.status = ?
+         AND ${statusSql}
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
        GROUP BY ${CAT}
        ORDER BY cnt DESC`,
-      [status, ...params]
+      [...statusBind, ...params]
     );
 
     // 明細も取得（内定人数 / 初回入金 / 見込売上 を含む）
-    const detailParams = [status, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
+    const detailParams = [...statusBind, dateFrom, dateTo, ...(user_id ? [user_id] : [])];
     const [detailRows] = await pool.query(
       `SELECT p.id, p.company_id, p.job_number, p.status, p.created_at, p.naitei_date,
               ${CAT} AS industry_cat,
@@ -2344,7 +2348,7 @@ const getQualityIndustryDetail = async (req, res, next) => {
           GROUP BY project_id
        ) ph ON ph.project_id = p.id
        WHERE p.is_prospect = 0 AND p.is_legacy = 0
-         AND p.status = ?
+         AND ${statusSql}
          AND ${dateCol} BETWEEN ? AND ?
          ${userFilter}
        ORDER BY ${dateCol} DESC`,

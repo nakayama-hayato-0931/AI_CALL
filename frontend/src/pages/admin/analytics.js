@@ -497,7 +497,7 @@ export default function AnalyticsPage() {
     { key: 'interviewRate', label: '面接実施率', format: 'pct' },
     { key: 'naiteiCount', label: '内定', clickable: 'industry:NAITEI' },
     { key: 'fugokakuCount', label: '不合格', clickable: 'v2:rejects' },
-    { key: 'barashiLostCount', label: 'バラシ/失注' },
+    { key: 'barashiLostCount', label: 'バラシ/失注', clickable: 'industry:BARASHI_LOST' },
     { key: 'initialPayment', label: '初回入金', format: 'yen', highlight: true },
     { key: 'expectedRevenue', label: '見込売上', format: 'yen' },
     { key: 'roas', label: 'ROAS', format: 'pct', highlight: true },
@@ -675,7 +675,7 @@ export default function AnalyticsPage() {
     if (!data) return;
     const dateFrom = data.dateFrom || (status === 'NAITEI' ? '2026-01-01' : '2026-04-01');
     const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
-    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定' };
+    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定', BARASHI_LOST: 'バラシ/失注' };
     setIndustryModal({
       title: `${name} - ${labelMap[status] || status} 業種別内訳`,
       status, userId, dateFrom, dateTo,
