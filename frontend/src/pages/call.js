@@ -221,10 +221,13 @@ export default function CallPage() {
   }, [pickupMode, selectedIndustry]);
 
   // 架電リスト取得
-  const fetchCallList = useCallback(async () => {
+  // forceRefresh=true: バックエンドの 20秒キャッシュを無効化して再取得 (更新ボタン用)
+  const fetchCallList = useCallback(async (forceRefresh = false) => {
     setListLoading(true);
     try {
-      const { data } = await api.get('/api/companies/call-list', { params: getModeParams() });
+      const params = getModeParams();
+      if (forceRefresh) params.refresh = 1;
+      const { data } = await api.get('/api/companies/call-list', { params });
       setTargetList(data.data.targets || []);
     } catch (err) {
       const msg = err.response?.data?.message || '架電リストの取得に失敗しました';
@@ -844,9 +847,10 @@ export default function CallPage() {
                   ロック解除
                 </button>
                 <button
-                  onClick={fetchCallList}
+                  onClick={() => fetchCallList(true)}
                   disabled={listLoading}
                   className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+                  title="サーバーキャッシュを無効化して未架電を再ピックアップ"
                 >
                   <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />

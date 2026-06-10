@@ -67,14 +67,16 @@ const lockFilterSQL = `
 `;
 
 /**
- * 1時間以内に架電した企業を除外するフィルタ
+ * 同日中に自分が架電して結果コード入力した企業を除外するフィルタ。
+ * 旧: 1時間以内除外 → 「1時間経過後に同日中の再架電が出る」事象があったため
+ * 「今日 (DATE(call_started_at) = CURDATE())」単位に変更。
  */
 const recentCallFilterSQL = `
   AND NOT EXISTS (
     SELECT 1 FROM calls cl
     WHERE cl.company_id = c.id
       AND cl.user_id = ?
-      AND cl.call_started_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+      AND DATE(cl.call_started_at) = CURDATE()
       AND cl.result_code IS NOT NULL
   )
 `;
@@ -580,7 +582,11 @@ const getCallList = async (req, res, next) => {
     // 15秒間隔ポーリング前提で、2回に1回はDBクエリを丸ごとスキップ。
     // excludeパラメータ（直前完了企業ID）付きは「次の架電先を取りに来た」操作なのでキャッシュしない。
     const cacheKey = buildCallListCacheKey(userId, callType, req.query.mode || 'auto', req.query.industry || '', req.query.region || '');
-    if (!req.query.exclude) {
+    // refresh=1 のとき: クライアントの「更新」ボタンからの明示的な再取得 → キャッシュバイパス
+    //   ついでに自分宛のキャッシュもクリアして直後のポーリングが古いデータを返さないように
+    if (req.query.refresh) {
+      for (const k of callListCache.keys()) if (k.startsWith(`${userId}|`)) callListCache.delete(k);
+    } else if (!req.query.exclude) {
       const cached = callListCache.get(cacheKey);
       if (cached && (Date.now() - cached.at) < CALL_LIST_CACHE_TTL_MS) {
         return ApiResponse.success(res, cached.payload);
