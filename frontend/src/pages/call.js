@@ -869,10 +869,24 @@ export default function CallPage() {
                   ロック解除
                 </button>
                 <button
-                  onClick={() => { manualRefreshAtRef.current = Date.now(); fetchCallList(true); }}
+                  onClick={() => {
+                    manualRefreshAtRef.current = Date.now();
+                    // 即座に現在のリストをシャッフル (recall_due/assigned は先頭固定)
+                    setTargetList(prev => {
+                      const sticky = prev.filter(t => t.reason === 'assigned' || t.reason === 'recall_due');
+                      const rest = prev.filter(t => t.reason !== 'assigned' && t.reason !== 'recall_due');
+                      for (let i = rest.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [rest[i], rest[j]] = [rest[j], rest[i]];
+                      }
+                      return [...sticky, ...rest];
+                    });
+                    // バックグラウンドで新しい候補も再取得
+                    fetchCallList(true);
+                  }}
                   disabled={listLoading}
                   className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-                  title="サーバーキャッシュを無効化して未架電を再ピックアップ (30秒間はポーリング抑止)"
+                  title="即座にシャッフル + サーバーから新候補も取得 (30秒間はポーリング抑止)"
                 >
                   <svg className={`w-3.5 h-3.5 ${listLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />

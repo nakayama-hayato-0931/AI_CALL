@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電画面: 更新ボタン押下と同時に setTargetList で即シャッフル
+- スクショで `?refresh=1&_t=...` は飛んでいるのに同サイズのレスポンスが返って表示が変わらない事象に対応。
+- 修正: 更新ボタン onClick で `setTargetList(prev => shuffled)` を即実行し、レスポンス到着前にUIを並び替え。
+- recall_due/assigned は先頭固定、それ以外を Fisher-Yates シャッフル。
+- バックグラウンドで `fetchCallList(true)` も実行して新候補も取得。
+
 ### 架電画面: 更新時のフロントシャッフル + URL cache-buster (二重保険)
 - 「更新を押してもずっと変わらない」事象が続くため、フロント側でも保険を入れる。
 - 更新ボタン押下時の URL に `_t=Date.now()` を付与 → ブラウザ/プロキシ/中間キャッシュを完全回避。
