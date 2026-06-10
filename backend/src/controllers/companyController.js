@@ -784,7 +784,12 @@ const getCallList = async (req, res, next) => {
     excludeIds = targets.map(t => t.id);
 
     if (targets.length >= LIST_SIZE) {
-      const payload = { targets: targets.slice(0, LIST_SIZE) };
+      // Tier 1 (recall) で全枠埋まった = リコール期限の企業が大量に蓄積している状態。
+      // debug 情報も返して件数表示で状況をフロントに伝える。
+      const payload = {
+        targets: targets.slice(0, LIST_SIZE),
+        debug: { recall: recallRows.length, golden: 0, untouched: 0, retry_no_answer: 0, retry_ng: 0, recall_only: true },
+      };
       if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
       return ApiResponse.success(res, payload);
     }

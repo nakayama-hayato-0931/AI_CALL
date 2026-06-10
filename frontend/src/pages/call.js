@@ -874,6 +874,7 @@ export default function CallPage() {
                   onClick={() => {
                     manualRefreshAtRef.current = Date.now();
                     let shuffledCount = 0;
+                    let stickyCount = 0;
                     setTargetList(prev => {
                       const sticky = prev.filter(t => t.reason === 'assigned' || t.reason === 'recall_due');
                       const rest = prev.filter(t => t.reason !== 'assigned' && t.reason !== 'recall_due');
@@ -882,9 +883,16 @@ export default function CallPage() {
                         [rest[i], rest[j]] = [rest[j], rest[i]];
                       }
                       shuffledCount = rest.length;
+                      stickyCount = sticky.length;
                       return [...sticky, ...rest];
                     });
-                    toast.success(`${shuffledCount}件をシャッフルしました`, { duration: 1500 });
+                    if (shuffledCount > 0) {
+                      toast.success(`${shuffledCount}件をシャッフルしました`, { duration: 1500 });
+                    } else if (stickyCount > 0) {
+                      toast(`全${stickyCount}件がリコール/割り当てのため並び替え対象なし`, { duration: 3000, icon: 'i' });
+                    } else {
+                      toast.error('リストが空です', { duration: 2000 });
+                    }
                     fetchCallList(true);
                   }}
                   disabled={listLoading}
@@ -902,14 +910,21 @@ export default function CallPage() {
             {/* Tier別 ピックアップ件数 (DB全体での該当件数) */}
             {listDebug && (
               <div className="text-[10px] text-gray-400 mb-2 flex flex-wrap gap-x-2 gap-y-0.5">
-                <span>リコール:{listDebug.recall ?? 0}</span>
+                <span className={`${Number(listDebug.recall) >= 25 ? 'text-rose-600 font-semibold' : ''}`}>
+                  リコール:{listDebug.recall ?? 0}
+                </span>
                 <span>ゴールデン:{listDebug.golden ?? 0}</span>
                 <span className={`${Number(listDebug.untouched) === 0 ? 'text-amber-600 font-semibold' : ''}`}>
                   未架電:{listDebug.untouched ?? 0}
                 </span>
                 <span>過去不通:{listDebug.retry_no_answer ?? 0}</span>
                 <span>過去NG:{listDebug.retry_ng ?? 0}</span>
-                {Number(listDebug.untouched) === 0 && (Number(listDebug.retry_no_answer) > 0 || Number(listDebug.retry_ng) > 0) && (
+                {listDebug.recall_only && (
+                  <span className="basis-full text-rose-700">
+                    ※ リコール期限の企業がリストを埋め尽くしています。リコール管理画面で古いタスクを整理してください
+                  </span>
+                )}
+                {!listDebug.recall_only && Number(listDebug.untouched) === 0 && (Number(listDebug.retry_no_answer) > 0 || Number(listDebug.retry_ng) > 0) && (
                   <span className="basis-full text-amber-700">※ 未架電が枯渇したため過去架電企業を表示中</span>
                 )}
               </div>
