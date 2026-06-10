@@ -818,22 +818,10 @@ const getCallList = async (req, res, next) => {
        LIMIT ?`,
       [userId, userId, userId, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
-    // Tier 1 と重複しないように追加
-    const seenIds = new Set(targets.map(t => t.id));
-    for (const r of assignedRows) {
-      if (!seenIds.has(r.id)) {
-        targets.push(r);
-        seenIds.add(r.id);
-        if (targets.length >= LIST_SIZE) break;
-      }
-    }
-    excludeIds = targets.map(t => t.id);
-
-    if (targets.length >= LIST_SIZE) {
-      const payload = { targets: targets.slice(0, LIST_SIZE) };
-      if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });
-      return ApiResponse.success(res, payload);
-    }
+    // Tier 0 (assigned) は targets にはまだ push しない。
+    // 「架電済みは未架電より優先度を下げて」の要望により、Tier 3 (untouched) の後に挿入する。
+    // 後段の pushUnique フェーズで assignedRows を golden→untouched の後に処理する。
+    // ここでは excludeIds への追加もせず、Tier 2-5 での再評価に任せる (重複は pushUnique で除外)。
 
     // ===== Tier 2-5 を並列実行 =====
     // 直列だと各ティアで重いサブクエリを毎回評価するため遅い（60万行クラスのDBで顕著）。
@@ -945,7 +933,10 @@ const getCallList = async (req, res, next) => {
       tier2Promise, tier3Promise, tier4Promise, tier5Promise,
     ]);
 
-    // 優先順位順に重複排除しながら結合 (golden > untouched > retry_na > retry_ng)
+    // 優先順位順に重複排除しながら結合
+    // 順序: recall(既追加) > golden > untouched > assigned > retry_na > retry_ng
+    // 「架電済みは未架電より優先度を下げる」要望により、Tier 0 (assigned) を
+    // Tier 3 (untouched) の後に移動。自分割り当て中でも未架電が先に表示される。
     const seen = new Set(targets.map(t => t.id));
     const pushUnique = (arr) => {
       for (const r of arr) {
@@ -961,16 +952,18 @@ const getCallList = async (req, res, next) => {
     const hasUntouched = untouchedRows.length > 0;
     if (!pushUnique(goldenRows)) {
       if (!pushUnique(untouchedRows)) {
-        if (!hasUntouched) {
-          if (!pushUnique(retryRows)) {
-            pushUnique(ngRetryRows);
+        if (!pushUnique(assignedRows)) {
+          if (!hasUntouched) {
+            if (!pushUnique(retryRows)) {
+              pushUnique(ngRetryRows);
+            }
           }
         }
       }
     }
 
     // デバッグ: 各ティアの件数をログ出力
-    logger.info(`[getCallList] mode=${mode} user=${userId} recall=${recallRows.length} golden=${goldenRows.length} untouched=${untouchedRows.length} retry_na=${retryRows.length} retry_ng=${ngRetryRows.length} total=${targets.length}`);
+    logger.info(`[getCallList] mode=${mode} user=${userId} recall=${recallRows.length} assigned=${assignedRows.length} golden=${goldenRows.length} untouched=${untouchedRows.length} retry_na=${retryRows.length} retry_ng=${ngRetryRows.length} total=${targets.length}`);
 
     let finalTargets = targets.slice(0, LIST_SIZE);
     // refresh=1 のとき: Tier 0 (assigned) と Tier 1 (recall) を先頭に固定し、

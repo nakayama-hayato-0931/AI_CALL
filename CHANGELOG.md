@@ -31,6 +31,14 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト: 「架電済みより未架電優先」に Tier 結合順を変更
+- 「シャッフルしても時間がたつと割り当て中(=過去架電あり)が上に上がってくる」事象を修正。
+- 修正前の Tier 順: recall > assigned > golden > untouched > retry_na > retry_ng
+- 修正後の Tier 順: recall > golden > untouched > **assigned** > retry_na > retry_ng
+- Tier 0 (assigned) を Tier 3 (untouched) の後に移動。未架電プールが残っている限り、自分割り当て中の接触済み企業はリスト下段に表示される。
+- ポーリングが走っても未架電が上に出てくるため、シャッフル後に「上書きされる」感覚が薄まる。
+- 自分割り当ては引き続き「永久除外バイパス + 業種地域フィルタバイパス」だが、表示位置は未架電の後。
+
 ### 架電画面: シャッフル時の sticky を recall_due のみに縮小 (割り当ても並び替え対象に)
 - 「接触済み企業 (自分割り当て中=Tier 0) がシャッフルされない、優先的に上に来るのが邪魔」事象を修正。
 - フロントのシャッフル時、sticky (先頭固定) を `recall_due` のみに変更。`assigned` (自分割り当て) はシャッフル対象に含める。
