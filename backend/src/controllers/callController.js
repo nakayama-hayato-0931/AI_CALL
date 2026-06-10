@@ -324,7 +324,7 @@ const endCall = async (req, res, next) => {
     if (result_code === 'NO_ANSWER') {
       try {
         await pool.execute(
-          'INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
+          'INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by, is_auto) VALUES (?, ?, ?, 1)',
           [call.company_id, call.user_id, call.user_id]
         );
       } catch (e) {

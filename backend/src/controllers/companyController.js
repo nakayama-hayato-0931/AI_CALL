@@ -321,10 +321,12 @@ const industryRegionFilterSQL = `
  * 割り当てフィルタSQL（自分に割り当て or 未割り当てのみ表示、他OPに割り当て済みは除外）
  * NOT IN は大きなテーブルスキャンになりやすいので NOT EXISTS にしてインデックス活用。
  */
+// is_auto=0 (手動割り当て) のみ対象。NO_ANSWER 経由の自動割り当ては「割り当て」扱いせず
+// 通常の Tier 4 (2日後再ピックアップ) のフローに任せる。
 const assignmentFilterSQL = `
   AND (
-    NOT EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id)
-    OR EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?)
+    NOT EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.is_auto = 0)
+    OR EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0)
     OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= NOW())
   )
 `;
@@ -466,7 +468,7 @@ const getNextCallTarget = async (req, res, next) => {
       `SELECT c.*, itr.priority_weight,
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
               (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
@@ -489,7 +491,7 @@ const getNextCallTarget = async (req, res, next) => {
     // 3. 未接触（割り当て優先）
     const [untouchedRows] = await pool.query(
       `SELECT c.*,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
@@ -510,7 +512,7 @@ const getNextCallTarget = async (req, res, next) => {
     const [noAnswerRows] = await pool.query(
       `SELECT c.*,
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
@@ -533,7 +535,7 @@ const getNextCallTarget = async (req, res, next) => {
     const [ngRetryRows] = await pool.query(
       `SELECT c.*,
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
@@ -792,7 +794,7 @@ const getCallList = async (req, res, next) => {
               1 as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0
-         AND EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?)
+         AND EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0)
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -829,13 +831,13 @@ const getCallList = async (req, res, next) => {
     // バイパス対象から外し、Tier 2-5 の SQL 本体側で別途 AND 適用する。
     const assignBypassWrap = `
        AND (
-         EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ?)
+         EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ? AND ca2.is_auto = 0)
          OR (1=1 ${irFilter} ${goldenIndFilter} ${modeFilterSQL})
        )`;
     const tier2Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
@@ -856,7 +858,7 @@ const getCallList = async (req, res, next) => {
     const tier3Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
@@ -878,7 +880,7 @@ const getCallList = async (req, res, next) => {
     const tier4Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
@@ -898,7 +900,7 @@ const getCallList = async (req, res, next) => {
     const tier5Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
-              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ?), 1, 0) as is_assigned
+              IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')

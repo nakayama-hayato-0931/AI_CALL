@@ -6,6 +6,14 @@
 
 ## 2026年6月 〜 直近
 
+### 架電リスト: 自動割り当て(NO_ANSWER経由)を Tier 0 から除外、繰り返し表示を解消
+- 「一度割り当てられている企業がリストに残り続ける」事象を修正。
+- 原因: `endCall` の NO_ANSWER 処理で `company_assignments` に自動 INSERT されるが、これを Tier 0 (assigned) が「自分割り当て」として永久除外バイパスで表示し続けていた。
+- 修正: `company_assignments` に `is_auto TINYINT(1) DEFAULT 0` カラム追加。NO_ANSWER 由来は `is_auto=1`、手動割り当て (`assignCompany`) は `is_auto=0` (デフォルト)。
+- Tier 0 (assigned) / assignBypassWrap / assignmentFilterSQL / 各Tier の is_assigned 判定 はすべて **`is_auto=0` (手動割り当て) のみ対象**。
+- NO_ANSWER 由来の自動割り当ては Tier 0 の特権を持たず、通常通り Tier 4 (2日後 retry) のフローで再ピックアップされる。
+- 影響: 手動で割り当てた企業は引き続き Tier 0 で永久除外バイパス。NO_ANSWER 連発で繰り返し出ていた企業は出なくなる。
+
 ### 架電リスト: 過去不通(Tier 4/5)は未架電(Tier 3)が完全に枯渇してから表示
 - 「自動ピックアップに過去不通が混ざる」事象を修正。未架電が1件でも残る間は過去 NO_ANSWER/NG の再架電を表示しない。
 - 修正前: Tier 3 が LIST_SIZE 未満なら Tier 4(retry_no_answer)/Tier 5(retry_ng) で補充。

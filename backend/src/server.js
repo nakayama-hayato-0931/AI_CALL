@@ -593,6 +593,9 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_assignments_user ON company_assignments(user_id, company_id)'); } catch (e) {}
   // NOT EXISTS の company_id = c.id 検索を高速化
   try { await pool.execute('CREATE INDEX idx_assignments_company ON company_assignments(company_id, user_id)'); } catch (e) {}
+  // is_auto: 自動割り当て(NO_ANSWER 経由など)か手動割り当てかを区別。
+  // Tier 0(assigned)/assignBypassWrap/assignmentFilterSQL は is_auto=0 (手動) のみ対象。
+  try { await pool.execute('ALTER TABLE company_assignments ADD COLUMN is_auto TINYINT(1) NOT NULL DEFAULT 0'); } catch (e) {}
 
   // ※ 上記カラム追加とインデックスは起動時 criticalPreflight() で先行実行済み
   // バックフィル: 既存データに対し1回だけ実行（非同期＋チャンク化）。
