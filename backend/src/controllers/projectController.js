@@ -91,6 +91,14 @@ const getProjects = async (req, res, next) => {
       params.push(call_type);
     }
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
+    if (wcFilter.sql) {
+      whereClauses.push(wcFilter.sql.replace(/^\s*AND\s+/i, ''));
+      params.push(...wcFilter.params);
+    }
+
     // 書類選考の有無フィルタ
     //   required=あり / not_required=なし（未選択・NULLも「なし」に含める）
     const { doc_screening, interview_kind } = req.query;

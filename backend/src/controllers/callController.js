@@ -563,6 +563,14 @@ const getCalls = async (req, res, next) => {
       params.push(s, s, s);
     }
 
+    // 業務カテゴリ (技人国/特定技能) フィルタ
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'c.work_category');
+    if (wcFilter.sql) {
+      whereClauses.push(wcFilter.sql.replace(/^\s*AND\s+/i, ''));
+      params.push(...wcFilter.params);
+    }
+
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     // COUNT + 結果コード別集計を1クエリで（companiesは検索時のみJOIN）

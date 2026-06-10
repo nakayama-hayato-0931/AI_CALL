@@ -141,7 +141,7 @@ export default function AdminProjects() {
 
   useEffect(() => {
     if (user) fetchProjects();
-  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, docScreening, interviewKind, sortBy, sortOrder, page, activeTab, search, callType]);
+  }, [user, status, ownerId, selectedSalesUser, myOnly, dateFrom, dateTo, docScreening, interviewKind, sortBy, sortOrder, page, activeTab, search, callType, router.query.work_category]);
 
   const fetchOperators = async () => {
     try {
@@ -192,6 +192,9 @@ export default function AdminProjects() {
       if (interviewKind) params.append('interview_kind', interviewKind);
       if (search) params.append('search', search);
       if (callType && activeTab !== 'legacy') params.append('call_type', callType);
+      // 業務カテゴリ (技人国/特定技能) URL クエリを渡す (特定技能管理画面からの絞込リンク用)
+      const wcq = typeof router.query.work_category === 'string' ? router.query.work_category : '';
+      if (wcq) params.append('work_category', wcq);
       const { data } = await api.get(`/api/projects?${params}`);
       if (data.success) {
         setProjects(data.data.projects);

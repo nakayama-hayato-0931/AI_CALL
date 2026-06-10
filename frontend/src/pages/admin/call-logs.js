@@ -90,7 +90,7 @@ export default function AdminCallLogsPage() {
 
   useEffect(() => {
     if (user) fetchCalls();
-  }, [user, page, viewMode, date, dateFrom, dateTo, resultCode, operatorId, search, callType]);
+  }, [user, page, viewMode, date, dateFrom, dateTo, resultCode, operatorId, search, callType, router.query.work_category]);
 
   const fetchOperators = async () => {
     try {
@@ -145,6 +145,9 @@ export default function AdminCallLogsPage() {
       if (resultCode) params.result_code = resultCode;
       if (search) params.search = search;
       if (callType) params.call_type = callType;
+      // 業務カテゴリ (技人国/特定技能)
+      const wcq = typeof router.query.work_category === 'string' ? router.query.work_category : '';
+      if (wcq) params.work_category = wcq;
 
       const { data } = await api.get('/api/calls', { params });
       if (data.success) {

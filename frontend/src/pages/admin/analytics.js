@@ -54,6 +54,10 @@ const fmtYen = (n) => n != null ? `¥${Number(n).toLocaleString()}` : '-';
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  // URL クエリの ?work_category=specific_skill を全 API 呼び出しに伝播 (管理者の特定技能管理リンク用)
+  const workCategoryQuery = typeof router.query.work_category === 'string' ? router.query.work_category : '';
+  // params に work_category を挟むヘルパー
+  const withWc = (p) => workCategoryQuery ? { ...p, work_category: workCategoryQuery } : p;
 
   const [periodMode, setPeriodMode] = useState('compare');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -287,13 +291,13 @@ export default function AnalyticsPage() {
           const weeks = getWeeksInMonth(ym);
           // 月合計(cpa,quality) + 各週(cpa,quality) を一括並列
           const responses = await Promise.all([
-            api.get('/api/analytics/cpa-all', { params: { ...monthParams, date_base: cpaBase } }),
-            api.get('/api/analytics/quality-all', { params: monthParams }),
+            api.get('/api/analytics/cpa-all', { params: withWc({ ...monthParams, date_base: cpaBase }) }),
+            api.get('/api/analytics/quality-all', { params: withWc(monthParams) }),
             ...weeks.flatMap(w => {
               const p = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
               return [
-                api.get('/api/analytics/cpa-all', { params: { ...p, date_base: cpaBase } }),
-                api.get('/api/analytics/quality-all', { params: p }),
+                api.get('/api/analytics/cpa-all', { params: withWc({ ...p, date_base: cpaBase }) }),
+                api.get('/api/analytics/quality-all', { params: withWc(p) }),
               ];
             }),
           ]);
@@ -321,8 +325,8 @@ export default function AnalyticsPage() {
           weeks.map(async (w) => {
             const params = { period: 'custom', date_from: w.dateFrom, date_to: w.dateTo, include_extra: 0 };
             const [cpaRes, qualRes] = await Promise.all([
-              api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
-              api.get('/api/analytics/quality-all', { params }),
+              api.get('/api/analytics/cpa-all', { params: withWc({ ...params, date_base: cpaBase }) }),
+              api.get('/api/analytics/quality-all', { params: withWc(params) }),
             ]);
             return { weekLabel: w.label, cpa: cpaRes.data.data, qual: qualRes.data.data };
           })
@@ -353,8 +357,8 @@ export default function AnalyticsPage() {
         if (!customFrom || !customTo) return;
         const params = { period: 'custom', date_from: customFrom, date_to: customTo };
         const [cpaRes, qualRes] = await Promise.all([
-          api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
-          api.get('/api/analytics/quality-all', { params }),
+          api.get('/api/analytics/cpa-all', { params: withWc({ ...params, date_base: cpaBase }) }),
+          api.get('/api/analytics/quality-all', { params: withWc(params) }),
         ]);
         // 単一月内に収まるなら v2 マージ可能
         const fromYM = customFrom?.slice(0, 7);
@@ -369,8 +373,8 @@ export default function AnalyticsPage() {
           ? { period: 'monthly', date: `${selectedMonth}-15` }
           : { period: 'cumulative', date: new Date().toISOString().slice(0, 10) };
         const [cpaRes, qualRes] = await Promise.all([
-          api.get('/api/analytics/cpa-all', { params: { ...params, date_base: cpaBase } }),
-          api.get('/api/analytics/quality-all', { params }),
+          api.get('/api/analytics/cpa-all', { params: withWc({ ...params, date_base: cpaBase }) }),
+          api.get('/api/analytics/quality-all', { params: withWc(params) }),
         ]);
         // monthly のみ v2 マージ (cumulative は複数月跨ぐためそのまま)
         const mergedCpa = periodMode === 'monthly'
@@ -385,7 +389,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths, cpaBase, cpaMode]);
+  }, [periodMode, selectedMonth, customFrom, customTo, compareMonths, cpaBase, cpaMode, workCategoryQuery]);
 
   useEffect(() => {
     if (user && (['admin','manager','consultant'].includes(user.role))) {
@@ -946,7 +950,12 @@ export default function AnalyticsPage() {
     <Layout wide>
       <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">CPA / 案件質分析</h1>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+            CPA / 案件質分析
+            {workCategoryQuery === 'specific_skill' && (
+              <span className="ml-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md align-middle">特定技能で絞込中</span>
+            )}
+          </h1>
           <p className="text-sm text-gray-400 mt-0.5">
             全オペレーター比較 - コスト・案件化率・面接・売上の分析
             {cpaMode === 'v2' && <span className="ml-2 text-emerald-600">(新CPA: 内定/入金/面接/不合格/バラシ/初回入金/見込売上 は fax-crm 互換ロジックで上書き)</span>}

@@ -31,6 +31,17 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ Phase 4: 案件管理 + 架電履歴 + CPA分析 への絞込伝播
+- バックエンド:
+  - `projectController.getProjects` (案件一覧) に `work_category` フィルタ適用。
+  - `callController.getCalls` (架電履歴) に `work_category` フィルタ適用。
+- フロント:
+  - `/admin/analytics` (CPA/案件質分析): `useRouter` で `?work_category` を取得、`withWc()` ヘルパーで全 `api.get` の params に伝播。タイトルに緑バッジ。
+  - `/admin/projects` (案件管理): `fetchProjects` で `work_category` を params に追加。依存配列にも追加。
+  - `/admin/call-logs` (架電履歴): `fetchCalls` で `work_category` を params に追加。依存配列にも追加。
+- 「特定技能管理」画面のリンクをクリックすると、ダッシュボード/CPA/案件管理/架電履歴すべて自動で特定技能のみに絞込表示される。
+- 残作業 (Phase 5): analyticsController の `getCpaAll` / `getQualityAll` バックエンド (各 calls/projects クエリに wcFilter)、sales_projects_v2 (インセンティブ v2 パス) への work_category 連動。
+
 ### 業務カテゴリ Phase 3: インセンティブ + ダッシュボード URL クエリ受信 + バッジ
 - `getIncentiveData` (v1 フォールバック) に `work_category` フィルタを追加。
 - フロント `index.js` (ダッシュボード): `useRouter` で `?work_category=specific_skill` を取得し、`fetchStats` / `fetchPerfData` の params に追加。
