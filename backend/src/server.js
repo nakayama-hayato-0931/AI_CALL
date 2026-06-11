@@ -149,40 +149,58 @@ app.get('/api/_alive', (req, res) => {
   res.json({ alive: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), timestamp: new Date().toISOString() });
 });
 
-// 詳細診断 (DB latency + pool 状態 + 長時間クエリ) - ユーザー操作時のみ叩く
+// 詳細診断 (DB latency + pool 状態 + 長時間クエリ + env 設定)
+// 何があっても try-catch で必ず JSON を返す。 500 になったら自分が壊れている。
 app.get('/api/_diag', async (req, res) => {
-  const poolLocal = require('../config/database');
   const status = {
     timestamp: new Date().toISOString(),
     uptimeSec: Math.round(process.uptime()),
-    db: { ok: false, latencyMs: null, error: null },
-    pool: {
-      total: poolLocal?._allConnections?.length ?? null,
-      free: poolLocal?._freeConnections?.length ?? null,
-      waiting: poolLocal?._connectionQueue?.length ?? null,
-    },
+    nodeVersion: process.version,
   };
-  const t0 = Date.now();
-  let timer;
+  // 環境変数 (パスワードは伏せる)
   try {
+    status.env = {
+      DB_HOST: process.env.DB_HOST ? `${String(process.env.DB_HOST).substring(0, 30)}` : 'NOT SET',
+      DB_PORT: process.env.DB_PORT || 'NOT SET',
+      DB_NAME: process.env.DB_NAME || 'NOT SET',
+      DB_USER: process.env.DB_USER || 'NOT SET',
+      DB_PASSWORD_SET: !!process.env.DB_PASSWORD,
+      DB_PASSWORD_LEN: process.env.DB_PASSWORD ? String(process.env.DB_PASSWORD).length : 0,
+      NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+    };
+  } catch (e) { status.envError = e.message; }
+  // pool 状態
+  try {
+    const poolLocal = require('../config/database');
+    status.poolKeys = Object.keys(poolLocal || {}).slice(0, 20);
+    status.pool = {
+      total: poolLocal?._allConnections?.length ?? poolLocal?.pool?._allConnections?.length ?? 'unknown',
+      free: poolLocal?._freeConnections?.length ?? poolLocal?.pool?._freeConnections?.length ?? 'unknown',
+      waiting: poolLocal?._connectionQueue?.length ?? poolLocal?.pool?._connectionQueue?.length ?? 'unknown',
+    };
+  } catch (e) { status.poolError = `${e.code || ''} ${e.message}`; }
+  // SELECT 1 latency (3秒で諦める)
+  try {
+    const poolLocal = require('../config/database');
+    const t0 = Date.now();
+    let timer;
     const queryP = poolLocal.query('SELECT 1 AS ok');
-    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 5000); });
+    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 3000); });
     const result = await Promise.race([queryP, timeoutP]);
     if (timer) clearTimeout(timer);
-    status.db.latencyMs = Date.now() - t0;
-    if (result === '__TIMEOUT__') status.db.error = 'timeout 5s';
-    else status.db.ok = true;
-  } catch (e) {
-    if (timer) clearTimeout(timer);
-    status.db.latencyMs = Date.now() - t0;
-    status.db.error = `${e.code || ''} ${e.message}`;
-  }
+    status.db = { latencyMs: Date.now() - t0, result: result === '__TIMEOUT__' ? 'timeout 3s' : 'ok' };
+  } catch (e) { status.db = { error: `${e.code || ''} ${e.message}`, stack: String(e.stack || '').split('\n').slice(0, 3) }; }
+  // 長時間クエリ (DB が応答する場合のみ)
   try {
-    const [longQ] = await poolLocal.query(
-      "SELECT id, user, time, command, LEFT(info, 200) AS info FROM information_schema.processlist WHERE command != 'Sleep' AND time > 5 ORDER BY time DESC LIMIT 20"
-    );
-    status.longQueries = longQ;
-  } catch (e) { status.longQueriesError = e.message; }
+    const poolLocal = require('../config/database');
+    let timer;
+    const queryP = poolLocal.query("SELECT id, user, time, command, LEFT(info, 200) AS info FROM information_schema.processlist WHERE command != 'Sleep' AND time > 5 ORDER BY time DESC LIMIT 20");
+    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 3000); });
+    const result = await Promise.race([queryP, timeoutP]);
+    if (timer) clearTimeout(timer);
+    if (result === '__TIMEOUT__') status.longQueries = 'timeout';
+    else status.longQueries = result[0];
+  } catch (e) { status.longQueriesError = `${e.code || ''} ${e.message}`; }
   res.json(status);
 });
 
