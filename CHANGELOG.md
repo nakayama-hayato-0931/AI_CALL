@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### DB: SELECT に MAX_EXECUTION_TIME=60s を設定 (長時間クエリ自動キャンセル)
+- 「operators API すら応答しない、ログインできない」事象の再発防止。
+- 各接続で `SET SESSION MAX_EXECUTION_TIME = 60000` を実行。60秒を超える SELECT は MySQL が自動キャンセル → 後続クエリへのロック影響を防ぐ。
+- UPDATE/INSERT/DELETE/DDL には効かない (MySQL の仕様) ので、書き込み系は引き続き設計で対応する。
+- 影響: 通常の集計クエリは数秒で完了するため業務影響なし。長時間 ad-hoc クエリだけが切られる。
+
 ### 緊急fix: CSVインポート後の全件 UPDATE を停止 (DB詰まり原因)
 - 「全員ピックアップされない」「ログインも出ない (operators API 502 9.6秒)」事象の対策。
 - 原因: 直前に追加した `applyIndustryCategoryAfterImport(null)` が `WHERE industry_category IS NULL AND industry IS NOT NULL` の全件 UPDATE を実行していた。 60万行クラスで重く、10ファイル連続インポートで10回呼ばれて DB を完全に詰まらせていた。

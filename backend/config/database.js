@@ -36,9 +36,14 @@ pool.getConnection()
     console.error('[DB] MySQL接続失敗:', err.message);
   });
 
-// 全接続でセッションタイムゾーンをJSTに設定
+// 全接続でセッションタイムゾーンをJSTに設定 + 実行時間の上限を設定
+//   MAX_EXECUTION_TIME はミリ秒単位 (60秒)。これを超える SELECT は ER_QUERY_TIMEOUT で
+//   自動キャンセルされ、後続クエリへのロック影響を防ぐ。重い ad-hoc クエリでバックエンド
+//   全体が詰まる事故 (operators API すら応答しないなど) を回避するため。
+//   ※ UPDATE/INSERT/DELETE/DDL には効かない (MySQL の仕様)。
 pool.on('connection', (conn) => {
   conn.query("SET time_zone = '+09:00'");
+  conn.query("SET SESSION MAX_EXECUTION_TIME = 60000").catch(() => {});
 });
 
 module.exports = pool;
