@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト(緊急fix): 業種別モードで industry_category IS NULL も含める
+- 「全員ピックアップされなくなった」事象の即時対応。
+- 原因: 直前のコミット (c3b5f17) で modeFilterSQL を `industry_category = ?` だけにしたが、未再計算の企業 (industry_category IS NULL) が大量に残っていたためゼロ件になっていた。
+- 修正: `(c.industry_category = ? OR c.industry_category IS NULL)` に変更。index 利用は維持。
+- 正確な絞り込みには顧客マスタ「業種診断」→「再計算」で全行を分類済みにすることを推奨。
+
 ### 架電リスト性能改善: 業種別モードのキーワード OR LIKE を除去 (60万行で重い)
 - 「ピックアップが遅い」事象の対策。
 - 原因: 業種別モードで `industry_category = ?` に加えて `industry LIKE '%kw1%' OR LIKE '%kw2%' ...` (各カテゴリ15キーワード) を OR 評価していたため、index が使えずフルテーブルスキャンが発生。Tier 2-5 × 各種フィルタで重複実行されて全体応答が遅延。
