@@ -4,6 +4,10 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
+// Railway の public proxy (hopper.proxy.rlwy.net 等) 経由のときは SSL/TLS が必須なケースがある。
+// DB_HOST に proxy.rlwy.net が含まれているときは SSL を有効化する。
+const isRailwayPublicProxy = (process.env.DB_HOST || '').includes('rlwy.net');
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 3306,
@@ -13,10 +17,11 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 30,
   queueLimit: 0,
-  connectTimeout: 10000,
+  connectTimeout: 20000,
   charset: 'utf8mb4',
   timezone: '+09:00',
   dateStrings: true,
+  ...(isRailwayPublicProxy ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
 // 接続テスト + JST タイムゾーン設定
