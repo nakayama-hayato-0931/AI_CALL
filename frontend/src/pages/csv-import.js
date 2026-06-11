@@ -207,13 +207,15 @@ export default function CallListPage() {
   };
 
   // 複数ファイル一括アップロード (順次実行・各結果を集計)
+  // 5万行 × 数十ファイルの大規模インポートを想定し、ファイル毎 15分タイムアウト + 経過時間表示。
   const handleBulkUpload = async () => {
     if (bulkFiles.length === 0) {
       toast.error('ファイルを選択してください');
       return;
     }
+    if (!window.confirm(`${bulkFiles.length}件を順次インポートします。\n大規模ファイル (5万行クラス) を含む場合、全体で数十分〜数時間かかる可能性があります。\nブラウザタブを閉じないでください。続行しますか?`)) return;
     setBulkBusy(true);
-    setBulkProgress({ current: 0, total: bulkFiles.length, currentName: '', results: [] });
+    setBulkProgress({ current: 0, total: bulkFiles.length, currentName: '', results: [], startTime: Date.now() });
 
     let url = '/api/csv/import';
     if (importTab === 'special') url = '/api/csv/import-special';
@@ -221,11 +223,13 @@ export default function CallListPage() {
     else if (importTab === 'existing') url = '/api/csv/import-exclusion?list_type=existing_project';
 
     const savedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+    const overallStart = Date.now();
 
     let totals = { added: 0, updated: 0, skipped: 0, error_files: 0 };
     const results = [];
     for (let i = 0; i < bulkFiles.length; i++) {
       const f = bulkFiles[i];
+      const fileStart = Date.now();
       setBulkProgress(p => ({ ...p, current: i + 1, currentName: f.name }));
       try {
         const formData = new FormData();
@@ -239,24 +243,34 @@ export default function CallListPage() {
         }
         const { data } = await directApi.post(url, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 900000, // 15分 (大規模ファイル対応)
         });
         const r = data.data || {};
         totals.added += Number(r.added || r.inserted || 0);
         totals.updated += Number(r.updated || 0);
         totals.skipped += Number(r.skipped || 0);
-        const summary = `追加${r.added || r.inserted || 0}/更新${r.updated || 0}/スキップ${r.skipped || 0}`;
+        const elapsed = ((Date.now() - fileStart) / 1000).toFixed(1);
+        const summary = `追加${(r.added || r.inserted || 0).toLocaleString()}/更新${(r.updated || 0).toLocaleString()}/スキップ${(r.skipped || 0).toLocaleString()} [${elapsed}秒]`;
         results.push({ name: f.name, ok: true, summary });
       } catch (err) {
         totals.error_files++;
+        const elapsed = ((Date.now() - fileStart) / 1000).toFixed(1);
         const msg = err.response?.data?.message || err.message || 'unknown error';
-        results.push({ name: f.name, ok: false, summary: msg });
+        results.push({ name: f.name, ok: false, summary: `${msg} [${elapsed}秒]` });
       }
       setBulkProgress(p => ({ ...p, results: [...results] }));
+      // ファイル間に短いスリープ (DB負荷の分散)
+      if (i < bulkFiles.length - 1) await new Promise(r => setTimeout(r, 500));
     }
 
-    toast.success(`完了 ${bulkFiles.length}件 / 追加${totals.added.toLocaleString()} 更新${totals.updated.toLocaleString()} スキップ${totals.skipped.toLocaleString()} エラー${totals.error_files}`, { duration: 8000 });
+    const overallElapsed = Math.round((Date.now() - overallStart) / 1000);
+    const min = Math.floor(overallElapsed / 60);
+    const sec = overallElapsed % 60;
+    toast.success(
+      `完了 ${bulkFiles.length}件 (${min}分${sec}秒) / 追加${totals.added.toLocaleString()} 更新${totals.updated.toLocaleString()} スキップ${totals.skipped.toLocaleString()} エラー${totals.error_files}`,
+      { duration: 15000 }
+    );
     setBulkBusy(false);
-    setBulkFiles([]);
     if (importTab === 'calllist' || importTab === 'special') { if (importTab === 'special') setListView('special'); fetchCompanies(1); }
     else { fetchCompanies(pagination.page || 1); fetchExclusionStats(); }
   };
@@ -622,13 +636,24 @@ export default function CallListPage() {
                     実行中: {bulkProgress.currentName}
                   </div>
                 )}
+                {bulkBusy && bulkProgress.startTime && (
+                  <div className="text-[9px] text-purple-500 mt-1">
+                    経過: {Math.floor((Date.now() - bulkProgress.startTime) / 60000)}分 (タブを閉じないでください)
+                  </div>
+                )}
                 {bulkProgress.results.length > 0 && (
                   <div className="mt-2 max-h-32 overflow-y-auto border-t border-purple-200 pt-1">
                     {bulkProgress.results.map((r, i) => (
                       <div key={i} className={`text-[9px] ${r.ok ? 'text-gray-600' : 'text-rose-600'} truncate`} title={`${r.name}: ${r.summary}`}>
-                        {r.ok ? '✓' : '✗'} {r.name}: {r.summary}
+                        {r.ok ? '○' : '×'} {r.name}: {r.summary}
                       </div>
                     ))}
+                    {/* 失敗ファイルだけ再選択 */}
+                    {!bulkBusy && bulkProgress.results.some(r => !r.ok) && (
+                      <div className="text-[9px] text-amber-700 mt-1">
+                        ※ 失敗したファイルは元のローカル選択から該当ファイルだけを再度ドラッグして「一括インポート」してください
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
