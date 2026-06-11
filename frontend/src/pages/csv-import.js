@@ -255,8 +255,16 @@ export default function CallListPage() {
       } catch (err) {
         totals.error_files++;
         const elapsed = ((Date.now() - fileStart) / 1000).toFixed(1);
-        const msg = err.response?.data?.message || err.message || 'unknown error';
-        results.push({ name: f.name, ok: false, summary: `${msg} [${elapsed}秒]` });
+        const status = err.response?.status;
+        const respMsg = err.response?.data?.message;
+        const respErr = err.response?.data?.error;
+        const errCode = err.code;
+        const msg = respMsg || respErr || err.message || 'unknown error';
+        console.error(`[bulk-import] ${f.name} 失敗`, {
+          status, code: errCode, message: msg,
+          response: err.response?.data, raw: err,
+        });
+        results.push({ name: f.name, ok: false, summary: `[${status || errCode || 'NET'}] ${msg} [${elapsed}秒]` });
       }
       setBulkProgress(p => ({ ...p, results: [...results] }));
       // ファイル間に短いスリープ (DB負荷の分散)
