@@ -1477,6 +1477,73 @@ const getIndustryRegions = async (req, res, next) => {
 };
 
 /**
+ * GET /api/companies/diagnose/prefecture
+ * ② 自動ピックアップ対象都道府県の設定と companies.region 値の分布を返す。
+ * 「関東で6件しか出ない」事象の原因を可視化。
+ */
+const diagnosePrefecture = async (req, res, next) => {
+  try {
+    // ② 設定
+    let enabledPrefs = [];
+    let disabledPrefs = [];
+    try {
+      const [pr] = await pool.execute(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+      );
+      if (pr.length > 0) {
+        const map = JSON.parse(pr[0].setting_value || '{}');
+        for (const [k, v] of Object.entries(map)) {
+          if (v === true) enabledPrefs.push(k);
+          else disabledPrefs.push(k);
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // companies.region 値分布 (上位30件)
+    const [regionDist] = await pool.query(
+      `SELECT COALESCE(NULLIF(region, ''), '(空欄)') AS region, COUNT(*) AS cnt
+         FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0
+        GROUP BY COALESCE(NULLIF(region, ''), '(空欄)')
+        ORDER BY cnt DESC LIMIT 30`
+    );
+
+    // 関東7県の件数チェック (region と address の両方)
+    const KANTO = ['茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県'];
+    const kantoCounts = {};
+    for (const p of KANTO) {
+      const short = p.replace(/(都|道|府|県)$/, '');
+      try {
+        const [c1] = await pool.query(
+          "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND (region = ? OR region = ?)",
+          [p, short]
+        );
+        const [c2] = await pool.query(
+          "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND (region IS NULL OR region = '') AND address LIKE CONCAT(?, '%')",
+          [p]
+        );
+        kantoCounts[p] = {
+          by_region: Number(c1[0].cnt),
+          by_address_only: Number(c2[0].cnt),
+          enabled_in_setting: enabledPrefs.includes(p) || enabledPrefs.includes(short),
+        };
+      } catch (e) { kantoCounts[p] = { error: e.message }; }
+    }
+
+    return ApiResponse.success(res, {
+      enabled_prefectures: enabledPrefs,
+      enabled_count: enabledPrefs.length,
+      disabled_prefectures: disabledPrefs,
+      disabled_count: disabledPrefs.length,
+      region_distribution_top30: regionDist.map(r => ({ region: r.region, count: Number(r.cnt) })),
+      kanto_breakdown: kantoCounts,
+      note: '関東で件数少ない場合: ① enabled_prefectures に関東各県が含まれているか確認 ② region_distribution で companies.region に「東京」のような短縮形があるか確認',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/companies/diagnose/recompute-industry-category
  * companies.industry_category を industry テキストから再分類して update する。
  * 「業種カテゴリの分類漏れ」を一括で解消する整理用エンドポイント。
@@ -1486,16 +1553,18 @@ const recomputeIndustryCategory = async (req, res, next) => {
   try {
     const dryRun = req.query.dry_run === '1' || req.body?.dry_run === true;
     // CASE 式: companyController の getCallList などで使われている分類ロジックと同じ
+    // CASE 順序: 複合キーワード(建材小売、建築資材販売)を先に「建設」扱いするため、
+    // 建設を小売より前に評価する。同様に飲食系も小売「飲食料品小売業」を後回しに。
     const CATEGORY_SQL = `
       CASE
-        WHEN industry LIKE '%飲食料品小売業%' OR industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' THEN '小売'
-        WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' THEN '製造'
-        WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' THEN '建設'
+        WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' OR industry LIKE '%建材%' OR industry LIKE '%住宅%' OR industry LIKE '%リノベ%' THEN '建設'
         WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
         WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
+        WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
         WHEN industry LIKE '%飲食%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
         WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' THEN '農業'
-        WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
+        WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' THEN '製造'
+        WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' THEN '小売'
         ELSE 'その他'
       END
     `;
@@ -1852,6 +1921,7 @@ module.exports = {
   diagnoseCompanyCounts,
   diagnoseIndustryCounts,
   recomputeIndustryCategory,
+  diagnosePrefecture,
   diagnoseCallList,
   getCompanyActions,
   createCompanyAction,

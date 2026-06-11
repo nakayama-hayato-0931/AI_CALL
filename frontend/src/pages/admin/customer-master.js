@@ -358,6 +358,38 @@ export default function CustomerMasterPage() {
               <button
                 onClick={async () => {
                   try {
+                    const { data } = await api.get('/api/companies/diagnose/prefecture');
+                    if (!data.success) { toast.error('都道府県診断失敗'); return; }
+                    const d = data.data;
+                    const lines = [
+                      '【都道府県診断】',
+                      `②自動ピックアップ対象都道府県: 有効${d.enabled_count}件 / 無効${d.disabled_count}件`,
+                      `有効: ${(d.enabled_prefectures || []).join(', ') || '(なし)'}`,
+                      '',
+                      '▼ 関東7県の状況:',
+                    ];
+                    for (const [pref, info] of Object.entries(d.kanto_breakdown || {})) {
+                      const enabled = info.enabled_in_setting ? '✓有効' : '✗無効';
+                      lines.push(`・${pref}: region一致=${(info.by_region ?? 0).toLocaleString()} / addressのみ一致=${(info.by_address_only ?? 0).toLocaleString()} [${enabled}]`);
+                    }
+                    lines.push('');
+                    lines.push('▼ region 上位 (companies テーブル):');
+                    (d.region_distribution_top30 || []).slice(0, 15).forEach(r => {
+                      lines.push(`・${r.region}: ${r.count.toLocaleString()}`);
+                    });
+                    window.alert(lines.join('\n'));
+                  } catch (err) {
+                    toast.error('都道府県診断失敗');
+                  }
+                }}
+                className="ml-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
+                title="② 設定と region 分布を診断"
+              >
+                都道府県診断
+              </button>
+              <button
+                onClick={async () => {
+                  try {
                     const { data } = await api.get('/api/companies/diagnose/counts');
                     if (!data.success) { toast.error('件数取得失敗'); return; }
                     const c = data.data.counts;

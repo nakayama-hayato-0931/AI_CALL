@@ -19,6 +19,7 @@ const {
   diagnoseCompanyCounts,
   diagnoseIndustryCounts,
   recomputeIndustryCategory,
+  diagnosePrefecture,
   getCompanyActions,
   createCompanyAction,
   updateCompanyAction,
@@ -55,6 +56,9 @@ router.get('/diagnose/industry', diagnoseIndustryCounts);
 
 // POST /api/companies/diagnose/recompute-industry-category - industry_category 一括再計算
 router.post('/diagnose/recompute-industry-category', recomputeIndustryCategory);
+
+// GET /api/companies/diagnose/prefecture - ② 都道府県設定と region 分布の診断
+router.get('/diagnose/prefecture', diagnosePrefecture);
 
 // GET /api/companies/:id/pickup-diagnose - 該当企業の架電リスト非表示理由を診断
 router.get('/:id/pickup-diagnose', diagnoseCompanyPickup);
