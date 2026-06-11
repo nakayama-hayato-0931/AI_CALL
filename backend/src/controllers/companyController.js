@@ -370,6 +370,10 @@ const getNextCallTarget = async (req, res, next) => {
     const regionParam = req.query.region || ''; // 業種別モード時の都道府県絞込 (任意)
     const isMyList = mode === 'mylist';
     const isSpecialList = mode === 'special';
+    // 業種別モードで industry が空のときは 400 を返す (無音で全件返すと「絞れていない」誤解の元)
+    if (mode === 'industry' && !industryParam) {
+      return ApiResponse.badRequest(res, '業種別モードでは industry パラメータが必要です');
+    }
     let modeFilterSQL = '';
     let modeFilterParams = [];
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
@@ -607,6 +611,10 @@ const getCallList = async (req, res, next) => {
     const regionParam = req.query.region || ''; // 業種別モード時の都道府県絞込 (任意)
     const isMyList = mode === 'mylist';
     const isSpecialList = mode === 'special';
+    // 業種別モードで industry が空のときは 400 を返す (無音で全件返すと「絞れていない」誤解の元)
+    if (mode === 'industry' && !industryParam) {
+      return ApiResponse.badRequest(res, '業種別モードでは industry パラメータが必要です');
+    }
     let modeFilterSQL = '';
     let modeFilterParams = [];
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
@@ -838,13 +846,15 @@ const getCallList = async (req, res, next) => {
     // Tier 1(recall) の結果のみを exclude として渡し、Tier 2-5 は独立クエリとして並列実行。
     // 結果は優先順位順に Map で重複排除して結合 → LIMIT で切る。
     //
-    // 自分に割り当てがある企業はピックアップ条件 (業種地域/業種除外/モード) をバイパス。
-    // ただし ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として
-    // バイパス対象から外し、Tier 2-5 の SQL 本体側で別途 AND 適用する。
+    // 自分に割り当てがある企業はピックアップ条件 (業種地域/業種除外) をバイパス。
+    // ただし以下は絶対条件としてバイパス対象から外す:
+    //   - ②自動ピックアップ対象都道府県 (prefectureFilter)
+    //   - 業種別モードの業種絞り込み (modeFilterSQL) — 「建設選んでもローソンが出る」事象の修正
+    // これらは SQL 本体側で別途 AND 適用する。
     const assignBypassWrap = `
        AND (
          EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ? AND ca2.is_auto = 0)
-         OR (1=1 ${irFilter} ${goldenIndFilter} ${modeFilterSQL})
+         OR (1=1 ${irFilter} ${goldenIndFilter})
        )`;
     // ORDER BY RAND() は 60万行スキャンになりタイムアウト/502 の原因になっていたため撤回。
     // refresh 時のランダム化はフロントの Fisher-Yates シャッフルに任せる (高速・確実)。
@@ -867,10 +877,11 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${assignBypassWrap}
          ${prefectureFilter}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier2Order}
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
+      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
     const tier3Promise = pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -885,10 +896,11 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${assignBypassWrap}
          ${prefectureFilter}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier3Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     );
     // フォールバック時（last_call_result_code カラム未追加）はティア4/5を完全スキップ。
     // 相関サブクエリで60万行に対し毎行評価され壊滅的に遅くなるため。
@@ -909,10 +921,11 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${assignBypassWrap}
          ${prefectureFilter}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
     const tier5Promise = useFast ? pool.query(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
@@ -930,10 +943,11 @@ const getCallList = async (req, res, next) => {
          ${asFilter}
          ${assignBypassWrap}
          ${prefectureFilter}
+         ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
 
     if (!useFast) {

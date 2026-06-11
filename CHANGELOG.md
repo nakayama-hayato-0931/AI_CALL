@@ -31,6 +31,16 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト: 業種別モードは「自分手動割り当て」でも業種絞り込みを通す
+- 「業種別建設選択しているのにローソンなど小売業が表示される」事象の根本修正。
+- 原因: `assignBypassWrap` の OR 句に `modeFilterSQL` が含まれており、「自分に手動割り当てがある企業」は業種フィルタをバイパスして表示されていた。
+- 修正:
+  - `assignBypassWrap` から `modeFilterSQL` を除外: `EXISTS(自分割り当て) OR (1=1 ${irFilter} ${goldenIndFilter})`
+  - Tier 2-5 の SQL 本体 `${prefectureFilter}` の直後に `${modeFilterSQL}` を直接 AND で追加
+  - params の順番を `prefectureParams → modeFilterParams` に調整
+- これで Tier 0/Tier 1 と同様、Tier 2-5 でも「自分割り当て手動」でも業種絞り込みが絶対条件に。
+- バックエンドで `mode='industry'` かつ `industry` パラメータが空のときは 400 を返すバリデーションも追加 (無音で全件返す事故を防ぐ)。
+
 ### 架電画面: industry_category タグを並列表示 (分類確認用)
 - 「業種別で建設を選んだのに小売の企業が出る」事象を可視化するため、架電リストの各企業に industry テキストの隣に industry_category タグを並列表示。
 - バックエンド: getCallList の各Tier (assigned/recall/golden/untouched/retry_na/retry_ng) の SELECT に `c.industry_category` を追加。
