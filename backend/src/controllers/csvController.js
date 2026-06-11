@@ -701,8 +701,9 @@ const importCompanies = async (req, res, next) => {
     const assignMsg = req.user.role === 'operator' ? `（${insertedCount}件があなたの架電予定に追加されました）` : '';
     logger.info(`ファイルインポート完了: inserted=${insertedCount}, skipped=${skippedCount}, duplicates=${duplicateCount}, excluded=${excludedCount}, user=${req.user.id}`);
 
-    // industry_category を非同期で計算 (応答を待たせない、失敗しても無視)
-    applyIndustryCategoryAfterImport(null).catch(() => {});
+    // 注意: 全件 UPDATE は60万行クラスで重く、連続インポート時に DB を詰まらせるため一旦無効化。
+    // 代わりに、必要なら顧客マスタの「業種診断」→「再計算」ボタンで手動実行する想定。
+    // applyIndustryCategoryAfterImport(null).catch(() => {});
 
     return ApiResponse.success(res, {
       totalRows,

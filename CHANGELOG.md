@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 緊急fix: CSVインポート後の全件 UPDATE を停止 (DB詰まり原因)
+- 「全員ピックアップされない」「ログインも出ない (operators API 502 9.6秒)」事象の対策。
+- 原因: 直前に追加した `applyIndustryCategoryAfterImport(null)` が `WHERE industry_category IS NULL AND industry IS NOT NULL` の全件 UPDATE を実行していた。 60万行クラスで重く、10ファイル連続インポートで10回呼ばれて DB を完全に詰まらせていた。
+- 修正: `applyIndustryCategoryAfterImport(null).catch(() => {})` の呼び出し3箇所をコメントアウト。
+- 必要になったら顧客マスタの「業種診断」→「再計算」ボタンで明示的に実行可能。
+- 別途、INSERT 時に industry_category を JS 側で直接計算して INSERT に含める方式は別タスクで対応予定。
+
 ### 架電リスト(緊急fix): 業種別モードで industry_category IS NULL も含める
 - 「全員ピックアップされなくなった」事象の即時対応。
 - 原因: 直前のコミット (c3b5f17) で modeFilterSQL を `industry_category = ?` だけにしたが、未再計算の企業 (industry_category IS NULL) が大量に残っていたためゼロ件になっていた。
