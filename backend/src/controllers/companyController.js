@@ -602,6 +602,17 @@ const getCallList = async (req, res, next) => {
       error: null,
     });
   }, 18000);
+  // 各 Tier query 用ラッパ: SELECT に MAX_EXECUTION_TIME hint を埋め、 タイムアウト/エラー時は空配列で続行。
+  // 60万行 companies で重い Tier があっても、 速い Tier の結果だけで応答できる。
+  const tQuery = async (sql, params, label, timeoutMs = 4500) => {
+    const hinted = sql.replace(/^(\s*)SELECT\s+/i, (m, ws) => `${ws}SELECT /*+ MAX_EXECUTION_TIME(${timeoutMs}) */ `);
+    try {
+      return await pool.query(hinted, params);
+    } catch (e) {
+      logger.warn(`[getCallList ${label}] skipped: ${e.code || ''} ${e.message}`);
+      return [[]];
+    }
+  };
   try {
     const userId = req.user.id;
     const now = new Date();
@@ -818,7 +829,7 @@ const getCallList = async (req, res, next) => {
     // 1. リコール期限（自分のリコールのみ）
     // リコールはユーザーが明示的に指定したものなので、1時間以内除外・業種地域フィルタは
     // バイパス。ただし業種別モード時は modeFilterSQL を適用して業種絞込を尊重する。
-    const [recallRows] = await pool.query(
+    const [recallRows] = await tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'recall_due' as reason, rt.recall_at
        FROM recall_tasks rt
@@ -829,7 +840,8 @@ const getCallList = async (req, res, next) => {
          ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
        LIMIT ?`,
-      [userId, now, userId, ...modeFilterParams, LIST_SIZE]
+      [userId, now, userId, ...modeFilterParams, LIST_SIZE],
+      'recall'
     );
     targets.push(...recallRows);
     excludeIds = targets.map(t => t.id);
@@ -852,7 +864,7 @@ const getCallList = async (req, res, next) => {
     // をバイパスし、ロック・1時間以内・recall除外を適用。
     // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用。
     // 業種別モード時は modeFilterSQL も適用して業種絞込を尊重 (業種別が効かない事象の修正)。
-    const [assignedRows] = await pool.query(
+    const [assignedRows] = await tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'assigned' as reason,
               1 as is_assigned
@@ -867,7 +879,8 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY c.priority_score DESC, c.last_called_at ASC
        LIMIT ?`,
-      [userId, userId, userId, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      'assigned'
     );
     // Tier 0 (assigned) は targets にはまだ push しない。
     // 「架電済みは未架電より優先度を下げて」の要望により、Tier 3 (untouched) の後に挿入する。
@@ -894,7 +907,7 @@ const getCallList = async (req, res, next) => {
     const tier2Order = 'is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC';
     const tier3Order = 'is_assigned DESC, c.priority_score DESC, c.created_at ASC';
     const tier45Order = 'is_assigned DESC, c.last_called_at ASC';
-    const tier2Promise = pool.query(
+    const tier2Promise = tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
@@ -914,9 +927,10 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY ${tier2Order}
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      'golden'
     );
-    const tier3Promise = pool.query(
+    const tier3Promise = tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
@@ -933,13 +947,14 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY ${tier3Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      'untouched'
     );
     // フォールバック時（last_call_result_code カラム未追加）はティア4/5を完全スキップ。
     // 相関サブクエリで60万行に対し毎行評価され壊滅的に遅くなるため。
     // 未接触/ゴールデンで候補は十分埋まる。
     const useFast = hasLastCallResultCol;
-    const tier4Promise = useFast ? pool.query(
+    const tier4Promise = useFast ? tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
@@ -958,9 +973,10 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      'retry_no_answer'
     ) : Promise.resolve([[]]);
-    const tier5Promise = useFast ? pool.query(
+    const tier5Promise = useFast ? tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
@@ -980,7 +996,8 @@ const getCallList = async (req, res, next) => {
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE]
+      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      'retry_ng'
     ) : Promise.resolve([[]]);
 
     if (!useFast) {
