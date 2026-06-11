@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 認証: pool.query に変更 (prepared statement オーバーヘッド回避) + タイムアウト 8s
+- 「503 (3秒タイムアウト) が継続」事象対策。
+- 原因: `pool.execute` は prepared statement を使うが、Railway MySQL proxy (hopper.proxy.rlwy.net) 経由だとプリペアフェーズで時間がかかることがある。軽量 SELECT には不要なオーバーヘッド。
+- 修正: operators / login の DB クエリを `pool.execute` → `pool.query` に変更。query は SQL を直接送る (escape は mysql2 が処理)。
+- タイムアウトを 3秒 → 8秒、login も 5秒 → 8秒に拡張。Railway 環境の応答遅延に余裕を持たせる。
+
 ### DB プール: connectionLimit を 20 → 50 に拡大
 - 「operators API が 503 (3秒タイムアウト)」事象対策。
 - 重いクエリ (getCallList の Tier 2-5 並列、診断系、ピックアップ複数同時等) が pool の 20 接続をすべて使い切ると、軽量な operators / login 等が接続を取得できず待たされて 3-5秒タイムアウトに。

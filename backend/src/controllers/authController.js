@@ -20,21 +20,21 @@ const login = async (req, res, next) => {
       return ApiResponse.badRequest(res, '認証情報とパスワードを入力してください');
     }
 
-    // DB が詰まっていてもユーザーに早めにフィードバックするため 5秒で打ち切る
-    // resolve 戦略で unhandled rejection を防ぐ
+    // DB が詰まっていてもユーザーに早めにフィードバックするため 8秒で打ち切る
+    // resolve 戦略で unhandled rejection を防ぐ + pool.query (prepared statement オーバーヘッド回避)
     let _timer;
     const userQueryPromise = (user_id
-      ? pool.execute(
+      ? pool.query(
           'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE id = ? AND is_active = 1',
           [user_id]
         )
-      : pool.execute(
+      : pool.query(
           'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE email = ? AND is_active = 1',
           [email]
         )
     ).then(([r]) => ({ ok: true, rows: r })).catch((err) => ({ ok: false, err }));
     const loginTimeout = new Promise((resolve) => {
-      _timer = setTimeout(() => resolve({ ok: false, timeout: true }), 5000);
+      _timer = setTimeout(() => resolve({ ok: false, timeout: true }), 8000);
     });
     const userResult = await Promise.race([userQueryPromise, loginTimeout]);
     clearTimeout(_timer);
@@ -132,12 +132,13 @@ const getOperators = async (req, res, next) => {
     }
     // DB へのクエリ自体は 3秒で切る。詰まっていたら古いキャッシュを使う。
     // resolve 戦略にすることで unhandled rejection を防ぐ。
+    // pool.query を使う (prepared statement のオーバーヘッドを避ける)
     let timer;
-    const queryPromise = pool.execute(
+    const queryPromise = pool.query(
       "SELECT id, name FROM users WHERE role IN ('operator', 'intern') AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
     ).then(([rows]) => ({ ok: true, rows })).catch((err) => ({ ok: false, err }));
     const timeoutPromise = new Promise((resolve) => {
-      timer = setTimeout(() => resolve({ ok: false, timeout: true }), 3000);
+      timer = setTimeout(() => resolve({ ok: false, timeout: true }), 8000);
     });
     const result = await Promise.race([queryPromise, timeoutPromise]);
     clearTimeout(timer);
