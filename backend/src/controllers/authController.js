@@ -109,12 +109,31 @@ const getMe = async (req, res, next) => {
  * GET /api/auth/operators
  * オペレーター一覧取得（ログイン画面用、認証不要）
  */
+// オペレーター一覧キャッシュ (5分)
+// ログイン画面用なので変更頻度が低く、DB が詰まっていても即応答するためメモリキャッシュ。
+let _operatorsCache = { at: 0, rows: null };
+const OPERATORS_CACHE_TTL_MS = 5 * 60 * 1000;
 const getOperators = async (req, res, next) => {
   try {
-    const [rows] = await pool.execute(
+    if (_operatorsCache.rows && (Date.now() - _operatorsCache.at) < OPERATORS_CACHE_TTL_MS) {
+      return ApiResponse.success(res, _operatorsCache.rows);
+    }
+    // DB へのクエリ自体は 3秒で切る。詰まっていたら古いキャッシュを使う。
+    const queryPromise = pool.execute(
       "SELECT id, name FROM users WHERE role IN ('operator', 'intern') AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
     );
-    return ApiResponse.success(res, rows);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout 3s')), 3000));
+    try {
+      const [rows] = await Promise.race([queryPromise, timeoutPromise]);
+      _operatorsCache = { at: Date.now(), rows };
+      return ApiResponse.success(res, rows);
+    } catch (e) {
+      // 古いキャッシュがあれば fallback として返す
+      if (_operatorsCache.rows) {
+        return ApiResponse.success(res, _operatorsCache.rows);
+      }
+      throw e;
+    }
   } catch (err) {
     next(err);
   }
