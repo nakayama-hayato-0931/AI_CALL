@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 性能: MAX_EXECUTION_TIME=90s + getCallList キャッシュ TTL を 60秒に拡張
+- 「自動ピックアップが表示されない、読み込みが長すぎる」事象対策。
+- MAX_EXECUTION_TIME: 5分(=300s) → 90秒 に短縮。ユーザーが過剰に待たされ続ける状態を防ぐ。
+- getCallList キャッシュ TTL: 20秒 → 60秒。架電画面の15秒ポーリングは 4回に1回しか実DBに行かない。
+- 同条件のリクエスト連発は即キャッシュ返却するので Railway DB の負荷も下がる。
+
 ### 起動: criticalPreflight にハードタイムアウト 60s + lock_wait_timeout 30s
 - 「Railway Healthcheck failure (~5分)」事象の対策。
 - 原因: 起動時の criticalPreflight (ALTER TABLE 群) が、進行中の重い UPDATE のメタデータロックを待って詰まり、Healthcheck (5分) より前に listen() できなかった。

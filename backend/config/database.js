@@ -37,13 +37,13 @@ pool.getConnection()
   });
 
 // 全接続でセッションタイムゾーンをJSTに設定 + 実行時間の上限を設定
-//   MAX_EXECUTION_TIME はミリ秒単位 (60秒)。これを超える SELECT は ER_QUERY_TIMEOUT で
-//   自動キャンセルされ、後続クエリへのロック影響を防ぐ。重い ad-hoc クエリでバックエンド
-//   全体が詰まる事故 (operators API すら応答しないなど) を回避するため。
+//   MAX_EXECUTION_TIME はミリ秒単位 (90秒)。これを超える SELECT は ER_QUERY_TIMEOUT で
+//   自動キャンセルされ、ユーザーが長時間待たされ続ける状態を防ぐ。
+//   getCallList は20秒程度・diagnose 系は40秒程度。
 //   ※ UPDATE/INSERT/DELETE/DDL には効かない (MySQL の仕様)。
 pool.on('connection', (conn) => {
   conn.query("SET time_zone = '+09:00'");
-  conn.query("SET SESSION MAX_EXECUTION_TIME = 60000").catch(() => {});
+  conn.query("SET SESSION MAX_EXECUTION_TIME = 90000").catch(() => {});
 });
 
 module.exports = pool;

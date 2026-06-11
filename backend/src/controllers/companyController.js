@@ -48,7 +48,10 @@ const lastUserNotEqualSQL = () => hasLastCallResultCol
 // 架電リスト短期キャッシュ（10秒、user+mode+industry+callType単位）
 // 15秒ポーリングで2回に1回はDBアクセスなしで即返却。
 // 架電完了/結果保存/ロック取得時に invalidateCallListCache() で無効化する。
-const CALL_LIST_CACHE_TTL_MS = 20 * 1000;
+// キャッシュ TTL: 60秒に拡張。getCallList のクエリが重いため、同条件の連続リクエストは
+// キャッシュで即返して負荷を下げる。架電画面のポーリングも15秒間隔なので 60秒キャッシュなら
+// 4回に1回しか実 DB に行かない。
+const CALL_LIST_CACHE_TTL_MS = 60 * 1000;
 const callListCache = new Map();
 const buildCallListCacheKey = (userId, callType, mode, industryParam, regionParam) => `${userId}|${callType}|${mode}|${industryParam || ''}|${regionParam || ''}`;
 const invalidateCallListCache = (userId) => {
