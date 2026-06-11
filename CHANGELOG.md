@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### CSVインポート: FAX 番号の列名揺れに対応 (FAX/Fax/ファックス等)
+- インポート時に FAX 番号は元々保存していたが、列名 `FAX番号` または `fax_number` のときだけ認識していた。
+- 多くのファイル (Urizoデータリスト等) で `FAX` / `Fax` / `fax` / `ファックス` / `ファックス番号` / `ＦＡＸ` (全角) などの表記が使われるため、COLUMN_MAP に以下を追加:
+  - FAX / Fax / fax / FAX No / FAX No. / FAX_番号 / ファックス / ファックス番号 / ＦＡＸ / ＦＡＸ番号
+- これで列名にこれらが含まれる CSV/Excel は自動的に `fax_number` カラムに保存される。
+- companies.fax_number は元々スキーマあり、顧客マスタ画面で確認・編集可能。
+
 ### インポート: industry_category 自動計算 + 製造系キーワード拡充
 - 「インポート時の業種別振り分けが弱い、その他に振り分けられる」事象を修正。
 - 原因1: CSV インポート時に `industry_category` カラムを設定しておらず、NULL のまま → 業種別絞り込みで「その他」扱い。
