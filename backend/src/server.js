@@ -149,6 +149,39 @@ app.get('/api/_alive', (req, res) => {
   res.json({ alive: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), timestamp: new Date().toISOString() });
 });
 
+// backend container から MySQL ホストへの TCP / DNS テスト (mysql2 を使わない素の net.Socket)
+app.get('/api/_tcptest', async (req, res) => {
+  const net = require('net');
+  const dns = require('dns').promises;
+  const tests = [
+    { name: 'mysql_internal', host: 'mysql.railway.internal', port: 3306 },
+    { name: 'mysql_public', host: 'hopper.proxy.rlwy.net', port: 11920 },
+  ];
+  const results = {};
+  for (const t of tests) {
+    const r = { host: t.host, port: t.port };
+    // DNS 解決
+    try {
+      const t0 = Date.now();
+      const addrs = await dns.lookup(t.host, { all: true });
+      r.dns = { ms: Date.now() - t0, addrs };
+    } catch (e) { r.dns = { error: `${e.code} ${e.message}` }; }
+    // TCP 接続テスト (5秒タイムアウト)
+    const start = Date.now();
+    r.tcp = await new Promise((resolve) => {
+      const sock = new net.Socket();
+      let done = false;
+      const finish = (obj) => { if (!done) { done = true; try { sock.destroy(); } catch (_) {} resolve({ ...obj, ms: Date.now() - start }); } };
+      const timer = setTimeout(() => finish({ result: 'timeout 5s' }), 5000);
+      sock.once('connect', () => { clearTimeout(timer); finish({ result: 'connected' }); });
+      sock.once('error', (e) => { clearTimeout(timer); finish({ result: 'error', code: e.code, message: e.message }); });
+      try { sock.connect(t.port, t.host); } catch (e) { clearTimeout(timer); finish({ result: 'throw', code: e.code, message: e.message }); }
+    });
+    results[t.name] = r;
+  }
+  res.json({ timestamp: new Date().toISOString(), tests: results });
+});
+
 // 詳細診断 (DB latency + pool 状態 + 長時間クエリ + env 設定)
 // 何があっても try-catch で必ず JSON を返す。 500 になったら自分が壊れている。
 app.get('/api/_diag', async (req, res) => {
