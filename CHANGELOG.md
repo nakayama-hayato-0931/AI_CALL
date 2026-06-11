@@ -31,6 +31,14 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 顧客マスタ: 件数内訳ボタンを追加 (顧客マスタ vs 架電リスト差分原因)
+- 「顧客マスタ49万件 vs 架電リスト29万件 = 同じDB?」の確認用ツール。
+- バックエンド: `GET /api/companies/diagnose/counts` 新規。
+  - 全件 / 完全除外 (exclusion_flag=1) / 特別リスト (is_special=1) / 旧営業リスト (is_sales_list=1) の件数を返す
+  - 顧客マスタ画面の表示対象数 (exclusion_flag=0) と架電リスト管理の表示対象数 (exclusion_flag=0 AND is_special=0 AND is_sales_list=0) を比較しやすく
+  - さらに架電リスト管理対象の中で「未架電 / 永久除外状態 / 前回NO_ANSWER / 前回NG」内訳も返す
+- フロント: 顧客マスタ画面ヘッダに「件数内訳」ボタン (アンバー)。クリックで alert で内訳表示。
+
 ### 顧客マスタ: ピックアップ診断ボタンを追加
 - 「顧客マスタにあるのに架電リストに無い」事象を、企業ごとに原因可視化できるツール。
 - バックエンド: `GET /api/companies/:id/pickup-diagnose` 新規。

@@ -306,6 +306,38 @@ export default function CustomerMasterPage() {
               {faxCrmEnabled
                 ? <span className="ml-2 inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs">FAX CRM 連携 有効</span>
                 : <span className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">FAX CRM 連携 未設定</span>}
+              <button
+                onClick={async () => {
+                  try {
+                    const { data } = await api.get('/api/companies/diagnose/counts');
+                    if (!data.success) { toast.error('件数取得失敗'); return; }
+                    const c = data.data.counts;
+                    const lines = [
+                      '【companies テーブル 件数内訳】',
+                      `全件: ${c.total?.toLocaleString?.() ?? c.total}`,
+                      `├ 完全除外 (exclusion_flag=1): ${c.excluded?.toLocaleString?.() ?? c.excluded}`,
+                      `├ 特別リスト (is_special=1): ${c.special?.toLocaleString?.() ?? c.special}`,
+                      `├ 旧営業リスト (is_sales_list=1): ${c.sales_list?.toLocaleString?.() ?? c.sales_list}`,
+                      '',
+                      `顧客マスタ画面の表示対象 (exclusion_flag=0): ${c.customer_master_visible?.toLocaleString?.() ?? c.customer_master_visible}`,
+                      `架電リスト管理の表示対象 (exclusion_flag=0 AND is_special=0 AND is_sales_list=0): ${c.call_list_admin?.toLocaleString?.() ?? c.call_list_admin}`,
+                      '',
+                      '▼ 架電リスト管理の表示対象 ' + (c.call_list_admin?.toLocaleString?.() ?? c.call_list_admin) + ' のうち:',
+                      `・未架電: ${c.untouched?.toLocaleString?.() ?? c.untouched}`,
+                      `・永久除外状態 (SKIP/PROJECT/RECALL/INTERESTED): ${c.permanent_excluded?.toLocaleString?.() ?? c.permanent_excluded}`,
+                      `・前回 NO_ANSWER: ${c.last_no_answer?.toLocaleString?.() ?? c.last_no_answer}`,
+                      `・前回 NG: ${c.last_ng?.toLocaleString?.() ?? c.last_ng}`,
+                    ];
+                    window.alert(lines.join('\n'));
+                  } catch (err) {
+                    toast.error('件数取得失敗');
+                  }
+                }}
+                className="ml-2 text-[11px] px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
+                title="顧客マスタと架電リストの件数差を確認"
+              >
+                件数内訳
+              </button>
             </p>
           </div>
           {canEdit && (

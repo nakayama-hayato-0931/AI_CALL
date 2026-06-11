@@ -1477,6 +1477,49 @@ const getIndustryRegions = async (req, res, next) => {
 };
 
 /**
+ * GET /api/companies/diagnose/counts
+ * companies テーブルの各フラグごとの件数内訳を返す診断ツール。
+ * 「顧客マスタの件数と架電リストの件数が違う」の差分原因を可視化する。
+ */
+const diagnoseCompanyCounts = async (req, res, next) => {
+  try {
+    const queries = {
+      total: 'SELECT COUNT(*) AS cnt FROM companies',
+      excluded: 'SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 1',
+      special: 'SELECT COUNT(*) AS cnt FROM companies WHERE is_special = 1',
+      sales_list: 'SELECT COUNT(*) AS cnt FROM companies WHERE is_sales_list = 1',
+      // 顧客マスタ画面の表示対象
+      customer_master_visible: 'SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0',
+      // 架電リスト管理画面 (admin/companies) の表示対象
+      call_list_admin: 'SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0',
+      // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED) 状態
+      permanent_excluded: "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND last_call_result_code IN ('SKIP','PROJECT','RECALL','INTERESTED')",
+      // 未架電
+      untouched: 'SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND last_called_at IS NULL',
+      // 前回 NO_ANSWER
+      last_no_answer: "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND last_call_result_code = 'NO_ANSWER'",
+      // 前回 NG
+      last_ng: "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND last_call_result_code = 'NG'",
+    };
+    const result = {};
+    for (const [k, sql] of Object.entries(queries)) {
+      try {
+        const [r] = await pool.query(sql);
+        result[k] = Number(r[0]?.cnt) || 0;
+      } catch (e) {
+        result[k] = `error: ${e.message}`;
+      }
+    }
+    return ApiResponse.success(res, {
+      counts: result,
+      note: '顧客マスタは customer_master_visible 件、架電リスト管理は call_list_admin 件。差分は special + sales_list で説明できる。',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/companies/:id/pickup-diagnose
  * 特定企業がなぜ架電リストに出てこないかを診断する。
  * 各除外条件を1つずつ評価して、引っかかっている理由を返す。
@@ -1657,6 +1700,7 @@ module.exports = {
   lockCallTarget,
   unlockCallTarget,
   diagnoseCompanyPickup,
+  diagnoseCompanyCounts,
   diagnoseCallList,
   getCompanyActions,
   createCompanyAction,

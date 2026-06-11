@@ -16,6 +16,7 @@ const {
   unlockCallTarget,
   diagnoseCallList,
   diagnoseCompanyPickup,
+  diagnoseCompanyCounts,
   getCompanyActions,
   createCompanyAction,
   updateCompanyAction,
@@ -43,6 +44,9 @@ router.post('/unlock-all', unlockAllForSelf);
 
 // GET /api/companies - 企業一覧
 router.get('/', getCompanies);
+
+// GET /api/companies/diagnose/counts - 件数内訳 (顧客マスタ vs 架電リストの差分原因可視化)
+router.get('/diagnose/counts', diagnoseCompanyCounts);
 
 // GET /api/companies/:id/pickup-diagnose - 該当企業の架電リスト非表示理由を診断
 router.get('/:id/pickup-diagnose', diagnoseCompanyPickup);
