@@ -283,6 +283,11 @@ const ensureCpaV2Schema = async () => {
 
 const criticalPreflight = async () => {
   logger.info('[Preflight] start: checking companies schema...');
+  // メタデータロック待ちで preflight が無限に詰まる事故を防ぐ。
+  // 進行中の重い UPDATE 等があっても 30秒で諦めて起動を続行する。
+  // (起動だけ通れば軽量な API は応答できる。次のデプロイでスキーマを再試行可能。)
+  try { await pool.execute('SET SESSION lock_wait_timeout = 30'); } catch (e) {}
+  try { await pool.execute('SET SESSION innodb_lock_wait_timeout = 30'); } catch (e) {}
   // 先にカラム有無を確認
   let hasResultCol = false, hasUserCol = false;
   try {
@@ -898,10 +903,15 @@ const runMigrations = async () => {
 //   3. runMigrations() は非同期に走らせ続ける（重い処理が含まれるため起動を待たせない）
 let server;
 (async () => {
+  // preflight 全体にハードタイムアウトを設定 (60秒)。
+  // メタデータロック待ち等で詰まっても Healthcheck (~5分) より前に必ず listen() に進む。
   try {
-    await criticalPreflight();
+    await Promise.race([
+      criticalPreflight(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('preflight 60s timeout')), 60000)),
+    ]);
   } catch (e) {
-    logger.error(`[Preflight] FAILED: ${e.message}`);
+    logger.error(`[Preflight] FAILED or TIMEOUT: ${e.message}`);
     // それでも起動は試みる（既存のリクエストは旧スキーマで動く可能性あり）
   }
   server = app.listen(PORT, () => {

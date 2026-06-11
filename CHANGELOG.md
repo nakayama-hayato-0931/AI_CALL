@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 起動: criticalPreflight にハードタイムアウト 60s + lock_wait_timeout 30s
+- 「Railway Healthcheck failure (~5分)」事象の対策。
+- 原因: 起動時の criticalPreflight (ALTER TABLE 群) が、進行中の重い UPDATE のメタデータロックを待って詰まり、Healthcheck (5分) より前に listen() できなかった。
+- 修正1: criticalPreflight 開始時に `SET SESSION lock_wait_timeout = 30` / `innodb_lock_wait_timeout = 30` を実行。ロック待ちで永遠に詰まらない。
+- 修正2: criticalPreflight 全体を `Promise.race` で 60秒ハードタイムアウト。失敗してもログ出して listen() を続行 (Healthcheck より優先)。
+- これでデプロイ失敗が連鎖しない。スキーマ追加に失敗した場合は次回デプロイで再試行可能。
+
 ### DB: SELECT に MAX_EXECUTION_TIME=60s を設定 (長時間クエリ自動キャンセル)
 - 「operators API すら応答しない、ログインできない」事象の再発防止。
 - 各接続で `SET SESSION MAX_EXECUTION_TIME = 60000` を実行。60秒を超える SELECT は MySQL が自動キャンセル → 後続クエリへのロック影響を防ぐ。
