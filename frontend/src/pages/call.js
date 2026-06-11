@@ -913,6 +913,19 @@ export default function CallPage() {
               </div>
             </div>
 
+            {/* 現在のフィルタ状態を可視化 (業種別が効いていない事象の診断用) */}
+            <div className="text-[10px] mb-1 flex flex-wrap gap-x-2 gap-y-0.5">
+              <span className="text-gray-400">モード:</span>
+              <span className="font-semibold text-blue-600">{pickupMode}</span>
+              {pickupMode === 'industry' && (
+                <>
+                  <span className="text-gray-400">業種:</span>
+                  <span className={`font-semibold ${selectedIndustry ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {selectedIndustry || '(未選択!業種を選んでください)'}
+                  </span>
+                </>
+              )}
+            </div>
             {/* Tier別 ピックアップ件数 (DB全体での該当件数) */}
             {listDebug && (
               <div className="text-[10px] text-gray-400 mb-2 flex flex-wrap gap-x-2 gap-y-0.5">
