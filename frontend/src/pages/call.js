@@ -1073,7 +1073,18 @@ export default function CallPage() {
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       {target.industry ? (
-                        <p className="text-[11px] text-gray-400">{target.industry}{target.region ? ` / ${target.region}` : ''}</p>
+                        <p className="text-[11px] text-gray-400">
+                          {target.industry}{target.region ? ` / ${target.region}` : ''}
+                          {target.industry_category && target.industry_category !== 'その他' && (
+                            <span className={`ml-1 text-[9px] px-1 py-0 rounded ${
+                              target.industry_category === '建設' ? 'bg-orange-50 text-orange-700' :
+                              target.industry_category === '小売' ? 'bg-purple-50 text-purple-700' :
+                              target.industry_category === '製造' ? 'bg-blue-50 text-blue-700' :
+                              target.industry_category === '飲食' ? 'bg-red-50 text-red-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>{target.industry_category}</span>
+                          )}
+                        </p>
                       ) : <span />}
                       {/* スキップボタン */}
                       {!calling && (

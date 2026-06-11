@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電画面: industry_category タグを並列表示 (分類確認用)
+- 「業種別で建設を選んだのに小売の企業が出る」事象を可視化するため、架電リストの各企業に industry テキストの隣に industry_category タグを並列表示。
+- バックエンド: getCallList の各Tier (assigned/recall/golden/untouched/retry_na/retry_ng) の SELECT に `c.industry_category` を追加。
+- フロント: 業種テキスト末尾に色付き小タグ (建設=オレンジ、小売=紫、製造=青、飲食=赤、その他は非表示)。
+- これで「業種別建設で出た企業の industry テキストが小売っぽい」のが「実は industry_category=建設 として分類されている」のか「industry_category=小売 のままで分類漏れ」なのかが目視で判別できる。
+
 ### 業種カテゴリ: 建設を小売より先に判定 + 都道府県診断追加
 - 「業種別 建設を選んだら小売がピックアップされる」事象を修正。
   - 原因: recompute-industry-category の CASE 順序が「小売 → 製造 → 建設」だったため、「建材小売」「建築資材」のような複合キーワードが小売に分類されていた。

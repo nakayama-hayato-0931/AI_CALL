@@ -727,7 +727,7 @@ const getCallList = async (req, res, next) => {
         : `AND (c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ${Number(userId)})
            OR c.id NOT IN (SELECT ca.company_id FROM company_assignments ca))`;
       const [specialRows] = await pool.query(
-        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
                 'special' as reason,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
@@ -753,7 +753,7 @@ const getCallList = async (req, res, next) => {
     // 表示順: 自作リストに追加した日付の新しい順
     if (isMyList) {
       const [mylistRows] = await pool.query(
-        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+        `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
                 'mylist' as reason,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
@@ -778,7 +778,7 @@ const getCallList = async (req, res, next) => {
     // リコールはユーザーが明示的に指定したものなので、1時間以内除外・業種地域フィルタは
     // バイパス。ただし業種別モード時は modeFilterSQL を適用して業種絞込を尊重する。
     const [recallRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'recall_due' as reason, rt.recall_at
        FROM recall_tasks rt
        JOIN companies c ON rt.company_id = c.id
@@ -812,7 +812,7 @@ const getCallList = async (req, res, next) => {
     // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用。
     // 業種別モード時は modeFilterSQL も適用して業種絞込を尊重 (業種別が効かない事象の修正)。
     const [assignedRows] = await pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'assigned' as reason,
               1 as is_assigned
        FROM companies c
@@ -852,7 +852,7 @@ const getCallList = async (req, res, next) => {
     const tier3Order = 'is_assigned DESC, c.priority_score DESC, c.created_at ASC';
     const tier45Order = 'is_assigned DESC, c.last_called_at ASC';
     const tier2Promise = pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'golden_time' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
@@ -873,7 +873,7 @@ const getCallList = async (req, res, next) => {
       [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     );
     const tier3Promise = pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
@@ -895,7 +895,7 @@ const getCallList = async (req, res, next) => {
     // 未接触/ゴールデンで候補は十分埋まる。
     const useFast = hasLastCallResultCol;
     const tier4Promise = useFast ? pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
@@ -915,7 +915,7 @@ const getCallList = async (req, res, next) => {
       [userId, userId, userId, userId, userId, ...goldenIndParams, ...modeFilterParams, ...prefectureParams, ...excludeIds, LIST_SIZE]
     ) : Promise.resolve([[]]);
     const tier5Promise = useFast ? pool.query(
-      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.job_type, c.comment, c.data_source, c.address, c.region,
+      `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
