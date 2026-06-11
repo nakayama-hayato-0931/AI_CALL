@@ -606,13 +606,25 @@ const saveWorkHours = async (req, res, next) => {
       ? user_id
       : req.user.id;
     const breakMin = parseInt(break_minutes) || 0;
-    await pool.execute(
-      `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
-      [targetUserId, date, start_time, end_time, breakMin]
-    );
-    return ApiResponse.success(res, { user_id: targetUserId, date, start_time, end_time, break_minutes: breakMin }, '稼働時間を保存しました');
+    // 業務カテゴリ (技人国/特定技能) — ログイン時の選択を取得 (なければ general)
+    const workCategory = req.user?.workCategory || 'general';
+    try {
+      await pool.execute(
+        `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes, work_category)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes), work_category = VALUES(work_category)`,
+        [targetUserId, date, start_time, end_time, breakMin, workCategory]
+      );
+    } catch (e) {
+      // work_category カラム未追加環境のフォールバック
+      await pool.execute(
+        `INSERT INTO work_hours (user_id, date, start_time, end_time, break_minutes)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), break_minutes = VALUES(break_minutes)`,
+        [targetUserId, date, start_time, end_time, breakMin]
+      );
+    }
+    return ApiResponse.success(res, { user_id: targetUserId, date, start_time, end_time, break_minutes: breakMin, work_category: workCategory }, '稼働時間を保存しました');
   } catch (err) {
     next(err);
   }

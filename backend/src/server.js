@@ -610,8 +610,10 @@ const runMigrations = async () => {
   // ログイン時に選択 → 通話結果保存時に calls/projects に記録 → 集計を分離するために使う。
   try { await pool.execute("ALTER TABLE calls ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
   try { await pool.execute("ALTER TABLE projects ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
+  try { await pool.execute("ALTER TABLE work_hours ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_calls_work_category ON calls(work_category, call_started_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_projects_work_category ON projects(work_category, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_work_hours_wc ON work_hours(work_category, date)'); } catch (e) {}
 
   // ※ 上記カラム追加とインデックスは起動時 criticalPreflight() で先行実行済み
   // バックフィル: 既存データに対し1回だけ実行（非同期＋チャンク化）。

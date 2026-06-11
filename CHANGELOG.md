@@ -31,6 +31,15 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ Phase 8: work_hours に work_category 追加 + 残り漏れ修正
+- 「稼働時間も特定技能でログインしたときだけ集計、既存は技人国扱い」要望に対応。
+- スキーマ: `work_hours` テーブルに `work_category VARCHAR(20) NOT NULL DEFAULT 'general'` カラム追加 (criticalPreflight)。インデックスも作成。
+- 既存データは全て `'general'` (=技人国) 扱い。
+- 保存 (`saveWorkHours`): `req.user.workCategory` をログイン時の選択から取得して保存。ON DUPLICATE KEY UPDATE で work_category も更新。カラム未追加環境のフォールバック付き。
+- 集計 (`getAllOperatorPerformance` の `work_hours` クエリ): `wcFilter` を適用。これで特定技能で未稼働の人は稼働時間 0 になる。
+- 平均通話時間集計クエリ (`avgDurMap`) にも漏れていたため適用。
+- 残作業: recall_tasks (リコール) は work_category カラム持たないため、リコール消化数の絞り込みは別途検討 (calls から継承する仕組みが必要)。
+
 ### 業務カテゴリ(漏れfix): getAllOperatorPerformance の projects/calls 個別クエリにも work_category 適用
 - 特定技能管理画面で「まだ特定技能ログインしていないのに案件数や有効接続が出る」事象を修正。
 - 修正前: メインクエリは Phase 2 で wcFilter 適用済みだったが、各オペレーター毎に行う案件数の補完クエリと KPI 補正用の actualForDay 計算クエリ (projects 用 / calls 用) には work_category フィルタが当たっていなかった。

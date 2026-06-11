@@ -295,6 +295,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
     const avgDurMap = new Map();
     try {
       const ctFilter = call_type === 'sales' ? "AND call_type = 'sales'" : "AND call_type = 'operator'";
+      const avgWcSql = wcFilter.sql.replace(/c\.work_category/g, 'work_category');
       // 実通話時間(actual_duration_seconds: スプレッドシートG/H由来)を優先し、
       // 未取得の通話は操作時刻差分にフォールバック
       const [avgRows] = await pool.query(
@@ -302,9 +303,9 @@ const getAllOperatorPerformance = async (req, res, next) => {
            FROM calls
           WHERE result_code IS NOT NULL AND result_code != 'SKIP'
             AND (actual_duration_seconds IS NOT NULL OR call_ended_at IS NOT NULL)
-            AND DATE(call_started_at) BETWEEN ? AND ? ${ctFilter}
+            AND DATE(call_started_at) BETWEEN ? AND ? ${ctFilter} ${avgWcSql}
           GROUP BY user_id`,
-        [dateFrom, dateTo]
+        [dateFrom, dateTo, ...wcFilter.params]
       );
       for (const r of avgRows) avgDurMap.set(r.user_id, Number(r.avg_sec) || 0);
     } catch (e) { /* ignore */ }
@@ -323,6 +324,8 @@ const getAllOperatorPerformance = async (req, res, next) => {
       }
 
       try {
+        // 業務カテゴリ (技人国/特定技能) フィルタ — work_hours.work_category で絞る
+        const whWcSql = wcFilter.sql.replace(/c\.work_category/g, 'work_category');
         const [whRows] = await pool.query(
           `SELECT
              SUM(
@@ -332,8 +335,9 @@ const getAllOperatorPerformance = async (req, res, next) => {
              COUNT(DISTINCT date) as work_days
            FROM work_hours
            WHERE user_id = ? AND date BETWEEN ? AND ?
-             AND start_time IS NOT NULL AND end_time IS NOT NULL`,
-          [op.user_id, dateFrom, dateTo]
+             AND start_time IS NOT NULL AND end_time IS NOT NULL
+             ${whWcSql}`,
+          [op.user_id, dateFrom, dateTo, ...wcFilter.params]
         );
         op.work_minutes = whRows[0]?.total_minutes || 0;
         op.work_days = whRows[0]?.work_days || 0;
