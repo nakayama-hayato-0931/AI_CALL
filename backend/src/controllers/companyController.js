@@ -377,11 +377,26 @@ const getNextCallTarget = async (req, res, next) => {
     let modeFilterSQL = '';
     let modeFilterParams = [];
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
+    // 業種別モード用キーワード辞書 (複合業種企業も拾うため)
+    //   例: industry='うどん、ラーメン、建設業、工務店、リフォーム' の企業は
+    //   「建設」「飲食」両方の業種別モードに出る
+    const INDUSTRY_KEYWORDS = {
+      '建設': ['建設', '建築', '工事', '土木', 'リフォーム', '電気工事', '管工事', '建材', '住宅', 'リノベ', '工務店', '解体', '内装', '塗装', '職別工事'],
+      '飲食': ['飲食', 'グルメ', 'レストラン', '居酒屋', 'ラーメン', 'カフェ', '喫茶店', '寿司', '焼肉', '和食', '中華', '洋食', '食堂', 'ダイニング', 'そば', 'うどん', '菓子'],
+      '小売': ['小売', '卸売', 'スーパー', 'コンビニ', 'ショッピング', '商社', '物販'],
+      '製造': ['製造', 'メーカー', '加工', '工場'],
+      '宿泊': ['宿泊', 'ホテル', '旅館', '民宿'],
+      '清掃': ['清掃', 'クリーニング', 'ビルメンテ', 'ビル管理', 'ハウスクリーニング'],
+      '農業': ['農業', '農場', '農園', '畜産', '養鶏'],
+      '介護': ['介護', 'デイサービス', '福祉', '老人ホーム', 'グループホーム'],
+    };
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
-        modeFilterSQL = `AND c.industry_category = ?`;
-        modeFilterParams = [industryParam];
+        // 大枠カテゴリ: industry_category 完全一致 OR industry テキストにキーワード含む
+        const keywords = INDUSTRY_KEYWORDS[industryParam] || [industryParam];
+        const likes = keywords.map(() => 'c.industry LIKE ?').join(' OR ');
+        modeFilterSQL = `AND (c.industry_category = ? OR ${likes})`;
+        modeFilterParams = [industryParam, ...keywords.map(k => `%${k}%`)];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
@@ -635,11 +650,26 @@ const getCallList = async (req, res, next) => {
     let modeFilterSQL = '';
     let modeFilterParams = [];
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
+    // 業種別モード用キーワード辞書 (複合業種企業も拾うため)
+    //   例: industry='うどん、ラーメン、建設業、工務店、リフォーム' の企業は
+    //   「建設」「飲食」両方の業種別モードに出る
+    const INDUSTRY_KEYWORDS = {
+      '建設': ['建設', '建築', '工事', '土木', 'リフォーム', '電気工事', '管工事', '建材', '住宅', 'リノベ', '工務店', '解体', '内装', '塗装', '職別工事'],
+      '飲食': ['飲食', 'グルメ', 'レストラン', '居酒屋', 'ラーメン', 'カフェ', '喫茶店', '寿司', '焼肉', '和食', '中華', '洋食', '食堂', 'ダイニング', 'そば', 'うどん', '菓子'],
+      '小売': ['小売', '卸売', 'スーパー', 'コンビニ', 'ショッピング', '商社', '物販'],
+      '製造': ['製造', 'メーカー', '加工', '工場'],
+      '宿泊': ['宿泊', 'ホテル', '旅館', '民宿'],
+      '清掃': ['清掃', 'クリーニング', 'ビルメンテ', 'ビル管理', 'ハウスクリーニング'],
+      '農業': ['農業', '農場', '農園', '畜産', '養鶏'],
+      '介護': ['介護', 'デイサービス', '福祉', '老人ホーム', 'グループホーム'],
+    };
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ指定時は優先順位付きカテゴリ判定で厳密マッチ
-        modeFilterSQL = `AND c.industry_category = ?`;
-        modeFilterParams = [industryParam];
+        // 大枠カテゴリ: industry_category 完全一致 OR industry テキストにキーワード含む
+        const keywords = INDUSTRY_KEYWORDS[industryParam] || [industryParam];
+        const likes = keywords.map(() => 'c.industry LIKE ?').join(' OR ');
+        modeFilterSQL = `AND (c.industry_category = ? OR ${likes})`;
+        modeFilterParams = [industryParam, ...keywords.map(k => `%${k}%`)];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
