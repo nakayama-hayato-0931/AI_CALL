@@ -1035,7 +1035,14 @@ const getCallList = async (req, res, next) => {
     return ApiResponse.success(res, payload);
   } catch (err) {
     logger.error(`[getCallList] ${err.code} ${err.message} sqlMessage=${err.sqlMessage} sql=${(err.sql || '').slice(0, 500)}`);
-    return ApiResponse.error(res, `架電リスト取得失敗: ${err.sqlMessage || err.message}`, 500);
+    return ApiResponse.error(res, `架電リスト取得失敗: ${err.sqlMessage || err.message}`, 500, {
+      code: err.code,
+      errno: err.errno,
+      sqlState: err.sqlState,
+      sqlMessage: err.sqlMessage,
+      sql: (err.sql || '').slice(0, 500),
+      stack: String(err.stack || '').split('\n').slice(0, 5),
+    });
   }
 };
 
