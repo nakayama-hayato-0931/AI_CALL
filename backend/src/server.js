@@ -149,6 +149,45 @@ app.get('/api/_alive', (req, res) => {
   res.json({ alive: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), timestamp: new Date().toISOString() });
 });
 
+// mysql2 を直接使った診断 (?ssl=1 で SSL ON, ?ssl=0 で OFF, ?ssl=req で require)
+app.get('/api/_mysqltest', async (req, res) => {
+  const mysql2 = require('mysql2/promise');
+  const mysql2Version = require('mysql2/package.json').version;
+  const result = { mysql2Version, ssl: req.query.ssl || 'off', steps: [] };
+  let conn;
+  const t0 = Date.now();
+  const log = (msg, extra = {}) => result.steps.push({ at: Date.now() - t0, msg, ...extra });
+  try {
+    log('start');
+    const cfg = {
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT, 10),
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      connectTimeout: 8000,
+    };
+    if (req.query.ssl === '1') cfg.ssl = { rejectUnauthorized: false };
+    if (req.query.ssl === 'req') cfg.ssl = { rejectUnauthorized: false, minVersion: 'TLSv1.2' };
+    log('createConnection call', { sslEnabled: !!cfg.ssl });
+    const connP = mysql2.createConnection(cfg);
+    const timeoutP = new Promise((_, rej) => setTimeout(() => rej(new Error('hard 12s timeout in test endpoint')), 12000));
+    conn = await Promise.race([connP, timeoutP]);
+    log('connected');
+    const [rows] = await conn.query('SELECT 1 AS ok, VERSION() AS v, CURRENT_USER() AS u');
+    log('query done', { rows });
+  } catch (e) {
+    result.error = {
+      code: e.code, errno: e.errno, sqlState: e.sqlState, message: e.message,
+      stack: String(e.stack || '').split('\n').slice(0, 8),
+    };
+    log('caught error');
+  } finally {
+    if (conn) { try { await conn.end(); log('connection closed'); } catch (_) {} }
+  }
+  res.json(result);
+});
+
 // backend container から MySQL ホストへの TCP / DNS テスト (mysql2 を使わない素の net.Socket)
 app.get('/api/_tcptest', async (req, res) => {
   const net = require('net');
