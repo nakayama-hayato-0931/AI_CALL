@@ -31,6 +31,11 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### axios timeout: 30秒 → 60秒に拡張 (Railway 混雑時の canceled 回避)
+- 「operators が canceled (30秒で打ち切り)」事象対策。
+- フロントの axios timeout が 30 秒だったため Railway backend の応答待ちでブラウザ側がキャンセルしていた。
+- 60秒に拡張。それでも応答ない場合は Railway 自体の根本対策が必要。
+
 ### 全面見直し: authController / database.js をシンプルな最小実装に戻す
 - 「ログインもオペレーター選択も自動ピックアップもできない」深刻状態の解消。
 - 直近に積み上げた MAX_EXECUTION_TIME / Promise.race / cache + timeout / pool 拡大 等の複雑化が逆に副作用 (unhandled rejection / connection 取得タイミング不整合等) を引き起こしていたため、撤去。

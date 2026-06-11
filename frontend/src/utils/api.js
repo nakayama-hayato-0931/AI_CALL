@@ -6,7 +6,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '',  // Next.js rewriteでバックエンドにプロキシ
-  timeout: 30000,
+  timeout: 60000,  // 60秒に拡張 (Railway backend が混雑時にも canceled しにくく)
   headers: {
     'Content-Type': 'application/json',
   },
