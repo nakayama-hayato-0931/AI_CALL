@@ -20,9 +20,10 @@ const login = async (req, res, next) => {
       return ApiResponse.badRequest(res, '認証情報とパスワードを入力してください');
     }
 
-    let rows;
     // DB が詰まっていてもユーザーに早めにフィードバックするため 5秒で打ち切る
-    const userQueryPromise = user_id
+    // resolve 戦略で unhandled rejection を防ぐ
+    let _timer;
+    const userQueryPromise = (user_id
       ? pool.execute(
           'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE id = ? AND is_active = 1',
           [user_id]
@@ -30,17 +31,21 @@ const login = async (req, res, next) => {
       : pool.execute(
           'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE email = ? AND is_active = 1',
           [email]
-        );
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('DB応答が遅延しています。管理者にお問い合わせください'), { isDbTimeout: true })), 5000));
-    try {
-      [rows] = await Promise.race([userQueryPromise, timeoutPromise]);
-    } catch (e) {
-      if (e.isDbTimeout) {
+        )
+    ).then(([r]) => ({ ok: true, rows: r })).catch((err) => ({ ok: false, err }));
+    const loginTimeout = new Promise((resolve) => {
+      _timer = setTimeout(() => resolve({ ok: false, timeout: true }), 5000);
+    });
+    const userResult = await Promise.race([userQueryPromise, loginTimeout]);
+    clearTimeout(_timer);
+    if (!userResult.ok) {
+      if (userResult.timeout) {
         logger.error(`[login] DB timeout for ${user_id ? `user_id=${user_id}` : `email=${email}`}`);
-        return ApiResponse.error(res, e.message, 503);
+        return ApiResponse.error(res, 'DB応答が遅延しています。管理者にお問い合わせください', 503);
       }
-      throw e;
+      throw userResult.err;
     }
+    const rows = userResult.rows;
 
     if (rows.length === 0) {
       return ApiResponse.unauthorized(res, '認証情報またはパスワードが正しくありません');
@@ -126,21 +131,26 @@ const getOperators = async (req, res, next) => {
       return ApiResponse.success(res, _operatorsCache.rows);
     }
     // DB へのクエリ自体は 3秒で切る。詰まっていたら古いキャッシュを使う。
+    // resolve 戦略にすることで unhandled rejection を防ぐ。
+    let timer;
     const queryPromise = pool.execute(
       "SELECT id, name FROM users WHERE role IN ('operator', 'intern') AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
-    );
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout 3s')), 3000));
-    try {
-      const [rows] = await Promise.race([queryPromise, timeoutPromise]);
-      _operatorsCache = { at: Date.now(), rows };
-      return ApiResponse.success(res, rows);
-    } catch (e) {
-      // 古いキャッシュがあれば fallback として返す
-      if (_operatorsCache.rows) {
-        return ApiResponse.success(res, _operatorsCache.rows);
-      }
-      throw e;
+    ).then(([rows]) => ({ ok: true, rows })).catch((err) => ({ ok: false, err }));
+    const timeoutPromise = new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ ok: false, timeout: true }), 3000);
+    });
+    const result = await Promise.race([queryPromise, timeoutPromise]);
+    clearTimeout(timer);
+    if (result.ok) {
+      _operatorsCache = { at: Date.now(), rows: result.rows };
+      return ApiResponse.success(res, result.rows);
     }
+    // 失敗 or タイムアウト → 古いキャッシュ fallback
+    if (_operatorsCache.rows) {
+      return ApiResponse.success(res, _operatorsCache.rows);
+    }
+    logger.error(`[getOperators] DB ${result.timeout ? 'timeout' : 'error'}: ${result.err?.message || ''}`);
+    return ApiResponse.error(res, 'オペレーター一覧の取得に失敗しました', 503);
   } catch (err) {
     next(err);
   }

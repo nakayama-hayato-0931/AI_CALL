@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 認証: Promise.race の unhandled rejection を resolve 戦略で解消 (502 の原因)
+- 「再起動後も operators API が 502」事象の修正。
+- 原因: Promise.race の timeoutPromise が reject を残し、 queryPromise が先に解決しても 3-5秒後に unhandled rejection になっていた。Node.js が exception 扱いにして 502 を返していた。
+- 修正: timeoutPromise を `resolve({ ok: false, timeout: true })` の resolve 戦略に変更。queryPromise も `.then().catch()` で result オブジェクトを返す形に。`clearTimeout` で確実にタイマーをキャンセル。
+- これで unhandled rejection が発生しないので、 backend が安定して 200/503 を返せるようになる。
+
 ### ログイン: login API に DB タイムアウト 5秒 + 503 エラーで応答
 - 「ログインボタンを押しても応答しない (30秒以上 pending)」事象対策。
 - DB が詰まっていても 5秒で必ず応答を返す。
