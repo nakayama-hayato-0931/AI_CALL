@@ -31,6 +31,17 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 全体性能改善: region フィルタの中間一致 LIKE を削除
+- 「オペレーター選択不可・全体的に重い」事象に対応。
+- 原因: companies テーブル (60万行クラス) の region フィルタで `LIKE '%xxx%'` の中間一致を使っていたため毎クエリでフルテーブルスキャン発生 → バックエンド全体が詰まりオペレーター一覧 API なども応答遅延。
+- 修正: 5 パターン OR を 3 パターンに削減:
+  - 完全一致 `c.region IN ('東京都', '東京')`
+  - 前方一致 `c.region LIKE '東京%'` (index 活用可能)
+  - 住所前方一致 `c.address LIKE '東京都%'`
+- 削除した中間一致パターン: `c.region LIKE '%東京%'`, `c.address LIKE '%東京%'`
+- 影響箇所: companyController.js (modeFilterSQL) / adminController.getCompanies / getCustomerMasterList / bulkAssignSpecial の 4 箇所すべて。
+- 「東京都港区...」のような複合形式は前方一致でも拾えるため実用上の影響なし。中間一致が必要なケース (region 中に都道府県名が埋もれている) はまれ。
+
 ### 架電リスト管理: fetchCompanies に AbortController を入れて連続フェッチを安定化
 - 「架電リストが表示されなくなった」事象の対策。
 - 症状: Network タブで同じ URL の `companies?page=1&limit=20` が複数 canceled / pending 状態 → state が空配列で「企業がありません」と表示される。

@@ -509,18 +509,16 @@ const getCompanies = async (req, res, next) => {
       whereClauses.push(`(co.last_called_at IS NULL OR (SELECT cl.result_code FROM calls cl WHERE cl.company_id = co.id ORDER BY cl.call_started_at DESC LIMIT 1) = 'NO_ANSWER')`);
     }
 
-    // 地域(都道府県)フィルタ — region/address 各種形式に対応
+    // 地域(都道府県)フィルタ — 性能優先で 3 パターンのみ (中間一致は60万行で重いため除外)
     const { region } = req.query;
     if (region) {
       const short = String(region).replace(/(都|道|府|県)$/, '');
       whereClauses.push(`(
         co.region IN (?, ?)
         OR co.region LIKE CONCAT(?, '%')
-        OR co.region LIKE CONCAT('%', ?, '%')
         OR co.address LIKE CONCAT(?, '%')
-        OR co.address LIKE CONCAT('%', ?, '%')
       )`);
-      params.push(region, short || region, short || region, short || region, region, short || region);
+      params.push(region, short || region, short || region, region);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -597,11 +595,9 @@ const bulkAssignSpecial = async (req, res, next) => {
         whereParts.push(`(
           region IN (?, ?)
           OR region LIKE CONCAT(?, '%')
-          OR region LIKE CONCAT('%', ?, '%')
           OR address LIKE CONCAT(?, '%')
-          OR address LIKE CONCAT('%', ?, '%')
         )`);
-        fParams.push(filter.region, short || filter.region, short || filter.region, short || filter.region, filter.region, short || filter.region);
+        fParams.push(filter.region, short || filter.region, short || filter.region, filter.region);
       }
       if (filter.industry_category) {
         whereParts.push('industry_category = ?');
@@ -1744,18 +1740,16 @@ async function getCustomerMasterList(req, res, next) {
       const s = `%${industry}%`;
       params.push(s, industry);
     }
-    // 地域(都道府県)フィルタ
+    // 地域(都道府県)フィルタ — 性能優先で 3 パターンのみ
     const { region } = req.query;
     if (region) {
       const short = String(region).replace(/(都|道|府|県)$/, '');
       where += ` AND (
         c.region IN (?, ?)
         OR c.region LIKE CONCAT(?, '%')
-        OR c.region LIKE CONCAT('%', ?, '%')
         OR c.address LIKE CONCAT(?, '%')
-        OR c.address LIKE CONCAT('%', ?, '%')
       )`;
-      params.push(region, short || region, short || region, short || region, region, short || region);
+      params.push(region, short || region, short || region, region);
     }
     // 結果/担当/期間のいずれかが指定された場合は、その条件に一致する架電が
     // 1件以上ある企業のみに絞り込む

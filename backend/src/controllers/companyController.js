@@ -402,28 +402,18 @@ const getNextCallTarget = async (req, res, next) => {
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
         modeFilterParams = [industryParam];
       }
-      // 地域指定: 以下のパターンを OR でカバー
+      // 地域指定: 性能優先で 3 パターンのみ (中間一致 LIKE '%xxx%' は60万行クラスで重いため除外)
       //   (1) c.region 完全一致 (「東京都」「東京」両形式)
-      //   (2) c.region 前方一致 (「東京都港区」のような長い形式)
-      //   (3) c.region 中間一致 (フォールバック)
-      //   (4) c.address 前方一致 (region 空欄の企業)
-      //   (5) c.address 中間一致 (住所文字列に都道府県が含まれる)
+      //   (2) c.region 前方一致 (「東京都港区」のような長い形式) — index 活用
+      //   (3) c.address 前方一致 (region 空欄企業) — index 活用
       if (regionParam) {
         const short = regionParam.replace(/(都|道|府|県)$/, '');
         modeFilterSQL += ` AND (
           c.region IN (?, ?)
           OR c.region LIKE CONCAT(?, '%')
-          OR c.region LIKE CONCAT('%', ?, '%')
           OR c.address LIKE CONCAT(?, '%')
-          OR c.address LIKE CONCAT('%', ?, '%')
         )`;
-        modeFilterParams.push(
-          regionParam, short || regionParam,
-          short || regionParam,
-          short || regionParam,
-          regionParam,
-          short || regionParam
-        );
+        modeFilterParams.push(regionParam, short || regionParam, short || regionParam, regionParam);
       }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
@@ -675,28 +665,18 @@ const getCallList = async (req, res, next) => {
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
         modeFilterParams = [industryParam];
       }
-      // 地域指定: 以下のパターンを OR でカバー
+      // 地域指定: 性能優先で 3 パターンのみ (中間一致 LIKE '%xxx%' は60万行クラスで重いため除外)
       //   (1) c.region 完全一致 (「東京都」「東京」両形式)
-      //   (2) c.region 前方一致 (「東京都港区」のような長い形式)
-      //   (3) c.region 中間一致 (フォールバック)
-      //   (4) c.address 前方一致 (region 空欄の企業)
-      //   (5) c.address 中間一致 (住所文字列に都道府県が含まれる)
+      //   (2) c.region 前方一致 (「東京都港区」のような長い形式) — index 活用
+      //   (3) c.address 前方一致 (region 空欄企業) — index 活用
       if (regionParam) {
         const short = regionParam.replace(/(都|道|府|県)$/, '');
         modeFilterSQL += ` AND (
           c.region IN (?, ?)
           OR c.region LIKE CONCAT(?, '%')
-          OR c.region LIKE CONCAT('%', ?, '%')
           OR c.address LIKE CONCAT(?, '%')
-          OR c.address LIKE CONCAT('%', ?, '%')
         )`;
-        modeFilterParams.push(
-          regionParam, short || regionParam,
-          short || regionParam,
-          short || regionParam,
-          regionParam,
-          short || regionParam
-        );
+        modeFilterParams.push(regionParam, short || regionParam, short || regionParam, regionParam);
       }
     } else if (isMyList) {
       modeFilterSQL = `AND c.imported_by_user_id = ?`;
