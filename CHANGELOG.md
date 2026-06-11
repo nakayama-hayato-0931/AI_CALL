@@ -31,6 +31,11 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### DB プール: connectionLimit を 20 → 50 に拡大
+- 「operators API が 503 (3秒タイムアウト)」事象対策。
+- 重いクエリ (getCallList の Tier 2-5 並列、診断系、ピックアップ複数同時等) が pool の 20 接続をすべて使い切ると、軽量な operators / login 等が接続を取得できず待たされて 3-5秒タイムアウトに。
+- pool の connectionLimit を 50 に拡大。Railway MySQL の同時接続上限 (通常 100-150) には収まる。
+
 ### 認証: Promise.race の unhandled rejection を resolve 戦略で解消 (502 の原因)
 - 「再起動後も operators API が 502」事象の修正。
 - 原因: Promise.race の timeoutPromise が reject を残し、 queryPromise が先に解決しても 3-5秒後に unhandled rejection になっていた。Node.js が exception 扱いにして 502 を返していた。

@@ -11,9 +11,9 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'callcenter_crm',
-  // 接続プール設定
+  // 接続プール設定 — 重いクエリ実行中も軽量 API (operators, login 等) が接続を取れるよう拡大
   waitForConnections: true,
-  connectionLimit: 20,
+  connectionLimit: 50,
   queueLimit: 0,
   // タイムアウト設定
   connectTimeout: 10000,
