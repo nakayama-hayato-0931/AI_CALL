@@ -395,7 +395,10 @@ const getNextCallTarget = async (req, res, next) => {
     }
 
     // 自作リスト/特別リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
-    const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
+    // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
+    // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
+    // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
+    const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
     // autoモードのみ: ゴールデンタイム未設定業種を除外
@@ -629,7 +632,10 @@ const getCallList = async (req, res, next) => {
     }
 
     // 自作リスト/特別リストモード: 業種地域フィルタ・結果除外・割り当てフィルタをバイパス
-    const irFilter = (isMyList || isSpecialList) ? '' : industryRegionFilterSQL;
+    // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
+    // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
+    // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
+    const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
     // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外

@@ -31,6 +31,14 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト: 業種別モード時は ③業種地域ルールをバイパス
+- 「業種別で建設を選んでも建設が出ない、未架電がまだあるはずなのに無いと表示される」事象を修正。
+- ユーザーが明示的に業種を選んでいるのに ③ `industry_region_rules` の地域制限・業種除外が効いてしまい、結果セットが空になる事象。
+- 修正: `getNextCallTarget` / `getCallList` の `irFilter` を `(isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL` に変更。
+- 業種別モード時はルール設定で建設/介護等が非表示扱いでも、明示選択時は表示される。
+- ②自動ピックアップ対象都道府県 (prefectureFilter) は引き続き絶対条件として適用。
+- ゴールデン業種除外 (goldenIndFilter) は元々 auto モード限定なので影響なし。
+
 ### 業務カテゴリ(漏れfix2): KPI補正を業務カテゴリ絞込時はスキップ
 - 特定技能管理画面で「中田倫哉: 案件1」が残っていた事象を修正。
 - 原因: `kpi_adjustments` テーブルには `work_category` 区分がなく、`getAllOperatorPerformance` で無条件に補正値を加算していた → 特定技能管理画面 (フィルタあり) でも技人国の補正値 (project_count=1 等) が漏れていた。
