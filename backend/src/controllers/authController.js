@@ -109,23 +109,34 @@ let _operatorsCache = { at: 0, rows: null };
 const OPERATORS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const getOperators = async (req, res, next) => {
+  // キャッシュ有効ならそれを返す (5分)
+  if (_operatorsCache.rows && (Date.now() - _operatorsCache.at) < OPERATORS_CACHE_TTL_MS) {
+    return ApiResponse.success(res, _operatorsCache.rows);
+  }
+  // 3秒で諦める。 DB が詰まっていてもログイン画面を 500 で壊さない。
+  let timer;
+  const queryP = pool.query(
+    "SELECT id, name FROM users WHERE role IN ('operator', 'intern') AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
+  );
+  const timeoutP = new Promise((resolve) => {
+    timer = setTimeout(() => resolve('__TIMEOUT__'), 3000);
+  });
   try {
-    // キャッシュ有効ならそれを返す (5分)
-    if (_operatorsCache.rows && (Date.now() - _operatorsCache.at) < OPERATORS_CACHE_TTL_MS) {
-      return ApiResponse.success(res, _operatorsCache.rows);
+    const result = await Promise.race([queryP, timeoutP]);
+    if (timer) clearTimeout(timer);
+    if (result === '__TIMEOUT__') {
+      logger.warn('[getOperators] 3秒タイムアウト、空配列を返す (DB詰まり)');
+      // 旧キャッシュがあればそれ、 無ければ空配列。 next(err) は呼ばない (500回避)。
+      const fallback = _operatorsCache.rows || [];
+      return ApiResponse.success(res, fallback);
     }
-    const [rows] = await pool.query(
-      "SELECT id, name FROM users WHERE role IN ('operator', 'intern') AND is_active = 1 AND is_test_account = 0 ORDER BY name ASC"
-    );
+    const rows = result[0];
     _operatorsCache = { at: Date.now(), rows };
     return ApiResponse.success(res, rows);
   } catch (err) {
+    if (timer) clearTimeout(timer);
     logger.error(`[getOperators] ${err.code || ''} ${err.message}`);
-    // 失敗してもキャッシュがあれば返す
-    if (_operatorsCache.rows) {
-      return ApiResponse.success(res, _operatorsCache.rows);
-    }
-    next(err);
+    return ApiResponse.success(res, _operatorsCache.rows || []);
   }
 };
 
