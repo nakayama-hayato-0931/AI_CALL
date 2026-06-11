@@ -53,6 +53,9 @@ export default function CallListPage() {
     }
   }, [queryTab]);
   const [file, setFile] = useState(null);
+  const [bulkFiles, setBulkFiles] = useState([]); // 複数ファイル一括用 (File[])
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '', results: [] });
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -201,6 +204,61 @@ export default function CallListPage() {
       setFile(dropped);
       setImportResult(null);
     }
+  };
+
+  // 複数ファイル一括アップロード (順次実行・各結果を集計)
+  const handleBulkUpload = async () => {
+    if (bulkFiles.length === 0) {
+      toast.error('ファイルを選択してください');
+      return;
+    }
+    setBulkBusy(true);
+    setBulkProgress({ current: 0, total: bulkFiles.length, currentName: '', results: [] });
+
+    let url = '/api/csv/import';
+    if (importTab === 'special') url = '/api/csv/import-special';
+    else if (importTab === 'ng') url = '/api/csv/import-exclusion?list_type=ng';
+    else if (importTab === 'existing') url = '/api/csv/import-exclusion?list_type=existing_project';
+
+    const savedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+
+    let totals = { added: 0, updated: 0, skipped: 0, error_files: 0 };
+    const results = [];
+    for (let i = 0; i < bulkFiles.length; i++) {
+      const f = bulkFiles[i];
+      setBulkProgress(p => ({ ...p, current: i + 1, currentName: f.name }));
+      try {
+        const formData = new FormData();
+        formData.append('file', f);
+        if ((importTab === 'calllist' || importTab === 'special') && isManager && selectedOperators.length > 0 && graceDays > 0) {
+          formData.append('priority_operator_ids', JSON.stringify(selectedOperators));
+          formData.append('grace_days', String(graceDays));
+        }
+        if (savedUser.role === 'sales') {
+          formData.append('is_sales_list', '1');
+        }
+        const { data } = await directApi.post(url, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const r = data.data || {};
+        totals.added += Number(r.added || r.inserted || 0);
+        totals.updated += Number(r.updated || 0);
+        totals.skipped += Number(r.skipped || 0);
+        const summary = `追加${r.added || r.inserted || 0}/更新${r.updated || 0}/スキップ${r.skipped || 0}`;
+        results.push({ name: f.name, ok: true, summary });
+      } catch (err) {
+        totals.error_files++;
+        const msg = err.response?.data?.message || err.message || 'unknown error';
+        results.push({ name: f.name, ok: false, summary: msg });
+      }
+      setBulkProgress(p => ({ ...p, results: [...results] }));
+    }
+
+    toast.success(`完了 ${bulkFiles.length}件 / 追加${totals.added.toLocaleString()} 更新${totals.updated.toLocaleString()} スキップ${totals.skipped.toLocaleString()} エラー${totals.error_files}`, { duration: 8000 });
+    setBulkBusy(false);
+    setBulkFiles([]);
+    if (importTab === 'calllist' || importTab === 'special') { if (importTab === 'special') setListView('special'); fetchCompanies(1); }
+    else { fetchCompanies(pagination.page || 1); fetchExclusionStats(); }
   };
 
   const handleUpload = async () => {
@@ -534,6 +592,46 @@ export default function CallListPage() {
                   </span>
                 ) : 'インポート実行'}
               </button>
+
+              {/* 複数ファイル一括アップロード */}
+              <div className="card p-3 bg-purple-50 border border-purple-200">
+                <div className="text-[11px] font-bold text-purple-800 mb-1">複数ファイル一括</div>
+                <input
+                  type="file"
+                  accept=".csv,.xls,.xlsx"
+                  multiple
+                  onChange={e => {
+                    const fs = Array.from(e.target.files || []).filter(f => /\.(csv|xls|xlsx)$/i.test(f.name));
+                    setBulkFiles(fs);
+                    setBulkProgress({ current: 0, total: 0, currentName: '', results: [] });
+                  }}
+                  className="text-[10px] w-full mb-1"
+                />
+                {bulkFiles.length > 0 && (
+                  <div className="text-[10px] text-purple-700 mb-1">{bulkFiles.length}件選択中</div>
+                )}
+                <button
+                  onClick={handleBulkUpload}
+                  disabled={bulkFiles.length === 0 || bulkBusy}
+                  className="w-full py-1.5 text-[11px] font-bold rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300"
+                >
+                  {bulkBusy ? `処理中 ${bulkProgress.current}/${bulkProgress.total}` : `一括インポート (${bulkFiles.length}件)`}
+                </button>
+                {bulkBusy && bulkProgress.currentName && (
+                  <div className="text-[9px] text-purple-600 mt-1 truncate" title={bulkProgress.currentName}>
+                    実行中: {bulkProgress.currentName}
+                  </div>
+                )}
+                {bulkProgress.results.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto border-t border-purple-200 pt-1">
+                    {bulkProgress.results.map((r, i) => (
+                      <div key={i} className={`text-[9px] ${r.ok ? 'text-gray-600' : 'text-rose-600'} truncate`} title={`${r.name}: ${r.summary}`}>
+                        {r.ok ? '✓' : '✗'} {r.name}: {r.summary}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {importResult && (
                 <div className="card p-3 animate-fade-in">
