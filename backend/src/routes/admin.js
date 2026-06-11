@@ -7,7 +7,7 @@ const router = express.Router();
 const {
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
-  getCompanies, assignCompany, unassignCompany,
+  getCompanies, assignCompany, unassignCompany, bulkAssignSpecial,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
@@ -66,6 +66,7 @@ router.get('/performance', (req, res, next) => {
 router.get('/companies', requireManager, getCompanies);
 router.post('/companies/assign', requireEditor, assignCompany);
 router.delete('/companies/:companyId/assign/:userId', requireEditor, unassignCompany);
+router.post('/companies/bulk-assign-special', requireEditor, bulkAssignSpecial);
 
 // 業種×地域ルール (閲覧: manager+consultant、編集: editor)
 router.get('/industry-region-rules', requireManager, getIndustryRegionRules);

@@ -509,6 +509,20 @@ const getCompanies = async (req, res, next) => {
       whereClauses.push(`(co.last_called_at IS NULL OR (SELECT cl.result_code FROM calls cl WHERE cl.company_id = co.id ORDER BY cl.call_started_at DESC LIMIT 1) = 'NO_ANSWER')`);
     }
 
+    // 地域(都道府県)フィルタ — region/address 各種形式に対応
+    const { region } = req.query;
+    if (region) {
+      const short = String(region).replace(/(都|道|府|県)$/, '');
+      whereClauses.push(`(
+        co.region IN (?, ?)
+        OR co.region LIKE CONCAT(?, '%')
+        OR co.region LIKE CONCAT('%', ?, '%')
+        OR co.address LIKE CONCAT(?, '%')
+        OR co.address LIKE CONCAT('%', ?, '%')
+      )`);
+      params.push(region, short || region, short || region, short || region, region, short || region);
+    }
+
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     const [countRows] = await pool.query(
@@ -550,6 +564,87 @@ const getCompanies = async (req, res, next) => {
       },
     });
   } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/admin/companies/bulk-assign-special
+ * 複数企業を「特別リスト」化して指定オペレーターに一括割り当て
+ * Body: { company_ids: number[], user_id: number, filter?: { region, category, search } }
+ *   filter が指定された場合 company_ids ではなくフィルタ条件にマッチする全企業を対象
+ */
+const bulkAssignSpecial = async (req, res, next) => {
+  try {
+    const { company_ids, user_id, filter } = req.body;
+    const userIdNum = parseInt(user_id, 10);
+    if (!userIdNum) return ApiResponse.badRequest(res, 'user_id が必要');
+
+    // ユーザー存在チェック
+    const [users] = await pool.query('SELECT id, name FROM users WHERE id = ? AND is_active = 1', [userIdNum]);
+    if (users.length === 0) return ApiResponse.notFound(res, 'ユーザーが見つかりません (非アクティブを含む)');
+
+    // 対象 company_id を決定
+    let targetIds = [];
+    if (Array.isArray(company_ids) && company_ids.length > 0) {
+      targetIds = company_ids.map(x => parseInt(x, 10)).filter(x => x);
+    } else if (filter && typeof filter === 'object') {
+      // フィルタ条件で対象を抽出
+      const whereParts = ['exclusion_flag = 0'];
+      const fParams = [];
+      if (filter.region) {
+        const short = String(filter.region).replace(/(都|道|府|県)$/, '');
+        whereParts.push(`(
+          region IN (?, ?)
+          OR region LIKE CONCAT(?, '%')
+          OR region LIKE CONCAT('%', ?, '%')
+          OR address LIKE CONCAT(?, '%')
+          OR address LIKE CONCAT('%', ?, '%')
+        )`);
+        fParams.push(filter.region, short || filter.region, short || filter.region, short || filter.region, filter.region, short || filter.region);
+      }
+      if (filter.industry_category) {
+        whereParts.push('industry_category = ?');
+        fParams.push(filter.industry_category);
+      }
+      if (filter.search) {
+        whereParts.push('(company_name LIKE ? OR phone_number LIKE ?)');
+        fParams.push(`%${filter.search}%`, `%${filter.search}%`);
+      }
+      const fLimit = Math.min(10000, parseInt(filter.limit, 10) || 1000);
+      const [rows] = await pool.query(
+        `SELECT id FROM companies WHERE ${whereParts.join(' AND ')} LIMIT ?`,
+        [...fParams, fLimit]
+      );
+      targetIds = rows.map(r => r.id);
+    }
+
+    if (targetIds.length === 0) return ApiResponse.badRequest(res, '対象企業が0件です');
+
+    // is_special を立てて、company_assignments に手動割り当て (is_auto=0) を作る
+    const placeholders = targetIds.map(() => '?').join(',');
+    await pool.execute(
+      `UPDATE companies SET is_special = 1 WHERE id IN (${placeholders})`,
+      targetIds
+    );
+    let assigned = 0;
+    for (const cid of targetIds) {
+      try {
+        const [r] = await pool.execute(
+          'INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by, is_auto) VALUES (?, ?, ?, 0)',
+          [cid, userIdNum, req.user.id]
+        );
+        if (r.affectedRows > 0) assigned++;
+      } catch (e) { /* dup */ }
+    }
+    logger.info(`[bulkAssignSpecial] target=${targetIds.length} → is_special set, assigned=${assigned} to user=${userIdNum}`);
+    return ApiResponse.success(res, {
+      target_count: targetIds.length,
+      assigned,
+      user: users[0],
+    }, `${targetIds.length}社を特別リスト化し${assigned}件を ${users[0].name} に割り当てました`);
+  } catch (err) {
+    logger.error(`[bulkAssignSpecial] ${err.message}`);
     next(err);
   }
 };
@@ -1268,7 +1363,7 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
 module.exports = {
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
-  getCompanies, assignCompany, unassignCompany,
+  getCompanies, assignCompany, unassignCompany, bulkAssignSpecial,
   getIndustryRegionRules, addIndustryRegionRule, deleteIndustryRegionRule,
   getExcludeWords, addExcludeWord, deleteExcludeWord,
   getTimeRules, addTimeRule, updateTimeRule, deleteTimeRule, aiSuggestTimeRules,
@@ -1648,6 +1743,19 @@ async function getCustomerMasterList(req, res, next) {
       where += " AND (c.industry LIKE ? OR c.industry_category = ?)";
       const s = `%${industry}%`;
       params.push(s, industry);
+    }
+    // 地域(都道府県)フィルタ
+    const { region } = req.query;
+    if (region) {
+      const short = String(region).replace(/(都|道|府|県)$/, '');
+      where += ` AND (
+        c.region IN (?, ?)
+        OR c.region LIKE CONCAT(?, '%')
+        OR c.region LIKE CONCAT('%', ?, '%')
+        OR c.address LIKE CONCAT(?, '%')
+        OR c.address LIKE CONCAT('%', ?, '%')
+      )`;
+      params.push(region, short || region, short || region, short || region, region, short || region);
     }
     // 結果/担当/期間のいずれかが指定された場合は、その条件に一致する架電が
     // 1件以上ある企業のみに絞り込む

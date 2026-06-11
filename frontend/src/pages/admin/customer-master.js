@@ -59,8 +59,21 @@ export default function CustomerMasterPage() {
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
-    search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '', show_excluded: '',
+    search: '', result: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '',
   });
+  const ALL_PREFECTURES_CM = [
+    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+    '岐阜県', '静岡県', '愛知県', '三重県',
+    '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+    '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+    '徳島県', '香川県', '愛媛県', '高知県',
+    '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+  ];
+  // 特別リスト一括割当用
+  const [bulkAssignOp, setBulkAssignOp] = useState('');
+  const [bulkAssignBusy, setBulkAssignBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [total, setTotal] = useState(0);
@@ -497,6 +510,17 @@ export default function CustomerMasterPage() {
             </div>
 
             <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">都道府県</label>
+              <select value={filters.region || ''} onChange={e => updateFilter('region', e.target.value)}
+                className="border rounded px-2 py-1 text-sm w-28">
+                <option value="">全国</option>
+                {ALL_PREFECTURES_CM.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="block text-[11px] text-gray-500 mb-0.5">NGリスト</label>
               <select value={filters.show_excluded} onChange={e => updateFilter('show_excluded', e.target.value)}
                 className="border rounded px-2 py-1 text-sm">
@@ -522,6 +546,52 @@ export default function CustomerMasterPage() {
                   : '0件'}
               </span>
             </div>
+            {/* 絞り込み結果を特別リスト化して割り当て (フィルタが効いているときだけ表示) */}
+            {(filters.region || filters.industry || filters.search) && total > 0 && operators.length > 0 && (
+              <div className="px-3 py-2 bg-purple-50 border-b border-purple-200 flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-purple-800 font-bold">絞り込み {total.toLocaleString()}件 →</span>
+                <select className="border rounded px-2 py-0.5 text-xs" value={bulkAssignOp}
+                  onChange={e => setBulkAssignOp(e.target.value)}>
+                  <option value="">オペレーター選択</option>
+                  {operators.map(op => (
+                    <option key={op.id} value={op.id}>{op.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!bulkAssignOp || bulkAssignBusy}
+                  onClick={async () => {
+                    const opName = operators.find(o => String(o.id) === String(bulkAssignOp))?.name;
+                    if (!window.confirm(`現在の絞り込み (${total.toLocaleString()}件) を ${opName} の特別リストに割り当てます。よろしいですか?`)) return;
+                    setBulkAssignBusy(true);
+                    try {
+                      const { data } = await api.post('/api/admin/companies/bulk-assign-special', {
+                        user_id: Number(bulkAssignOp),
+                        filter: {
+                          region: filters.region || undefined,
+                          industry_category: filters.industry || undefined,
+                          search: filters.search || undefined,
+                          limit: 10000,
+                        },
+                      });
+                      if (data.success) {
+                        toast.success(data.message || '特別リストに割り当てました', { duration: 5000 });
+                        fetchList();
+                      } else {
+                        toast.error(data.message || '割り当て失敗');
+                      }
+                    } catch (err) {
+                      toast.error(err.response?.data?.message || '割り当て失敗');
+                    } finally {
+                      setBulkAssignBusy(false);
+                    }
+                  }}
+                  className="text-xs px-3 py-0.5 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300"
+                >
+                  {bulkAssignBusy ? '実行中...' : '特別リスト化して割り当て'}
+                </button>
+              </div>
+            )}
             <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
               {loading ? (
                 <p className="text-center py-8 text-gray-400 text-sm">読み込み中...</p>

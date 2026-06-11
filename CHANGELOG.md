@@ -31,6 +31,18 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト管理・顧客マスタ: 都道府県フィルタ + 特別リスト一括割り当て機能
+- 「顧客マスタ・架電リスト管理で地域別でフィルタをかけられるように、絞り込み結果からオペレーターに特別リストとして割り当てができるように」要望に対応。
+- バックエンド:
+  - `getCompanies` (架電リスト管理) / `getCustomerMasterList` (顧客マスタ) で `region` クエリパラメータを受け付け、region/address 5パターン OR で絞り込み。
+  - `POST /api/admin/companies/bulk-assign-special` 新規。`{user_id, filter: {region, industry_category, search, limit}}` でフィルタ条件にマッチする全企業に `is_special=1` を立て、`company_assignments` に手動割り当て (is_auto=0) を一括挿入。
+- フロント:
+  - 架電リスト管理画面: 検索フォームに「都道府県」select を追加。フィルタが効いているとき紫帯で「絞り込み結果を特別リスト化して割り当て」UIを表示 (オペレーター select + 実行ボタン)。
+  - 顧客マスタ画面: フィルタバーに「都道府県」select を追加。一覧見出し直下に紫帯で同等の割り当て UI を表示。
+  - 一括割り当て前に confirm で件数表示。
+- これで「東京の建設業1000社をオペレーターA に振り分け」のような運用が一発でできる。
+- 注意: 既定上限は 10000 件。それ以上は filter.limit で指定 or 複数回実行。
+
 ### 架電リスト: 都道府県フィルタのマッチパターンを拡張 (region/address 各種形式に対応)
 - 「以前うまくフィルタできていなかった」事象の見直し。
 - 元の条件: `c.region IN (短形, 長形) OR c.address LIKE '長形%'` だけだった。

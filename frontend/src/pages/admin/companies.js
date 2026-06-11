@@ -47,6 +47,20 @@ export default function AdminCompanies() {
   const [industryStats, setIndustryStats] = useState(null);
   const [statsActionable, setStatsActionable] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState(''); // クリックされた業種カテゴリ
+  const [regionFilter, setRegionFilter] = useState(''); // 地域(都道府県)フィルタ
+  // 特別リスト一括割り当て用
+  const [bulkAssignOp, setBulkAssignOp] = useState('');
+  const [bulkAssignBusy, setBulkAssignBusy] = useState(false);
+  const ALL_PREFECTURES = [
+    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+    '岐阜県', '静岡県', '愛知県', '三重県',
+    '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+    '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+    '徳島県', '香川県', '愛媛県', '高知県',
+    '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+  ];
   const [selectedIds, setSelectedIds] = useState([]); // 一括削除用の選択ID
   const [assignModal, setAssignModal] = useState(null);
   // アクション履歴モーダル
@@ -144,7 +158,7 @@ export default function AdminCompanies() {
 
   useEffect(() => {
     if (user) fetchCompanies();
-  }, [user, page, search, showExcluded, categoryFilter, statsActionable]);
+  }, [user, page, search, showExcluded, categoryFilter, regionFilter, statsActionable]);
 
   // フィルター変更時は選択をクリア
   useEffect(() => { setSelectedIds([]); }, [categoryFilter, statsActionable, search, page]);
@@ -261,6 +275,7 @@ export default function AdminCompanies() {
       if (search) params.append('search', search);
       if (showExcluded) params.append('include_excluded', '1');
       if (categoryFilter) params.append('category', categoryFilter);
+      if (regionFilter) params.append('region', regionFilter);
       if (statsActionable) params.append('actionable', '1');
       const { data } = await api.get(`/api/admin/companies?${params}`);
       if (data.success) {
@@ -656,11 +671,21 @@ export default function AdminCompanies() {
       {/* ============ 架電リストタブ ============ */}
       {activeTab === 'list' && (
         <>
-          <form onSubmit={handleSearch} className="card p-4 mb-6 flex items-end gap-4">
-            <div className="flex-1">
+          <form onSubmit={handleSearch} className="card p-4 mb-6 flex items-end gap-4 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
               <label className="input-label">企業名・電話番号で検索</label>
               <input type="text" className="input text-sm" placeholder="検索キーワード..."
                 value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+            </div>
+            <div>
+              <label className="input-label">都道府県</label>
+              <select className="input text-sm" value={regionFilter}
+                onChange={e => { setRegionFilter(e.target.value); setPage(1); }}>
+                <option value="">全国</option>
+                {ALL_PREFECTURES.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </div>
             <label className="flex items-center gap-2 pb-1 cursor-pointer select-none">
               <input
@@ -672,11 +697,72 @@ export default function AdminCompanies() {
               <span className="text-xs text-gray-600">除外済みも表示</span>
             </label>
             <button type="submit" className="btn-primary !py-2.5 px-6">検索</button>
-            {search && (
-              <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
+            {(search || regionFilter) && (
+              <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setRegionFilter(''); setPage(1); }}
                 className="btn-secondary !py-2.5 px-4">クリア</button>
             )}
           </form>
+
+          {/* 絞り込み結果を特別リスト化してオペレーター割り当て */}
+          {(regionFilter || categoryFilter || search) && operators.length > 0 && (
+            <div className="card p-3 mb-3 bg-purple-50 border border-purple-200">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="text-xs text-purple-800">
+                  <span className="font-bold">現在の絞り込み結果を特別リスト化して割り当て</span>
+                  <span className="ml-2 text-gray-500">
+                    {[
+                      regionFilter && `地域: ${regionFilter}`,
+                      categoryFilter && `業種: ${categoryFilter}`,
+                      search && `検索: ${search}`,
+                    ].filter(Boolean).join(' / ')}
+                  </span>
+                  <span className="ml-2 text-gray-400">({(pagination.total || 0).toLocaleString()}件対象)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select className="input text-xs !py-1" value={bulkAssignOp}
+                    onChange={e => setBulkAssignOp(e.target.value)}>
+                    <option value="">オペレーターを選択</option>
+                    {operators.map(op => (
+                      <option key={op.id} value={op.id}>{op.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!bulkAssignOp || bulkAssignBusy || (pagination.total || 0) === 0}
+                    onClick={async () => {
+                      const opName = operators.find(o => String(o.id) === String(bulkAssignOp))?.name;
+                      if (!window.confirm(`現在のフィルタ条件 (${(pagination.total || 0).toLocaleString()}件) を ${opName} の特別リストに割り当てます。よろしいですか?`)) return;
+                      setBulkAssignBusy(true);
+                      try {
+                        const { data } = await api.post('/api/admin/companies/bulk-assign-special', {
+                          user_id: Number(bulkAssignOp),
+                          filter: {
+                            region: regionFilter || undefined,
+                            industry_category: categoryFilter || undefined,
+                            search: search || undefined,
+                            limit: 10000,
+                          },
+                        });
+                        if (data.success) {
+                          toast.success(data.message || '特別リストに割り当てました', { duration: 5000 });
+                          fetchCompanies();
+                        } else {
+                          toast.error(data.message || '割り当て失敗');
+                        }
+                      } catch (err) {
+                        toast.error(err.response?.data?.message || '割り当て失敗');
+                      } finally {
+                        setBulkAssignBusy(false);
+                      }
+                    }}
+                    className="text-xs px-3 py-1 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300"
+                  >
+                    {bulkAssignBusy ? '実行中...' : '特別リスト化して割り当て'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {pagination.total !== undefined && (
             <p className="text-sm text-gray-500 mb-3">全 {pagination.total.toLocaleString()} 件</p>
