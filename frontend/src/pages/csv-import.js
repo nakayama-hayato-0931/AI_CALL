@@ -291,6 +291,9 @@ export default function CallListPage() {
       { duration: 15000 }
     );
     setBulkBusy(false);
+    // 成功したファイルは bulkFiles から削除、エラーのものだけ残す (再選択せずに再試行できるように)
+    const failedNames = new Set(results.filter(r => !r.ok).map(r => r.name));
+    setBulkFiles(prev => prev.filter(f => failedNames.has(f.name)));
     if (importTab === 'calllist' || importTab === 'special') { if (importTab === 'special') setListView('special'); fetchCompanies(1); }
     else { fetchCompanies(pagination.page || 1); fetchExclusionStats(); }
   };
