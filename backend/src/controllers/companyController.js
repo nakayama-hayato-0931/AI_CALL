@@ -590,6 +590,18 @@ const getNextCallTarget = async (req, res, next) => {
  * ロック中の企業は除外（自分のロック + 期限切れは許可）
  */
 const getCallList = async (req, res, next) => {
+  // 全体タイムアウト: 18秒経っても応答できないなら空応答を返す (Railway proxy の30秒 clip を回避)
+  // フロントは 15秒間隔ポーリングなので、 次の周回で再取得される
+  let safeguardTimer = setTimeout(() => {
+    if (res.headersSent) return;
+    logger.warn(`[getCallList] 18s safeguard timeout user=${req.user?.id} mode=${req.query.mode || 'auto'} - returning empty payload`);
+    return res.status(200).json({
+      success: true,
+      data: { targets: [], debug: { timeout: true, msg: '一時的に取得できませんでした、 自動再取得を待ってください' } },
+      message: 'timeout fallback',
+      error: null,
+    });
+  }, 18000);
   try {
     const userId = req.user.id;
     const now = new Date();
@@ -1032,9 +1044,11 @@ const getCallList = async (req, res, next) => {
     } };
     // refresh のときはキャッシュ保存もしない (毎回ランダム結果を返したい)
     if (!req.query.exclude && !req.query.refresh) callListCache.set(cacheKey, { at: Date.now(), payload });
+    if (res.headersSent) return;
     return ApiResponse.success(res, payload);
   } catch (err) {
     logger.error(`[getCallList] ${err.code} ${err.message} sqlMessage=${err.sqlMessage} sql=${(err.sql || '').slice(0, 500)}`);
+    if (res.headersSent) return;
     return ApiResponse.error(res, `架電リスト取得失敗: ${err.sqlMessage || err.message}`, 500, {
       code: err.code,
       errno: err.errno,
@@ -1043,6 +1057,8 @@ const getCallList = async (req, res, next) => {
       sql: (err.sql || '').slice(0, 500),
       stack: String(err.stack || '').split('\n').slice(0, 5),
     });
+  } finally {
+    if (safeguardTimer) clearTimeout(safeguardTimer);
   }
 };
 
