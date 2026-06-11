@@ -269,7 +269,15 @@ export default function AdminCompanies() {
     } catch (err) { /* ignore */ }
   };
 
+  // 進行中のフェッチを安定化させるための AbortController 保持
+  const fetchAbortRef = useRef(null);
   const fetchCompanies = async () => {
+    // 直前のリクエストをキャンセル (フィルタ連打時の重複防止)
+    if (fetchAbortRef.current) {
+      try { fetchAbortRef.current.abort(); } catch (e) {}
+    }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
     try {
       const params = new URLSearchParams({ page, limit: 20 });
       if (search) params.append('search', search);
@@ -277,12 +285,16 @@ export default function AdminCompanies() {
       if (categoryFilter) params.append('category', categoryFilter);
       if (regionFilter) params.append('region', regionFilter);
       if (statsActionable) params.append('actionable', '1');
-      const { data } = await api.get(`/api/admin/companies?${params}`);
+      const { data } = await api.get(`/api/admin/companies?${params}`, { signal: controller.signal });
       if (data.success) {
         setCompanies(data.data.companies);
         setPagination(data.data.pagination);
       }
-    } catch (err) { toast.error('架電リスト取得に失敗しました'); }
+    } catch (err) {
+      // AbortError (新しいリクエストで上書き) は無視
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
+      toast.error('架電リスト取得に失敗しました');
+    }
   };
 
   const handleSearch = (e) => {

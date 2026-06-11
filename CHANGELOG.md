@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト管理: fetchCompanies に AbortController を入れて連続フェッチを安定化
+- 「架電リストが表示されなくなった」事象の対策。
+- 症状: Network タブで同じ URL の `companies?page=1&limit=20` が複数 canceled / pending 状態 → state が空配列で「企業がありません」と表示される。
+- 原因: フィルタ変更や useEffect 連鎖で fetchCompanies が高速に重ねて呼ばれ、後発が前のレスポンスを上書き or canceled で何も入らないケース。
+- 修正: `fetchAbortRef.current` で進行中のリクエストを保持し、次回呼び出し時に明示的に `abort()` する。CanceledError/AbortError はトーストを出さず無視。
+- これで複数フィルタを高速変更しても最後の応答だけが state に反映される。
+
 ### CSVインポート(バルク): ファイルごとの詳細内訳を表示
 - 「複数インポート時は各ファイルごとに内訳を表示してほしい」要望に対応。
 - 結果欄を 1 行テキストから **ファイルごとのカード形式** に変更。
