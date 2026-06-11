@@ -249,10 +249,11 @@ export default function CallListPage() {
         const inserted = Number(r.insertedCount ?? r.inserted ?? r.added ?? 0);
         const updated = Number(r.updatedCount ?? r.updated ?? 0);
         const duplicate = Number(r.duplicateCount ?? 0);
-        const exclusion = Number(r.exclusionSkipCount ?? r.excluded ?? 0);
+        const exclusion = Number(r.exclusionSkipCount ?? r.excluded ?? r.excludedCount ?? 0);
         const skipped = Number(r.skippedCount ?? r.skipped ?? 0);
         const totalRows = Number(r.totalRows ?? 0);
-        const autoAssigned = Number(r.autoAssignedCount ?? r.assigned ?? 0);
+        const autoAssigned = Number(r.autoAssignedCount ?? r.assigned ?? r.autoAssigned ?? 0);
+        const faxCount = Number(r.faxCount ?? 0);
         totals.added += inserted;
         totals.updated += updated;
         totals.skipped += skipped + duplicate + exclusion;
@@ -260,8 +261,8 @@ export default function CallListPage() {
         results.push({
           name: f.name,
           ok: true,
-          summary: `追加${inserted.toLocaleString()}/更新${updated.toLocaleString()}/重複${duplicate.toLocaleString()}/除外${exclusion.toLocaleString()}/スキップ${skipped.toLocaleString()} [${elapsed}秒]`,
-          breakdown: { totalRows, inserted, updated, duplicate, exclusion, skipped, autoAssigned, elapsed },
+          summary: `追加${inserted.toLocaleString()}/更新${updated.toLocaleString()}/重複${duplicate.toLocaleString()}/除外${exclusion.toLocaleString()}/スキップ${skipped.toLocaleString()}/FAX${faxCount.toLocaleString()} [${elapsed}秒]`,
+          breakdown: { totalRows, inserted, updated, duplicate, exclusion, skipped, autoAssigned, faxCount, elapsed },
         });
       } catch (err) {
         totals.error_files++;
@@ -678,6 +679,7 @@ export default function CallListPage() {
                             {r.breakdown.exclusion > 0 && (<><div className="text-orange-600">除外スキップ</div><div className="text-right font-mono text-orange-700">{r.breakdown.exclusion.toLocaleString()}</div></>)}
                             {r.breakdown.skipped > 0 && (<><div className="text-gray-500">その他スキップ</div><div className="text-right font-mono text-gray-600">{r.breakdown.skipped.toLocaleString()}</div></>)}
                             {r.breakdown.autoAssigned > 0 && (<><div className="text-purple-600">自動割り当て</div><div className="text-right font-mono text-purple-700">{r.breakdown.autoAssigned.toLocaleString()}件</div></>)}
+                            {r.breakdown.faxCount > 0 && (<><div className="text-teal-600">FAX番号あり</div><div className="text-right font-mono text-teal-700">{r.breakdown.faxCount.toLocaleString()}件</div></>)}
                             <div className="text-gray-400">処理時間</div>
                             <div className="text-right font-mono text-gray-500">{r.breakdown.elapsed}秒</div>
                           </div>

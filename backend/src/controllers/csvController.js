@@ -455,6 +455,7 @@ const importCompanies = async (req, res, next) => {
     let skippedCount = 0;
     let duplicateCount = 0;
     let excludedCount = 0;
+    let faxCount = 0; // FAX番号が取れた件数 (新規・更新問わず)
     const errors = [];
 
     const conn = await pool.getConnection();
@@ -589,6 +590,7 @@ const importCompanies = async (req, res, next) => {
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
         // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
         const faxNumber = normalizePhoneNumber((row.fax_number || '').trim()) || null;
+        if (faxNumber) faxCount++;
 
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
@@ -708,6 +710,7 @@ const importCompanies = async (req, res, next) => {
       skippedCount,
       duplicateCount,
       excludedCount,
+      faxCount,
       autoAssigned: req.user.role === 'operator' ? insertedCount : 0,
       errors: errors.slice(0, 50),
     }, `${insertedCount}件をインポートしました${assignMsg}`);
@@ -1133,6 +1136,7 @@ const importSpecialList = async (req, res, next) => {
     let insertedCount = 0;
     let skippedCount = 0;
     let duplicateCount = 0;
+    let faxCount = 0; // FAX番号が取れた件数
     const errors = [];
 
     const conn = await pool.getConnection();
@@ -1168,6 +1172,7 @@ const importSpecialList = async (req, res, next) => {
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
         // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
         const faxNumber = normalizePhoneNumber((row.fax_number || '').trim()) || null;
+        if (faxNumber) faxCount++;
 
         if (!companyName || !phoneNumber) {
           errors.push({ line: lineNum, message: '企業名または電話番号が空です' });
@@ -1239,6 +1244,7 @@ const importSpecialList = async (req, res, next) => {
       insertedCount,
       skippedCount,
       duplicateCount,
+      faxCount,
       autoAssigned: 0,
       errors: errors.slice(0, 50),
     }, `特別リストに${insertedCount}件をインポートしました`);
