@@ -1613,6 +1613,7 @@ const recomputeIndustryCategory = async (req, res, next) => {
     // CASE 式: companyController の getCallList などで使われている分類ロジックと同じ
     // CASE 順序: 複合キーワード(建材小売、建築資材販売)を先に「建設」扱いするため、
     // 建設を小売より前に評価する。同様に飲食系も小売「飲食料品小売業」を後回しに。
+    // 製造系は「金属/部品/化学/食品/衣料/印刷/木製/プラスチック/ゴム/紙/繊維」など広めに拾う。
     const CATEGORY_SQL = `
       CASE
         WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' OR industry LIKE '%建材%' OR industry LIKE '%住宅%' OR industry LIKE '%リノベ%' THEN '建設'
@@ -1620,9 +1621,9 @@ const recomputeIndustryCategory = async (req, res, next) => {
         WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
         WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
         WHEN industry LIKE '%飲食%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
-        WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' THEN '農業'
-        WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' THEN '製造'
-        WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' THEN '小売'
+        WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' OR industry LIKE '%水産%' OR industry LIKE '%漁業%' OR industry LIKE '%林業%' OR industry LIKE '%農産%' THEN '農業'
+        WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' OR industry LIKE '%金属%' OR industry LIKE '%部品%' OR industry LIKE '%機械%' OR industry LIKE '%化学%' OR industry LIKE '%食品%' OR industry LIKE '%飲料%' OR industry LIKE '%繊維%' OR industry LIKE '%衣料%' OR industry LIKE '%印刷%' OR industry LIKE '%木材%' OR industry LIKE '%木製%' OR industry LIKE '%プラスチック%' OR industry LIKE '%ゴム%' OR industry LIKE '%紙%' OR industry LIKE '%パルプ%' OR industry LIKE '%セメント%' OR industry LIKE '%窯業%' OR industry LIKE '%電子%' OR industry LIKE '%輸送機%' OR industry LIKE '%自動車%' OR industry LIKE '%電気機械%' THEN '製造'
+        WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' OR industry LIKE '%販売%' THEN '小売'
         ELSE 'その他'
       END
     `;

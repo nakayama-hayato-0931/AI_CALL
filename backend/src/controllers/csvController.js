@@ -13,6 +13,51 @@ const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 
 /**
+ * industry テキストから industry_category を計算するヘルパー。
+ * 順序は companyController.recompute-industry-category の CASE 式と同一。
+ * CSV インポート直後にこの SQL で UPDATE することで、新規行に正しいカテゴリが付く。
+ */
+const INDUSTRY_CATEGORY_SQL_CASE = `
+  CASE
+    WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' OR industry LIKE '%建材%' OR industry LIKE '%住宅%' OR industry LIKE '%リノベ%' THEN '建設'
+    WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
+    WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
+    WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
+    WHEN industry LIKE '%飲食%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
+    WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' OR industry LIKE '%水産%' OR industry LIKE '%漁業%' OR industry LIKE '%林業%' OR industry LIKE '%農産%' THEN '農業'
+    WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' OR industry LIKE '%金属%' OR industry LIKE '%部品%' OR industry LIKE '%機械%' OR industry LIKE '%化学%' OR industry LIKE '%食品%' OR industry LIKE '%飲料%' OR industry LIKE '%繊維%' OR industry LIKE '%衣料%' OR industry LIKE '%印刷%' OR industry LIKE '%木材%' OR industry LIKE '%木製%' OR industry LIKE '%プラスチック%' OR industry LIKE '%ゴム%' OR industry LIKE '%紙%' OR industry LIKE '%パルプ%' OR industry LIKE '%セメント%' OR industry LIKE '%窯業%' OR industry LIKE '%電子%' OR industry LIKE '%輸送機%' OR industry LIKE '%自動車%' OR industry LIKE '%電気機械%' THEN '製造'
+    WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' OR industry LIKE '%販売%' THEN '小売'
+    ELSE 'その他'
+  END
+`;
+
+/**
+ * インポート直後の新規/更新行に industry_category を一括計算する。
+ * - import_batch_id があれば該当バッチだけ高速 UPDATE
+ * - 無ければ industry_category IS NULL の行を全件 UPDATE (バッチ ID 未対応の旧パス用)
+ */
+const applyIndustryCategoryAfterImport = async (importBatchId = null) => {
+  try {
+    if (importBatchId) {
+      const [r] = await pool.query(
+        `UPDATE companies SET industry_category = (${INDUSTRY_CATEGORY_SQL_CASE})
+         WHERE import_batch_id = ? AND industry IS NOT NULL AND industry != ''`,
+        [importBatchId]
+      );
+      logger.info(`[ImportCategory] batch=${importBatchId} updated=${r.affectedRows}`);
+    } else {
+      const [r] = await pool.query(
+        `UPDATE companies SET industry_category = (${INDUSTRY_CATEGORY_SQL_CASE})
+         WHERE industry_category IS NULL AND industry IS NOT NULL AND industry != ''`
+      );
+      logger.info(`[ImportCategory] NULL category updated=${r.affectedRows}`);
+    }
+  } catch (e) {
+    logger.warn(`[ImportCategory] update failed: ${e.message}`);
+  }
+};
+
+/**
  * 日本語→英語 カラム名マッピング
  * 「全業界まとめ.xlsx」等の新フォーマットにも対応
  */
@@ -633,6 +678,9 @@ const importCompanies = async (req, res, next) => {
     const assignMsg = req.user.role === 'operator' ? `（${insertedCount}件があなたの架電予定に追加されました）` : '';
     logger.info(`ファイルインポート完了: inserted=${insertedCount}, skipped=${skippedCount}, duplicates=${duplicateCount}, excluded=${excludedCount}, user=${req.user.id}`);
 
+    // industry_category を非同期で計算 (応答を待たせない、失敗しても無視)
+    applyIndustryCategoryAfterImport(null).catch(() => {});
+
     return ApiResponse.success(res, {
       totalRows,
       insertedCount,
@@ -768,6 +816,9 @@ const importExclusionList = async (req, res, next) => {
 
     const listLabel = listType === 'ng' ? 'NGリスト' : '既存案件リスト';
     logger.info(`${listLabel}インポート完了: inserted=${insertedCount}, duplicates=${duplicateCount}, excludedCompanies=${excludedCompaniesCount}, user=${req.user.id}`);
+
+    // industry_category を非同期で計算 (NGリスト/既存案件リストにも新規行が入る可能性あり)
+    applyIndustryCategoryAfterImport(null).catch(() => {});
 
     return ApiResponse.success(res, {
       totalRows: records.length,
@@ -1158,6 +1209,9 @@ const importSpecialList = async (req, res, next) => {
     cleanupFile(filePath);
 
     logger.info(`特別リストインポート完了: inserted=${insertedCount}, skipped=${skippedCount}, duplicates=${duplicateCount}, user=${req.user.id}`);
+
+    // industry_category を非同期で計算
+    applyIndustryCategoryAfterImport(null).catch(() => {});
 
     return ApiResponse.success(res, {
       totalRows: records.length,

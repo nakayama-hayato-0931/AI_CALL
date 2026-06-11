@@ -31,6 +31,17 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### インポート: industry_category 自動計算 + 製造系キーワード拡充
+- 「インポート時の業種別振り分けが弱い、その他に振り分けられる」事象を修正。
+- 原因1: CSV インポート時に `industry_category` カラムを設定しておらず、NULL のまま → 業種別絞り込みで「その他」扱い。
+- 原因2: CASE 式に金属/部品/化学/食品/衣料などのキーワードがなく、「金属製品製造・加工」のような企業も製造に分類されなかった。
+- 修正1: `csvController.js` に `applyIndustryCategoryAfterImport()` ヘルパーを追加。`importCompanies` / `importExclusion` / `importSpecial` の各完了時にレスポンス返却前で非同期実行 (await 無し)、新規インポート行の industry_category を自動計算。
+- 修正2: CASE 式の製造系キーワードを拡充 (companyController.recompute-industry-category と csvController の両方):
+  - 製造: 製造/メーカー/加工/工場 → + **金属/部品/機械/化学/食品/飲料/繊維/衣料/印刷/木材/木製/プラスチック/ゴム/紙/パルプ/セメント/窯業/電子/輸送機/自動車/電気機械**
+  - 農業: + 水産/漁業/林業/農産
+  - 小売: + 販売
+- インポート済みの 124,096 件「その他」は、顧客マスタの「業種診断」→「再計算」ボタンで全件再分類してください (推奨)。
+
 ### 全体性能改善: region フィルタの中間一致 LIKE を削除
 - 「オペレーター選択不可・全体的に重い」事象に対応。
 - 原因: companies テーブル (60万行クラス) の region フィルタで `LIKE '%xxx%'` の中間一致を使っていたため毎クエリでフルテーブルスキャン発生 → バックエンド全体が詰まりオペレーター一覧 API なども応答遅延。
