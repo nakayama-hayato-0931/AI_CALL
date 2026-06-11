@@ -185,11 +185,12 @@ app.get('/api/_diag', async (req, res) => {
     const t0 = Date.now();
     let timer;
     const queryP = poolLocal.query('SELECT 1 AS ok');
-    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 3000); });
+    // mysql2 の connectTimeout(20s) を待ち切るために 25秒。 真のエラーを掴むため。
+    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 25000); });
     const result = await Promise.race([queryP, timeoutP]);
     if (timer) clearTimeout(timer);
-    status.db = { latencyMs: Date.now() - t0, result: result === '__TIMEOUT__' ? 'timeout 3s' : 'ok' };
-  } catch (e) { status.db = { error: `${e.code || ''} ${e.message}`, stack: String(e.stack || '').split('\n').slice(0, 3) }; }
+    status.db = { latencyMs: Date.now() - t0, result: result === '__TIMEOUT__' ? 'timeout 25s' : 'ok' };
+  } catch (e) { status.db = { error: `${e.code || ''} ${e.message}`, errno: e.errno, sqlState: e.sqlState, stack: String(e.stack || '').split('\n').slice(0, 5) }; }
   // 長時間クエリ (DB が応答する場合のみ)
   try {
     const poolLocal = require('../config/database');
