@@ -361,6 +361,12 @@ const getAllOperatorPerformance = async (req, res, next) => {
       } catch (e) { /* keep calls-based count */ }
 
       // KPI補正値: 日別は上書き、月別/週別/累計は集計（合計）として加算
+      // 業務カテゴリで絞り込まれている場合 (特定技能管理画面など) は KPI 補正を適用しない。
+      // kpi_adjustments テーブルには work_category 区分がなく、無条件で適用すると特定技能側に
+      // 技人国の補正値が漏れる事象になる。
+      if (wcFilter.sql) {
+        // 業務カテゴリ絞込時はスキップ
+      } else
       try {
         const [adjRows] = await pool.query(
           'SELECT field, date, value FROM kpi_adjustments WHERE user_id = ? AND date BETWEEN ? AND ?',

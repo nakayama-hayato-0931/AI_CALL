@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ(漏れfix2): KPI補正を業務カテゴリ絞込時はスキップ
+- 特定技能管理画面で「中田倫哉: 案件1」が残っていた事象を修正。
+- 原因: `kpi_adjustments` テーブルには `work_category` 区分がなく、`getAllOperatorPerformance` で無条件に補正値を加算していた → 特定技能管理画面 (フィルタあり) でも技人国の補正値 (project_count=1 等) が漏れていた。
+- 修正: `wcFilter.sql` が non-empty (絞込中) のときは KPI 補正処理全体をスキップ。これで特定技能管理画面は純粋な calls/projects.work_category データのみが反映される。
+- 通常の管理者画面 (絞込なし) では引き続き KPI 補正が適用される。
+
 ### 業務カテゴリ Phase 8: work_hours に work_category 追加 + 残り漏れ修正
 - 「稼働時間も特定技能でログインしたときだけ集計、既存は技人国扱い」要望に対応。
 - スキーマ: `work_hours` テーブルに `work_category VARCHAR(20) NOT NULL DEFAULT 'general'` カラム追加 (criticalPreflight)。インデックスも作成。
