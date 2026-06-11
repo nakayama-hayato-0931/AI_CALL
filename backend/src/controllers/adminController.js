@@ -482,27 +482,15 @@ const getCompanies = async (req, res, next) => {
       whereClauses.push('co.industry = ?');
       params.push(industry);
     }
-    // 大枠カテゴリフィルタ（同優先順位ロジック）
+    // 大枠カテゴリフィルタ — industry_category カラムを使う (industry-stats と同じロジック)
+    // 「その他」は NULL も含む。getCompaniesIndustryStats の `IFNULL(c.industry_category, 'その他')` と一致。
     if (category) {
-      const catExpr = `
-        CASE
-          WHEN co.industry LIKE '%製造業%' OR co.industry LIKE '%メーカー%' OR co.industry LIKE '%加工業%' THEN '製造'
-          WHEN co.industry LIKE '%小売%' OR co.industry LIKE '%卸売%' OR co.industry LIKE '%スーパー%' OR co.industry LIKE '%コンビニ%' OR co.industry LIKE '%ショッピング%' OR co.industry LIKE '%商社%' OR co.industry LIKE '%販売%' OR co.industry LIKE '%物販%' THEN '小売'
-          WHEN co.industry LIKE '%建設%' OR co.industry LIKE '%工事%' OR co.industry LIKE '%建築%' OR co.industry LIKE '%土木%' OR co.industry LIKE '%リフォーム%' THEN '建設'
-          WHEN co.industry LIKE '%宿泊%' OR co.industry LIKE '%ホテル%' OR co.industry LIKE '%旅館%' OR co.industry LIKE '%民宿%' THEN '宿泊'
-          WHEN co.industry LIKE '%農業%' OR co.industry LIKE '%農産%' OR co.industry LIKE '%畜産%' OR co.industry LIKE '%水産%' OR co.industry LIKE '%漁業%' OR co.industry LIKE '%林業%' THEN '農業'
-          WHEN co.industry LIKE '%介護%' OR co.industry LIKE '%医療%' OR co.industry LIKE '%福祉%' OR co.industry LIKE '%病院%' OR co.industry LIKE '%クリニック%' OR co.industry LIKE '%歯科%' THEN '介護'
-          WHEN co.industry LIKE '%運輸%' OR co.industry LIKE '%運送%' OR co.industry LIKE '%輸送%' OR co.industry LIKE '%物流%' OR co.industry LIKE '%タクシー%' OR co.industry LIKE '%鉄道%' OR co.industry LIKE '%配送%' THEN '運輸'
-          WHEN co.industry LIKE '%情報通信%' OR co.industry LIKE '%ソフトウェア%' OR co.industry LIKE '%IT業%' OR co.industry LIKE '%システム%' THEN 'IT'
-          WHEN co.industry LIKE '%金融%' OR co.industry LIKE '%銀行%' OR co.industry LIKE '%保険%' OR co.industry LIKE '%証券%' THEN '金融'
-          WHEN co.industry LIKE '%不動産%' THEN '不動産'
-          WHEN co.industry LIKE '%美容%' OR co.industry LIKE '%エステ%' OR co.industry LIKE '%理容%' OR co.industry LIKE '%サロン%' THEN '美容'
-          WHEN co.industry LIKE '%飲食店%' OR co.industry LIKE '%グルメ%' OR co.industry LIKE '%レストラン%' OR co.industry LIKE '%居酒屋%' OR co.industry LIKE '%ラーメン%' OR co.industry LIKE '%カフェ%' OR co.industry LIKE '%喫茶店%' OR co.industry LIKE '%寿司%' OR co.industry LIKE '%焼肉%' OR co.industry LIKE '%和食%' OR co.industry LIKE '%中華%' OR co.industry LIKE '%洋食%' OR co.industry LIKE '%食堂%' OR co.industry LIKE '%ダイニング%' OR co.industry LIKE '%そば%' OR co.industry LIKE '%うどん%' OR co.industry LIKE '%菓子%' THEN '飲食'
-          WHEN co.industry LIKE '%サービス%' THEN 'サービス'
-          ELSE 'その他'
-        END`;
-      whereClauses.push(`(${catExpr}) = ?`);
-      params.push(category);
+      if (category === 'その他') {
+        whereClauses.push(`(co.industry_category = 'その他' OR co.industry_category IS NULL)`);
+      } else {
+        whereClauses.push(`co.industry_category = ?`);
+        params.push(category);
+      }
     }
     // 未架電+不通のみフィルタ
     if (actionable === '1' || actionable === 'true') {

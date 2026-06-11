@@ -31,6 +31,15 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト管理: 業種カテゴリフィルタを industry_category カラムに統一
+- 「業種カテゴリバッジでは148,469件あるのに、その他フィルタを掛けると企業が表示されない」事象を修正。
+- 原因: industry-stats API は `IFNULL(c.industry_category, 'その他')` で集計、getCompanies API は industry テキストの CASE 式で計算 → 判定不一致。
+  - industry-stats では `industry_category IS NULL` の行も「その他」扱い
+  - getCompanies の CASE 式では NULL/未該当の行を ELSE 'その他' に分類するが、 industry テキストから判定するため結果が異なる
+- 修正: getCompanies の category フィルタを `co.industry_category = ?` に変更 (CASE 式を撤去)。
+  - 「その他」指定時は `(industry_category = 'その他' OR industry_category IS NULL)` で NULL も含める。
+- これでバッジの件数と一覧表示が一致するようになる。
+
 ### CSVインポート(バルク): 完了時に成功ファイルを解除、エラーのみ残す
 - 「インポート完了したら選択中のファイルは解除、エラーのものだけ残してほしい」要望対応。
 - 一括インポート完了時、`bulkFiles` から **成功したファイルを取り除き、エラーのものだけ** state に残す。
