@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### CORS(緊急fix): allowedHeaders に X-Work-Category 追加
+- 「CSVバルクインポートが全件 CORS error で失敗」事象を修正。
+- 原因: 業務カテゴリ (技人国/特定技能) 機能で追加した `X-Work-Category` カスタムヘッダが、サーバー側 CORS 設定の `allowedHeaders` に含まれておらず、preflight で承認されないため本リクエストが CORS error 扱いになっていた。
+- 影響: CSVバルクインポートだけでなく、全 API リクエスト (ダッシュボード/CPA/その他)も localStorage に work_category が保存されている状態だと同様にエラー。スクショの preflight 204 OK / 本リクエスト CORS error がこのパターン。
+- 修正: `allowedHeaders: ['Content-Type', 'Authorization', 'X-Work-Category']` に X-Work-Category を追加。PATCH メソッドも追加。
+
 ### CSVインポート(バルク): エラー詳細を console + 結果欄に表示
 - 「.xls 6ファイル全部失敗 (4秒で)」事象の原因切り分け用。
 - 失敗時に console.error で `{status, code, message, response, raw}` を全部出力。

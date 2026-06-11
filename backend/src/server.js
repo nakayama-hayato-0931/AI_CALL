@@ -71,8 +71,10 @@ app.use(cors({
     callback(new Error('CORS policy: Origin not allowed'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  // X-Work-Category は技人国/特定技能 ログイン選択を送るカスタムヘッダ。
+  // 許可しないと CORS preflight で承認されず本リクエストが CORS error になる。
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Work-Category'],
 }));
 
 // セキュリティヘッダー（CORSの後に配置）
