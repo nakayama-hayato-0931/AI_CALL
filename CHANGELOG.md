@@ -31,6 +31,19 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 起動時に 60秒以上動いている UPDATE/DELETE を強制 KILL
+- 前回起動時の重い UPDATE が MySQL 側に生き残っていると、 backend を再起動しても
+  新規 SELECT (operators, login, getCallList) が詰まり続ける問題を解消。
+- criticalPreflight 冒頭で information_schema.processlist を見て、
+  `command='Query' AND time > 60 AND info LIKE 'UPDATE%' OR 'DELETE%'` を KILL。
+- これで Railway 上で MySQL 自体を Restart せずとも、 backend Restart だけで詰まりが解消する。
+
+### operators API: 3秒で諦めて空配列を返す (500 を出さない)
+- getOperators で pool.query を Promise.race + 3秒タイムアウト。
+- タイムアウト時はキャッシュ or 空配列を返してログイン画面を 500 で壊さない。
+- DB が詰まっていても少なくとも login API でのメール+パスワードログインは動く。
+- 結果: 30秒待たされる Internal Server Error は出ない。
+
 ### region backfill: 既に 90% 埋まっていれば一切実行せずフラグだけ立てる
 - 直前の修正でフラグが立つまでの初回起動でまだ重い UPDATE が走る問題を解消。
 - 起動時に `SELECT COUNT(*), SUM(region IS NOT NULL)` で埋まり率を確認 (これは index で速い)。

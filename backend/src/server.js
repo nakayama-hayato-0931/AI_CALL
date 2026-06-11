@@ -288,6 +288,21 @@ const criticalPreflight = async () => {
   // (起動だけ通れば軽量な API は応答できる。次のデプロイでスキーマを再試行可能。)
   try { await pool.execute('SET SESSION lock_wait_timeout = 30'); } catch (e) {}
   try { await pool.execute('SET SESSION innodb_lock_wait_timeout = 30'); } catch (e) {}
+  // 前回起動時の長時間 UPDATE が MySQL 側で生き残っていると 新規 SELECT を全部詰まらせる。
+  // 60秒以上 UPDATE/DELETE しているクエリを強制終了。 SUPER 権限が無くても自分の接続なら KILL 可。
+  try {
+    const [longQueries] = await pool.query(
+      "SELECT id, time, LEFT(info, 200) AS info FROM information_schema.processlist " +
+      "WHERE command = 'Query' AND time > 60 AND (info LIKE 'UPDATE%' OR info LIKE 'DELETE%')"
+    );
+    for (const q of longQueries) {
+      try {
+        await pool.query(`KILL ${q.id}`);
+        logger.warn(`[Preflight] KILLED long query id=${q.id} time=${q.time}s sql=${q.info?.substring(0, 80)}`);
+      } catch (e) { logger.warn(`[Preflight] KILL ${q.id} failed: ${e.message}`); }
+    }
+    if (longQueries.length > 0) logger.warn(`[Preflight] ${longQueries.length}件 の長時間クエリを強制終了`);
+  } catch (e) { logger.warn(`[Preflight] long-query kill skipped: ${e.message}`); }
   // 先にカラム有無を確認
   let hasResultCol = false, hasUserCol = false;
   try {
