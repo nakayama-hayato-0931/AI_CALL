@@ -568,7 +568,27 @@ const runMigrations = async () => {
     const [flagRows] = await pool.query(
       "SELECT setting_value FROM system_settings WHERE setting_key = 'region_backfill_done'"
     );
-    if (flagRows.length === 0) {
+    let shouldRunBackfill = flagRows.length === 0;
+    // 既に region が概ね埋まっているなら backfill 自体をスキップしてフラグだけ立てる。
+    // (起動毎に 60万行スキャンが走るのを完全に防ぐため。)
+    if (shouldRunBackfill) {
+      try {
+        const [stat] = await pool.query(
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN region IS NOT NULL AND region != '' THEN 1 ELSE 0 END) AS filled FROM companies"
+        );
+        const total = Number(stat[0]?.total) || 0;
+        const filled = Number(stat[0]?.filled) || 0;
+        const ratio = total > 0 ? filled / total : 1;
+        if (ratio >= 0.90 || total === 0) {
+          await pool.execute(
+            "INSERT INTO system_settings (setting_key, setting_value) VALUES ('region_backfill_done', 'true')"
+          );
+          logger.info(`[Migration] region backfill スキップ (既に ${(ratio * 100).toFixed(1)}% 埋まり済み、フラグだけ立てた)`);
+          shouldRunBackfill = false;
+        }
+      } catch (e) { logger.warn(`[Migration] region ratio check failed: ${e.message}`); }
+    }
+    if (shouldRunBackfill) {
       const prefs = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
       const shortMap = {
         '青森': '青森県', '岩手': '岩手県', '宮城': '宮城県', '秋田': '秋田県',

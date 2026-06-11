@@ -31,6 +31,13 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### region backfill: 既に 90% 埋まっていれば一切実行せずフラグだけ立てる
+- 直前の修正でフラグが立つまでの初回起動でまだ重い UPDATE が走る問題を解消。
+- 起動時に `SELECT COUNT(*), SUM(region IS NOT NULL)` で埋まり率を確認 (これは index で速い)。
+- 90% 以上埋まっていればフラグだけ立てて backfill ループ全体をスキップ。
+- 未満なら従来通り 47×UPDATE を実行 (本当に必要な場合のみ)。
+- `return` ではなく `shouldRunBackfill` flag で制御するので後続マイグレーション (index 作成等) は正常実行。
+
 ### 真の犯人: 起動毎の region backfill (60万行×47回 UPDATE) を一度だけに
 - 「ログイン/オペレーター取得/自動ピックアップ何もできない」事象の根本原因。
 - 直近何度もユーザーが Restart しても症状が直らなかった原因がこれ。
