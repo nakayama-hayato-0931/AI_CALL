@@ -31,6 +31,12 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電リスト性能改善: 業種別モードのキーワード OR LIKE を除去 (60万行で重い)
+- 「ピックアップが遅い」事象の対策。
+- 原因: 業種別モードで `industry_category = ?` に加えて `industry LIKE '%kw1%' OR LIKE '%kw2%' ...` (各カテゴリ15キーワード) を OR 評価していたため、index が使えずフルテーブルスキャンが発生。Tier 2-5 × 各種フィルタで重複実行されて全体応答が遅延。
+- 修正: `modeFilterSQL` を `c.industry_category = ?` のみに変更。 industry_category カラムには `idx_companies_category` のインデックスがあるので高速。
+- 複合業種企業 (うどん、建設業など) で漏れる場合は、顧客マスタの「業種診断」→「再計算」ボタンで industry テキストから再分類して industry_category を最新化する想定。インポート時の自動計算も既に追加済み。
+
 ### 架電リスト管理: 業種カテゴリフィルタを industry_category カラムに統一
 - 「業種カテゴリバッジでは148,469件あるのに、その他フィルタを掛けると企業が表示されない」事象を修正。
 - 原因: industry-stats API は `IFNULL(c.industry_category, 'その他')` で集計、getCompanies API は industry テキストの CASE 式で計算 → 判定不一致。
