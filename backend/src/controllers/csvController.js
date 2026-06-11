@@ -465,15 +465,20 @@ const importCompanies = async (req, res, next) => {
       // 営業リストフラグ（リクエストボディから取得）
       const isSalesList = req.body.is_sales_list === '1' || req.body.is_sales_list === true ? 1 : 0;
 
-      // 事前にDB全phone_numberをロード（重複チェック高速化）
-      logger.info('Pre-loading phone sets...');
-      const [existingPhones] = await conn.query('SELECT id, phone_number, is_sales_list, imported_by_user_id FROM companies WHERE phone_number IS NOT NULL');
+      // 事前にDB全phone_number + company_nameをロード（重複チェック高速化）
+      // 会社名重複もチェックすることで「電話番号は違うが同じ会社」(本社/支店/番号変更等) も検出。
+      logger.info('Pre-loading phone/name sets...');
+      const [existingPhones] = await conn.query('SELECT id, phone_number, company_name, is_sales_list, imported_by_user_id FROM companies WHERE phone_number IS NOT NULL OR company_name IS NOT NULL');
       // phone_number → {id, is_sales_list, imported_by_user_id} のマップ
       const dbPhoneMap = new Map();
-      existingPhones.forEach(r => dbPhoneMap.set(r.phone_number, r));
+      const dbNameMap = new Map();
+      existingPhones.forEach(r => {
+        if (r.phone_number) dbPhoneMap.set(r.phone_number, r);
+        if (r.company_name) dbNameMap.set(r.company_name, r);
+      });
       // 双方向重複チェック用: 相手側リストの電話番号セット
-      const crossListPhoneSet = new Set(existingPhones.filter(r => r.is_sales_list !== isSalesList).map(r => r.phone_number));
-      logger.info(`Companies loaded: ${dbPhoneMap.size}`);
+      const crossListPhoneSet = new Set(existingPhones.filter(r => r.is_sales_list !== isSalesList && r.phone_number).map(r => r.phone_number));
+      logger.info(`Companies loaded: phones=${dbPhoneMap.size}, names=${dbNameMap.size}`);
       const [excludedPhones] = await conn.query('SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL');
       const excludePhoneSet = new Set(excludedPhones.map(r => r.phone_number));
       logger.info(`Exclusions loaded: ${excludePhoneSet.size}. Starting import loop...`);
@@ -507,10 +512,14 @@ const importCompanies = async (req, res, next) => {
         );
         // MySQL の multi-row INSERT は insertId に先頭idを返し、以降は連番。
         const firstId = result.insertId;
-        // dbPhoneMap も更新（後続行の重複検知用）
+        // dbPhoneMap / dbNameMap も更新（後続行の重複検知用）
         for (let k = 0; k < pendingInserts.length; k++) {
-          const phone = pendingInserts[k][1];
-          dbPhoneMap.set(phone, { id: firstId + k, is_sales_list: isSalesList, imported_by_user_id: importedByUserId });
+          const tuple = pendingInserts[k];
+          const cname = tuple[0];
+          const phone = tuple[1];
+          const rec = { id: firstId + k, is_sales_list: isSalesList, imported_by_user_id: importedByUserId };
+          if (phone) dbPhoneMap.set(phone, rec);
+          if (cname) dbNameMap.set(cname, rec);
         }
         // 自作リスト時 → company_assignments もバッチINSERT
         if (req.user.role === 'operator' && importedByUserId) {
@@ -603,8 +612,9 @@ const importCompanies = async (req, res, next) => {
           return;
         }
 
-        // DB重複チェック: 既存企業があれば「自作リスト優先」ロジック
-        const existing = dbPhoneMap.get(phoneNumber);
+        // DB重複チェック: phone_number 一致 OR company_name 一致
+        // 電話番号が変動した同じ会社 (本社/支店/番号変更等) も拾うため会社名でも判定
+        const existing = dbPhoneMap.get(phoneNumber) || dbNameMap.get(companyName);
         if (existing) {
           // オペレーターの自作リストインポート時
           if (req.user.role === 'operator' && importedByUserId) {
