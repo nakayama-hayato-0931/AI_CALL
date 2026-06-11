@@ -31,6 +31,15 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 業務カテゴリ(漏れfix): getAllOperatorPerformance の projects/calls 個別クエリにも work_category 適用
+- 特定技能管理画面で「まだ特定技能ログインしていないのに案件数や有効接続が出る」事象を修正。
+- 修正前: メインクエリは Phase 2 で wcFilter 適用済みだったが、各オペレーター毎に行う案件数の補完クエリと KPI 補正用の actualForDay 計算クエリ (projects 用 / calls 用) には work_category フィルタが当たっていなかった。
+- 修正:
+  - 案件数補完クエリ (projects p, line 348) に `${wcFilter.sql.replace(c\.→p\.)}` を追加。
+  - KPI 補正の `project_count` actualForDay クエリにも同様に追加。
+  - KPI 補正の `call_count/effective_count/person_count/recall_gained` actualForDay クエリにも `wcFilter.sql.replace(c\.→work_category)` を追加。
+- これで特定技能でログイン済みの実績がない人は、特定技能管理画面で全数値 0 になる (有効接続の `-227` のような負値も解消)。
+
 ### 業務カテゴリ Phase 7: 詳細モーダル・業種別分析エンドポイントすべてに work_category
 - `analyticsController` の以下に wcFilter 適用:
   - `getWaitingContactDetail` (連絡待ち詳細)

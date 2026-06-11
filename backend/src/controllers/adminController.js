@@ -345,11 +345,13 @@ const getAllOperatorPerformance = async (req, res, next) => {
       // 案件数: projectsテーブルから直接カウント（手動追加案件も含む）
       try {
         const projCTFilter = call_type === 'sales' ? "AND p.call_type = 'sales'" : "AND p.call_type = 'operator'";
+        // 業務カテゴリ (技人国/特定技能) フィルタ。getAllOperatorPerformance 冒頭で構築済みの wcFilter を流用。
         const [projRows] = await pool.query(
           `SELECT COUNT(*) as cnt FROM projects p
            WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0
-             AND DATE(p.created_at) BETWEEN ? AND ? ${projCTFilter}`,
-          [op.user_id, dateFrom, dateTo]
+             AND DATE(p.created_at) BETWEEN ? AND ? ${projCTFilter}
+             ${wcFilter.sql.replace(/c\.work_category/g, 'p.work_category')}`,
+          [op.user_id, dateFrom, dateTo, ...wcFilter.params]
         );
         op.projects = Number(projRows[0]?.cnt) || 0;
       } catch (e) { /* keep calls-based count */ }
@@ -391,11 +393,12 @@ const getAllOperatorPerformance = async (req, res, next) => {
                 actualForDay = Number(r[0]?.cnt) || 0;
               } else if (adj.field === 'project_count') {
                 const projCTFilter = call_type === 'sales' ? "AND p.call_type = 'sales'" : "AND p.call_type = 'operator'";
+                const wcSql = wcFilter.sql.replace(/c\.work_category/g, 'p.work_category');
                 const [r] = await pool.query(
                   `SELECT COUNT(*) as cnt FROM projects p
                    WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0
-                     AND DATE(p.created_at) = ? ${projCTFilter}`,
-                  [op.user_id, adj.date]
+                     AND DATE(p.created_at) = ? ${projCTFilter} ${wcSql}`,
+                  [op.user_id, adj.date, ...wcFilter.params]
                 );
                 actualForDay = Number(r[0]?.cnt) || 0;
               } else {
@@ -409,9 +412,10 @@ const getAllOperatorPerformance = async (req, res, next) => {
                 const expr = colMap[adj.field];
                 if (expr) {
                   const ctf = call_type === 'sales' ? "AND call_type = 'sales'" : "AND call_type = 'operator'";
+                  const wcSql = wcFilter.sql.replace(/c\.work_category/g, 'work_category');
                   const [r] = await pool.query(
-                    `SELECT ${expr} as v FROM calls WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP' ${ctf}`,
-                    [op.user_id, adj.date]
+                    `SELECT ${expr} as v FROM calls WHERE user_id = ? AND DATE(call_started_at) = ? AND result_code != 'SKIP' ${ctf} ${wcSql}`,
+                    [op.user_id, adj.date, ...wcFilter.params]
                   );
                   actualForDay = Number(r[0]?.v) || 0;
                 }
