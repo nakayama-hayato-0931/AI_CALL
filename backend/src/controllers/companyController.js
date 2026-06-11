@@ -1476,6 +1476,175 @@ const getIndustryRegions = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/companies/:id/pickup-diagnose
+ * 特定企業がなぜ架電リストに出てこないかを診断する。
+ * 各除外条件を1つずつ評価して、引っかかっている理由を返す。
+ */
+const diagnoseCompanyPickup = async (req, res, next) => {
+  try {
+    const companyId = parseInt(req.params.id, 10);
+    if (!companyId) return ApiResponse.badRequest(res, 'id が不正です');
+    const userId = req.user.id;
+
+    const [rows] = await pool.query(
+      `SELECT id, company_name, phone_number, industry, industry_category, region, address,
+              exclusion_flag, is_special, is_sales_list,
+              last_called_at, last_call_result_code, last_call_user_id,
+              locked_by_user_id, locked_at
+       FROM companies WHERE id = ?`,
+      [companyId]
+    );
+    if (rows.length === 0) return ApiResponse.notFound(res, '企業が見つかりません');
+    const c = rows[0];
+
+    const reasons = [];
+    const ok = [];
+
+    if (c.exclusion_flag) reasons.push('exclusion_flag が立っている (完全除外)');
+    else ok.push('exclusion_flag: OK');
+
+    if (c.is_special) reasons.push('is_special が立っている (特別リスト扱い・auto モードで非表示)');
+    else ok.push('is_special: OK');
+
+    if (c.is_sales_list) reasons.push('is_sales_list が立っている (旧営業用リスト・現在は is_sales_list=0 のみピックアップ)');
+    else ok.push('is_sales_list: OK');
+
+    // 永久除外結果
+    if (['SKIP', 'PROJECT', 'RECALL', 'INTERESTED'].includes(c.last_call_result_code)) {
+      reasons.push(`前回結果が '${c.last_call_result_code}' のため永久除外`);
+    } else {
+      ok.push(`last_call_result_code='${c.last_call_result_code || 'なし'}': 永久除外対象外`);
+    }
+
+    // recall_tasks pending
+    try {
+      const [rt] = await pool.query(
+        "SELECT user_id, status, recall_at FROM recall_tasks WHERE company_id = ? AND status = 'pending'",
+        [companyId]
+      );
+      if (rt.length > 0) {
+        const u = rt[0].user_id === userId ? '自分' : `user_id=${rt[0].user_id}`;
+        reasons.push(`recall_tasks に pending が ${rt.length}件 (${u} の予約・Tier 1 で先頭表示)`);
+      } else {
+        ok.push('recall_tasks: pending なし');
+      }
+    } catch (e) {}
+
+    // company_assignments (手動割当)
+    try {
+      const [ca] = await pool.query(
+        'SELECT user_id, is_auto FROM company_assignments WHERE company_id = ?',
+        [companyId]
+      );
+      const manualOthers = ca.filter(a => Number(a.is_auto) === 0 && a.user_id !== userId);
+      const manualMine = ca.filter(a => Number(a.is_auto) === 0 && a.user_id === userId);
+      if (manualOthers.length > 0) {
+        reasons.push(`他オペレーターに手動割り当て (user_id=${manualOthers.map(x => x.user_id).join(',')})`);
+      } else {
+        ok.push('company_assignments: 他人手動割り当てなし');
+      }
+      if (manualMine.length > 0) ok.push('自分に手動割り当てあり (Tier 0 で表示されるはず)');
+    } catch (e) {}
+
+    // lock
+    const LOCK_TIMEOUT_MIN = 30;
+    if (c.locked_by_user_id && c.locked_by_user_id !== userId) {
+      const lockedAt = c.locked_at ? new Date(c.locked_at) : null;
+      const stale = lockedAt && (Date.now() - lockedAt.getTime() > LOCK_TIMEOUT_MIN * 60 * 1000);
+      if (stale) ok.push('他人ロック中だがタイムアウト済 (許可)');
+      else reasons.push(`他人ロック中 (user_id=${c.locked_by_user_id})`);
+    } else {
+      ok.push('ロック: OK');
+    }
+
+    // 今日架電済 (自分)
+    try {
+      const [tc] = await pool.query(
+        "SELECT COUNT(*) as cnt FROM calls WHERE company_id = ? AND user_id = ? AND DATE(call_started_at) = CURDATE() AND result_code IS NOT NULL",
+        [companyId, userId]
+      );
+      if (Number(tc[0].cnt) > 0) reasons.push('本日すでに自分が架電済 (同日内除外)');
+      else ok.push('本日の自分の架電: なし');
+    } catch (e) {}
+
+    // ② 都道府県
+    try {
+      const [pr] = await pool.execute(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_prefectures'"
+      );
+      if (pr.length > 0) {
+        const map = JSON.parse(pr[0].setting_value || '{}');
+        const enabled = new Set(Object.entries(map).filter(([, v]) => v === true).map(([k]) => k));
+        const short = new Set([...enabled].map(p => p.replace(/(都|道|府|県)$/, '')));
+        const regionMatch = enabled.has(c.region || '') || short.has(c.region || '');
+        const addressMatch = c.address && [...enabled].some(p => c.address.startsWith(p));
+        if (enabled.size > 0 && !regionMatch && !addressMatch) {
+          reasons.push(`②自動ピックアップ対象都道府県の範囲外 (region='${c.region}', address先頭='${(c.address || '').slice(0, 6)}')`);
+        } else {
+          ok.push('②都道府県: OK');
+        }
+      }
+    } catch (e) {}
+
+    // 業種地域ルール (③) は auto モードのみ判定
+    try {
+      const [irrs] = await pool.query(
+        `SELECT industry_name, region FROM industry_region_rules
+         WHERE (industry_name = ? OR ? LIKE CONCAT('%', industry_name, '%') OR industry_name = ?)`,
+        [c.industry_category, c.industry, c.industry_category]
+      );
+      const ruleMatch = irrs.some(r => c.address && c.address.startsWith(r.region));
+      if (irrs.length === 0) {
+        ok.push('③業種地域ルール: 該当業種のルールなし (autoモードでは全国NG扱いになる場合あり)');
+      } else if (ruleMatch) {
+        ok.push('③業種地域ルール: 該当 (autoモードで許可)');
+      } else {
+        reasons.push(`③業種地域ルール: 業種=${c.industry_category} のルール ${irrs.length}件あり、いずれの地域 (${irrs.map(r => r.region).slice(0, 5).join('/')}) にもマッチしない (autoモードのみ影響、業種別モードならバイパス)`);
+      }
+    } catch (e) {}
+
+    // ゴールデン業種 (auto モード時)
+    try {
+      const [g] = await pool.query(
+        'SELECT COUNT(*) as cnt FROM industry_time_rules WHERE industry_name = ?',
+        [c.industry]
+      );
+      if (Number(g[0].cnt) === 0) {
+        reasons.push(`auto モードでは ゴールデン業種設定にこの業種 (${c.industry}) が無いため除外 (industry/mylist/special モードなら OK)`);
+      } else {
+        ok.push('ゴールデン業種: 登録あり');
+      }
+    } catch (e) {}
+
+    // Tier 4/5: last_called_at 経過日数
+    if (c.last_called_at) {
+      const days = (Date.now() - new Date(c.last_called_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (c.last_call_result_code === 'NO_ANSWER' && days < 2) {
+        reasons.push(`前回 NO_ANSWER から ${days.toFixed(1)}日 (2日未満のため Tier 4 で除外)`);
+      }
+      if (c.last_call_result_code === 'NG' && days < 90) {
+        reasons.push(`前回 NG から ${days.toFixed(1)}日 (3ヶ月未満のため Tier 5 で除外)`);
+      }
+      if (c.last_call_result_code === 'NG' && c.last_call_user_id === userId) {
+        reasons.push('前回 NG したのが自分のため Tier 5 で除外 (別オペレーターのみ可)');
+      }
+    }
+
+    return ApiResponse.success(res, {
+      companyId,
+      summary: reasons.length === 0
+        ? 'ピックアップ条件はすべて OK。表示されないとしたら自動モードのスコア順位の問題やキャッシュの可能性。「シャッフル」ボタンで再評価してみてください。'
+        : `${reasons.length}個の除外条件に該当`,
+      reasons,
+      ok,
+      company: c,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCompanies,
   getCompanyById,
@@ -1487,6 +1656,7 @@ module.exports = {
   unlockAllForSelf,
   lockCallTarget,
   unlockCallTarget,
+  diagnoseCompanyPickup,
   diagnoseCallList,
   getCompanyActions,
   createCompanyAction,

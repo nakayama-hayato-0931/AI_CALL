@@ -584,6 +584,37 @@ export default function CustomerMasterPage() {
                       <span className="text-gray-500">コメント:</span> {detail.company.comment}
                     </div>
                   )}
+                  {/* ピックアップ診断ボタン */}
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const { data } = await api.get(`/api/companies/${detail.company.id}/pickup-diagnose`);
+                          if (!data.success) { toast.error('診断に失敗しました'); return; }
+                          const d = data.data;
+                          const lines = [];
+                          lines.push(`【診断】${d.summary}`);
+                          if (d.reasons.length > 0) {
+                            lines.push('');
+                            lines.push('▼ 除外されている理由:');
+                            d.reasons.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
+                          }
+                          if (d.ok.length > 0) {
+                            lines.push('');
+                            lines.push('▼ 通過した条件:');
+                            d.ok.forEach((r) => lines.push(`・${r}`));
+                          }
+                          window.alert(lines.join('\n'));
+                        } catch (err) {
+                          toast.error('診断に失敗しました');
+                        }
+                      }}
+                      className="text-xs px-3 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                    >
+                      架電リスト ピックアップ診断
+                    </button>
+                    <span className="ml-2 text-[10px] text-gray-400">なぜ架電リストに出てこないか調べる</span>
+                  </div>
                 </div>
 
                 {/* 担当者情報 */}
