@@ -31,6 +31,19 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 全面見直し: authController / database.js をシンプルな最小実装に戻す
+- 「ログインもオペレーター選択も自動ピックアップもできない」深刻状態の解消。
+- 直近に積み上げた MAX_EXECUTION_TIME / Promise.race / cache + timeout / pool 拡大 等の複雑化が逆に副作用 (unhandled rejection / connection 取得タイミング不整合等) を引き起こしていたため、撤去。
+- **authController**:
+  - login: 通常の `pool.query` を直列実行するシンプル実装。タイムアウト/Promise.race 削除。
+  - getOperators: 5分メモリキャッシュは維持 (DB 詰まり時の保険として有用)、 race と timeout は撤去。失敗時のみキャッシュ fallback。
+  - getMe: pool.execute → pool.query に統一。
+- **database.js**:
+  - SET SESSION MAX_EXECUTION_TIME / innodb_lock_wait_timeout 等の接続時 SET を削除 (毎接続で複数 SET を投げる事自体が遅延要因の可能性)。
+  - connectionLimit を 30 に (20→50→30 で間)。
+  - on('connection') は JST タイムゾーン設定のみ。
+- これでログイン・オペレーター取得が確実に応答するようになる (Railway 自体が詰まっていない限り)。
+
 ### 認証: pool.query に変更 (prepared statement オーバーヘッド回避) + タイムアウト 8s
 - 「503 (3秒タイムアウト) が継続」事象対策。
 - 原因: `pool.execute` は prepared statement を使うが、Railway MySQL proxy (hopper.proxy.rlwy.net) 経由だとプリペアフェーズで時間がかかることがある。軽量 SELECT には不要なオーバーヘッド。
