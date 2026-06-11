@@ -21,18 +21,25 @@ const login = async (req, res, next) => {
     }
 
     let rows;
-    if (user_id) {
-      // オペレーター: user_id + password でログイン
-      [rows] = await pool.execute(
-        'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE id = ? AND is_active = 1',
-        [user_id]
-      );
-    } else {
-      // その他: email + password でログイン
-      [rows] = await pool.execute(
-        'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE email = ? AND is_active = 1',
-        [email]
-      );
+    // DB が詰まっていてもユーザーに早めにフィードバックするため 5秒で打ち切る
+    const userQueryPromise = user_id
+      ? pool.execute(
+          'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE id = ? AND is_active = 1',
+          [user_id]
+        )
+      : pool.execute(
+          'SELECT id, name, email, password_hash, role, is_test_account FROM users WHERE email = ? AND is_active = 1',
+          [email]
+        );
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('DB応答が遅延しています。管理者にお問い合わせください'), { isDbTimeout: true })), 5000));
+    try {
+      [rows] = await Promise.race([userQueryPromise, timeoutPromise]);
+    } catch (e) {
+      if (e.isDbTimeout) {
+        logger.error(`[login] DB timeout for ${user_id ? `user_id=${user_id}` : `email=${email}`}`);
+        return ApiResponse.error(res, e.message, 503);
+      }
+      throw e;
     }
 
     if (rows.length === 0) {
