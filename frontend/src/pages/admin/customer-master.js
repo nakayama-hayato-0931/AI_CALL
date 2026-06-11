@@ -308,6 +308,55 @@ export default function CustomerMasterPage() {
                 : <span className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">FAX CRM 連携 未設定</span>}
               <button
                 onClick={async () => {
+                  const cat = window.prompt('業種カテゴリを入力 (建設/飲食/製造/小売/宿泊/清掃/農業/介護):', '建設');
+                  if (!cat) return;
+                  try {
+                    const { data } = await api.get(`/api/companies/diagnose/industry?category=${encodeURIComponent(cat)}`);
+                    if (!data.success) { toast.error('業種診断失敗'); return; }
+                    const d = data.data;
+                    const c = d.counts;
+                    const lines = [
+                      `【業種診断: ${d.category}】`,
+                      `検索キーワード: ${(d.keywords || []).join(', ')}`,
+                      '',
+                      `industry_category='${d.category}' の件数: ${c.by_industry_category?.toLocaleString?.()}`,
+                      `industry テキストにキーワード含む全件: ${c.by_industry_keyword?.toLocaleString?.()}`,
+                      `→ 分類漏れ (キーワード含むが category 不一致): ${c.miscategorized?.toLocaleString?.()}`,
+                      '',
+                      `▼ industry_category='${d.category}' の内訳:`,
+                      `・未架電: ${c.untouched?.toLocaleString?.()}`,
+                      `・永久除外状態 (SKIP/PROJECT/RECALL/INTERESTED): ${c.permanent_excluded?.toLocaleString?.()}`,
+                      `・前回 NO_ANSWER: ${c.last_no_answer?.toLocaleString?.()}`,
+                      `・前回 NG: ${c.last_ng?.toLocaleString?.()}`,
+                    ];
+                    if (d.miscategorized_samples && d.miscategorized_samples.length > 0) {
+                      lines.push('');
+                      lines.push(`▼ 分類漏れの実例 (上位${d.miscategorized_samples.length}件):`);
+                      d.miscategorized_samples.forEach(s => {
+                        lines.push(`・${s.company_name} (industry='${s.industry}', category='${s.industry_category || '未設定'}')`);
+                      });
+                    }
+                    window.alert(lines.join('\n'));
+                    // 分類漏れが多ければ再計算を提案
+                    if (Number(c.miscategorized) > 100 && window.confirm(`分類漏れが${c.miscategorized.toLocaleString()}件あります。industry_category を全件再計算しますか?\n(まず dry-run で件数だけ試算します)`)) {
+                      const dr = await api.post('/api/companies/diagnose/recompute-industry-category?dry_run=1');
+                      const willChange = dr.data?.data?.will_change || 0;
+                      if (window.confirm(`再計算により ${willChange.toLocaleString()} 件のレコードが更新されます。実行しますか?`)) {
+                        const ex = await api.post('/api/companies/diagnose/recompute-industry-category');
+                        toast.success(`${ex.data?.data?.updated?.toLocaleString?.() || 0} 件を再分類しました`, { duration: 6000 });
+                      }
+                    }
+                  } catch (err) {
+                    toast.error('業種診断失敗');
+                  }
+                }}
+                className="ml-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
+                title="特定業種の件数・分類漏れを診断"
+              >
+                業種診断
+              </button>
+              <button
+                onClick={async () => {
                   try {
                     const { data } = await api.get('/api/companies/diagnose/counts');
                     if (!data.success) { toast.error('件数取得失敗'); return; }

@@ -31,6 +31,16 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 顧客マスタ: 業種別件数診断 + industry_category 一括再計算
+- 「業種別で建設300件は少なすぎる」事象の原因を可視化。
+- バックエンド:
+  - `GET /api/companies/diagnose/industry?category=建設` 新規。industry_category=該当 件数、industry テキストにキーワード含む全件、分類漏れ件数、分類漏れ実例10件、内訳 (未架電/永久除外/前回NO_ANSWER/前回NG) を返す。
+  - `POST /api/companies/diagnose/recompute-industry-category` 新規。companies.industry_category を industry テキストから一括再計算。dry_run=1 で件数だけ試算。建設には電気工事/管工事/土木/建築/リフォームも含めるロジック。
+- フロント: 顧客マスタ画面ヘッダに「業種診断」ボタン (アンバー) 追加。
+  - prompt で業種カテゴリ入力 → 件数と分類漏れを alert 表示
+  - 分類漏れが 100件超なら「再計算しますか?」confirm 提案
+  - 再計算は dry_run → 確認 → 実行 の二段階確認
+
 ### 顧客マスタ: 件数内訳ボタンを追加 (顧客マスタ vs 架電リスト差分原因)
 - 「顧客マスタ49万件 vs 架電リスト29万件 = 同じDB?」の確認用ツール。
 - バックエンド: `GET /api/companies/diagnose/counts` 新規。

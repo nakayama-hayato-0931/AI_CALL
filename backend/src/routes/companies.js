@@ -17,6 +17,8 @@ const {
   diagnoseCallList,
   diagnoseCompanyPickup,
   diagnoseCompanyCounts,
+  diagnoseIndustryCounts,
+  recomputeIndustryCategory,
   getCompanyActions,
   createCompanyAction,
   updateCompanyAction,
@@ -47,6 +49,12 @@ router.get('/', getCompanies);
 
 // GET /api/companies/diagnose/counts - 件数内訳 (顧客マスタ vs 架電リストの差分原因可視化)
 router.get('/diagnose/counts', diagnoseCompanyCounts);
+
+// GET /api/companies/diagnose/industry?category=建設 - 業種別件数内訳と分類漏れ検出
+router.get('/diagnose/industry', diagnoseIndustryCounts);
+
+// POST /api/companies/diagnose/recompute-industry-category - industry_category 一括再計算
+router.post('/diagnose/recompute-industry-category', recomputeIndustryCategory);
 
 // GET /api/companies/:id/pickup-diagnose - 該当企業の架電リスト非表示理由を診断
 router.get('/:id/pickup-diagnose', diagnoseCompanyPickup);

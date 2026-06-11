@@ -1477,6 +1477,155 @@ const getIndustryRegions = async (req, res, next) => {
 };
 
 /**
+ * POST /api/companies/diagnose/recompute-industry-category
+ * companies.industry_category を industry テキストから再分類して update する。
+ * 「業種カテゴリの分類漏れ」を一括で解消する整理用エンドポイント。
+ * dry_run=1 ならカウントだけ返して update は走らない。
+ */
+const recomputeIndustryCategory = async (req, res, next) => {
+  try {
+    const dryRun = req.query.dry_run === '1' || req.body?.dry_run === true;
+    // CASE 式: companyController の getCallList などで使われている分類ロジックと同じ
+    const CATEGORY_SQL = `
+      CASE
+        WHEN industry LIKE '%飲食料品小売業%' OR industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' THEN '小売'
+        WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' THEN '製造'
+        WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' THEN '建設'
+        WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
+        WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
+        WHEN industry LIKE '%飲食%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
+        WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' THEN '農業'
+        WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
+        ELSE 'その他'
+      END
+    `;
+
+    // 変更件数を先に試算
+    const [diff] = await pool.query(
+      `SELECT
+         SUM(CASE WHEN (${CATEGORY_SQL}) != COALESCE(industry_category, '') THEN 1 ELSE 0 END) AS will_change,
+         COUNT(*) AS total
+       FROM companies WHERE industry IS NOT NULL`
+    );
+    const willChange = Number(diff[0]?.will_change) || 0;
+    const total = Number(diff[0]?.total) || 0;
+
+    if (dryRun) {
+      return ApiResponse.success(res, {
+        dry_run: true,
+        total_with_industry: total,
+        will_change: willChange,
+        note: 'dry_run なので更新は実行されていません。dry_run なしで POST すると実行されます。',
+      });
+    }
+
+    // 実行
+    const [r] = await pool.query(
+      `UPDATE companies SET industry_category = (${CATEGORY_SQL}) WHERE industry IS NOT NULL AND (industry_category IS NULL OR industry_category != (${CATEGORY_SQL}))`
+    );
+    logger.info(`[recomputeIndustryCategory] updated=${r.affectedRows} (will_change estimated=${willChange})`);
+    return ApiResponse.success(res, {
+      updated: r.affectedRows,
+      estimated: willChange,
+      total_with_industry: total,
+    });
+  } catch (err) {
+    logger.error(`[recomputeIndustryCategory] ${err.message}`);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/companies/diagnose/industry?category=建設
+ * 業種別の件数内訳を返す。
+ * - industry_category と industry テキストの両軸で集計し、分類漏れを可視化する。
+ */
+const diagnoseIndustryCounts = async (req, res, next) => {
+  try {
+    const category = (req.query.category || '').trim();
+    if (!category) return ApiResponse.badRequest(res, 'category クエリが必要');
+
+    // カテゴリごとのキーワードマップ (industry テキスト判定用)
+    const KEYWORDS = {
+      '建設': ['建設', '建築', '工事', '土木', 'リフォーム', '電気工事', '管工事'],
+      '飲食': ['飲食', 'レストラン', '居酒屋', '食堂', 'ラーメン', 'カフェ', '寿司', '焼肉', '和食', '中華', '洋食'],
+      '製造': ['製造', 'メーカー', '加工', '工場'],
+      '小売': ['小売', '卸売', 'スーパー', 'コンビニ', 'ショッピング'],
+      '宿泊': ['宿泊', 'ホテル', '旅館', '民宿'],
+      '清掃': ['清掃', 'クリーニング', 'ビルメンテ', 'ハウスクリーニング'],
+      '農業': ['農業', '農場', '農園', '畜産', '養鶏'],
+      '介護': ['介護', 'デイサービス', '福祉', '老人ホーム', 'グループホーム'],
+    };
+    const kws = KEYWORDS[category] || [category];
+
+    // industry_category が一致
+    const [byCategory] = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND industry_category = ?',
+      [category]
+    );
+
+    // industry テキストにキーワードが含まれる (全体)
+    const likeConds = kws.map(() => 'c.industry LIKE ?').join(' OR ');
+    const likeParams = kws.map(k => `%${k}%`);
+    const [byKeyword] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM companies c WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND (${likeConds})`,
+      likeParams
+    );
+
+    // industry にキーワードが含まれるのに industry_category が一致していない (= 分類漏れ候補)
+    const [misCategorized] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM companies c WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0
+       AND (${likeConds}) AND (industry_category IS NULL OR industry_category != ?)`,
+      [...likeParams, category]
+    );
+
+    // 分類漏れの実例 (上位 10件)
+    const [misSamples] = await pool.query(
+      `SELECT id, company_name, industry, industry_category FROM companies c
+       WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0
+       AND (${likeConds}) AND (industry_category IS NULL OR industry_category != ?)
+       LIMIT 10`,
+      [...likeParams, category]
+    );
+
+    // industry_category 内の永久除外/未架電内訳
+    const [breakdown] = await pool.query(
+      `SELECT
+         SUM(CASE WHEN last_call_result_code IN ('SKIP','PROJECT','RECALL','INTERESTED') THEN 1 ELSE 0 END) AS permanent_excluded,
+         SUM(CASE WHEN last_called_at IS NULL THEN 1 ELSE 0 END) AS untouched,
+         SUM(CASE WHEN last_call_result_code = 'NO_ANSWER' THEN 1 ELSE 0 END) AS last_no_answer,
+         SUM(CASE WHEN last_call_result_code = 'NG' THEN 1 ELSE 0 END) AS last_ng
+       FROM companies
+       WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND industry_category = ?`,
+      [category]
+    );
+
+    return ApiResponse.success(res, {
+      category,
+      keywords: kws,
+      counts: {
+        by_industry_category: Number(byCategory[0].cnt),
+        by_industry_keyword: Number(byKeyword[0].cnt),
+        miscategorized: Number(misCategorized[0].cnt),
+        permanent_excluded: Number(breakdown[0]?.permanent_excluded) || 0,
+        untouched: Number(breakdown[0]?.untouched) || 0,
+        last_no_answer: Number(breakdown[0]?.last_no_answer) || 0,
+        last_ng: Number(breakdown[0]?.last_ng) || 0,
+      },
+      miscategorized_samples: misSamples.map(r => ({
+        id: r.id,
+        company_name: r.company_name,
+        industry: r.industry,
+        industry_category: r.industry_category,
+      })),
+      note: 'by_industry_keyword (テキストマッチ) と by_industry_category (事前計算) の差分が「分類漏れ」。miscategorized が大きい場合は industry_category の再計算で件数が大幅に増える可能性。',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/companies/diagnose/counts
  * companies テーブルの各フラグごとの件数内訳を返す診断ツール。
  * 「顧客マスタの件数と架電リストの件数が違う」の差分原因を可視化する。
@@ -1701,6 +1850,8 @@ module.exports = {
   unlockCallTarget,
   diagnoseCompanyPickup,
   diagnoseCompanyCounts,
+  diagnoseIndustryCounts,
+  recomputeIndustryCategory,
   diagnoseCallList,
   getCompanyActions,
   createCompanyAction,
