@@ -1513,26 +1513,26 @@ const diagnosePrefecture = async (req, res, next) => {
       }
     } catch (e) { /* ignore */ }
 
-    // companies.region 値分布 (上位30件)
+    // companies.region 値分布 (上位30件) — 全件対象 (除外/特別/旧営業も含む)
     const [regionDist] = await pool.query(
       `SELECT COALESCE(NULLIF(region, ''), '(空欄)') AS region, COUNT(*) AS cnt
-         FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0
+         FROM companies
         GROUP BY COALESCE(NULLIF(region, ''), '(空欄)')
         ORDER BY cnt DESC LIMIT 30`
     );
 
-    // 関東7県の件数チェック (region と address の両方)
+    // 関東7県の件数チェック (region と address の両方) — 全件対象
     const KANTO = ['茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県'];
     const kantoCounts = {};
     for (const p of KANTO) {
       const short = p.replace(/(都|道|府|県)$/, '');
       try {
         const [c1] = await pool.query(
-          "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND (region = ? OR region = ?)",
+          "SELECT COUNT(*) AS cnt FROM companies WHERE (region = ? OR region = ?)",
           [p, short]
         );
         const [c2] = await pool.query(
-          "SELECT COUNT(*) AS cnt FROM companies WHERE exclusion_flag = 0 AND is_special = 0 AND is_sales_list = 0 AND (region IS NULL OR region = '') AND address LIKE CONCAT(?, '%')",
+          "SELECT COUNT(*) AS cnt FROM companies WHERE (region IS NULL OR region = '') AND address LIKE CONCAT(?, '%')",
           [p]
         );
         kantoCounts[p] = {
