@@ -246,12 +246,23 @@ export default function CallListPage() {
           timeout: 900000, // 15分 (大規模ファイル対応)
         });
         const r = data.data || {};
-        totals.added += Number(r.added || r.inserted || 0);
-        totals.updated += Number(r.updated || 0);
-        totals.skipped += Number(r.skipped || 0);
+        const inserted = Number(r.insertedCount ?? r.inserted ?? r.added ?? 0);
+        const updated = Number(r.updatedCount ?? r.updated ?? 0);
+        const duplicate = Number(r.duplicateCount ?? 0);
+        const exclusion = Number(r.exclusionSkipCount ?? r.excluded ?? 0);
+        const skipped = Number(r.skippedCount ?? r.skipped ?? 0);
+        const totalRows = Number(r.totalRows ?? 0);
+        const autoAssigned = Number(r.autoAssignedCount ?? r.assigned ?? 0);
+        totals.added += inserted;
+        totals.updated += updated;
+        totals.skipped += skipped + duplicate + exclusion;
         const elapsed = ((Date.now() - fileStart) / 1000).toFixed(1);
-        const summary = `追加${(r.added || r.inserted || 0).toLocaleString()}/更新${(r.updated || 0).toLocaleString()}/スキップ${(r.skipped || 0).toLocaleString()} [${elapsed}秒]`;
-        results.push({ name: f.name, ok: true, summary });
+        results.push({
+          name: f.name,
+          ok: true,
+          summary: `追加${inserted.toLocaleString()}/更新${updated.toLocaleString()}/重複${duplicate.toLocaleString()}/除外${exclusion.toLocaleString()}/スキップ${skipped.toLocaleString()} [${elapsed}秒]`,
+          breakdown: { totalRows, inserted, updated, duplicate, exclusion, skipped, autoAssigned, elapsed },
+        });
       } catch (err) {
         totals.error_files++;
         const elapsed = ((Date.now() - fileStart) / 1000).toFixed(1);
@@ -650,15 +661,34 @@ export default function CallListPage() {
                   </div>
                 )}
                 {bulkProgress.results.length > 0 && (
-                  <div className="mt-2 max-h-32 overflow-y-auto border-t border-purple-200 pt-1">
+                  <div className="mt-2 max-h-96 overflow-y-auto border-t border-purple-200 pt-1 space-y-1">
                     {bulkProgress.results.map((r, i) => (
-                      <div key={i} className={`text-[9px] ${r.ok ? 'text-gray-600' : 'text-rose-600'} truncate`} title={`${r.name}: ${r.summary}`}>
-                        {r.ok ? '○' : '×'} {r.name}: {r.summary}
+                      <div key={i} className={`text-[10px] p-1.5 rounded ${r.ok ? 'bg-white border border-gray-200' : 'bg-rose-50 border border-rose-200'}`}>
+                        <div className={`font-semibold truncate ${r.ok ? 'text-gray-800' : 'text-rose-700'}`} title={r.name}>
+                          {r.ok ? '○' : '×'} {r.name}
+                        </div>
+                        {r.ok && r.breakdown ? (
+                          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9px]">
+                            <div className="text-gray-500">総行数</div>
+                            <div className="text-right font-mono text-gray-800">{r.breakdown.totalRows.toLocaleString()}</div>
+                            <div className="text-emerald-600">新規追加</div>
+                            <div className="text-right font-mono text-emerald-700">{r.breakdown.inserted.toLocaleString()}</div>
+                            {r.breakdown.updated > 0 && (<><div className="text-blue-600">更新</div><div className="text-right font-mono text-blue-700">{r.breakdown.updated.toLocaleString()}</div></>)}
+                            {r.breakdown.duplicate > 0 && (<><div className="text-amber-600">重複スキップ</div><div className="text-right font-mono text-amber-700">{r.breakdown.duplicate.toLocaleString()}</div></>)}
+                            {r.breakdown.exclusion > 0 && (<><div className="text-orange-600">除外スキップ</div><div className="text-right font-mono text-orange-700">{r.breakdown.exclusion.toLocaleString()}</div></>)}
+                            {r.breakdown.skipped > 0 && (<><div className="text-gray-500">その他スキップ</div><div className="text-right font-mono text-gray-600">{r.breakdown.skipped.toLocaleString()}</div></>)}
+                            {r.breakdown.autoAssigned > 0 && (<><div className="text-purple-600">自動割り当て</div><div className="text-right font-mono text-purple-700">{r.breakdown.autoAssigned.toLocaleString()}件</div></>)}
+                            <div className="text-gray-400">処理時間</div>
+                            <div className="text-right font-mono text-gray-500">{r.breakdown.elapsed}秒</div>
+                          </div>
+                        ) : (
+                          <div className="text-[9px] mt-0.5 text-rose-600 break-all">{r.summary}</div>
+                        )}
                       </div>
                     ))}
                     {/* 失敗ファイルだけ再選択 */}
                     {!bulkBusy && bulkProgress.results.some(r => !r.ok) && (
-                      <div className="text-[9px] text-amber-700 mt-1">
+                      <div className="text-[9px] text-amber-700">
                         ※ 失敗したファイルは元のローカル選択から該当ファイルだけを再度ドラッグして「一括インポート」してください
                       </div>
                     )}
