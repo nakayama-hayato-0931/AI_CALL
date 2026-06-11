@@ -562,45 +562,48 @@ const runMigrations = async () => {
   // recall_tasks pending サブクエリ高速化
   try { await pool.execute('CREATE INDEX idx_recall_tasks_status_company ON recall_tasks(status, company_id)'); } catch (e) {}
 
-  // companies.region を address 先頭から都道府県名で正規化（毎回実行・冪等）
-  // 既に正しい値なら何もしない（同値UPDATE）
-  // 表記揺れ（"東京" → "東京都"）も含めて統一する
+  // companies.region 正規化バッチ — 一度実行したらスキップ (60万行×47回UPDATEで起動毎にDBを詰まらせるため)
+  // 必要なら system_settings から region_backfill_done を削除して再実行可能。
   try {
-    const prefs = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
-    const shortMap = {
-      '北海道': '北海道', '青森': '青森県', '岩手': '岩手県', '宮城': '宮城県', '秋田': '秋田県',
-      '山形': '山形県', '福島': '福島県', '茨城': '茨城県', '栃木': '栃木県', '群馬': '群馬県',
-      '埼玉': '埼玉県', '千葉': '千葉県', '東京': '東京都', '神奈川': '神奈川県', '新潟': '新潟県',
-      '富山': '富山県', '石川': '石川県', '福井': '福井県', '山梨': '山梨県', '長野': '長野県',
-      '岐阜': '岐阜県', '静岡': '静岡県', '愛知': '愛知県', '三重': '三重県', '滋賀': '滋賀県',
-      '京都': '京都府', '大阪': '大阪府', '兵庫': '兵庫県', '奈良': '奈良県', '和歌山': '和歌山県',
-      '鳥取': '鳥取県', '島根': '島根県', '岡山': '岡山県', '広島': '広島県', '山口': '山口県',
-      '徳島': '徳島県', '香川': '香川県', '愛媛': '愛媛県', '高知': '高知県', '福岡': '福岡県',
-      '佐賀': '佐賀県', '長崎': '長崎県', '熊本': '熊本県', '大分': '大分県', '宮崎': '宮崎県',
-      '鹿児島': '鹿児島県', '沖縄': '沖縄県',
-    };
-    let backfilled = 0;
-    // 1) 空regionをaddress先頭から埋める
-    for (const p of prefs) {
-      const [r] = await pool.execute(
-        `UPDATE companies SET region = ?
-         WHERE (region IS NULL OR region = '')
-           AND address LIKE CONCAT(?, '%')`,
-        [p, p]
+    const [flagRows] = await pool.query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'region_backfill_done'"
+    );
+    if (flagRows.length === 0) {
+      const prefs = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+      const shortMap = {
+        '青森': '青森県', '岩手': '岩手県', '宮城': '宮城県', '秋田': '秋田県',
+        '山形': '山形県', '福島': '福島県', '茨城': '茨城県', '栃木': '栃木県', '群馬': '群馬県',
+        '埼玉': '埼玉県', '千葉': '千葉県', '東京': '東京都', '神奈川': '神奈川県', '新潟': '新潟県',
+        '富山': '富山県', '石川': '石川県', '福井': '福井県', '山梨': '山梨県', '長野': '長野県',
+        '岐阜': '岐阜県', '静岡': '静岡県', '愛知': '愛知県', '三重': '三重県', '滋賀': '滋賀県',
+        '京都': '京都府', '大阪': '大阪府', '兵庫': '兵庫県', '奈良': '奈良県', '和歌山': '和歌山県',
+        '鳥取': '鳥取県', '島根': '島根県', '岡山': '岡山県', '広島': '広島県', '山口': '山口県',
+        '徳島': '徳島県', '香川': '香川県', '愛媛': '愛媛県', '高知': '高知県', '福岡': '福岡県',
+        '佐賀': '佐賀県', '長崎': '長崎県', '熊本': '熊本県', '大分': '大分県', '宮崎': '宮崎県',
+        '鹿児島': '鹿児島県', '沖縄': '沖縄県',
+      };
+      logger.info('[Migration] region backfill 開始 (一度きり実行)');
+      let backfilled = 0;
+      for (const p of prefs) {
+        const [r] = await pool.execute(
+          `UPDATE companies SET region = ?
+           WHERE (region IS NULL OR region = '')
+             AND address LIKE CONCAT(?, '%')`,
+          [p, p]
+        );
+        backfilled += r.affectedRows || 0;
+      }
+      for (const [short, full] of Object.entries(shortMap)) {
+        const [r] = await pool.execute(
+          `UPDATE companies SET region = ? WHERE region = ?`,
+          [full, short]
+        );
+        backfilled += r.affectedRows || 0;
+      }
+      await pool.execute(
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('region_backfill_done', 'true')"
       );
-      backfilled += r.affectedRows || 0;
-    }
-    // 2) 短縮形 region を正規化（"東京" → "東京都"）
-    for (const [short, full] of Object.entries(shortMap)) {
-      if (short === full) continue;
-      const [r] = await pool.execute(
-        `UPDATE companies SET region = ? WHERE region = ?`,
-        [full, short]
-      );
-      backfilled += r.affectedRows || 0;
-    }
-    if (backfilled > 0) {
-      logger.info(`[Migration] companies.region normalize: ${backfilled}件`);
+      logger.info(`[Migration] region backfill 完了: ${backfilled}件 更新`);
     }
   } catch (e) {
     logger.warn(`region backfill skipped: ${e.message}`);

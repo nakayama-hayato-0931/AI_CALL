@@ -31,6 +31,17 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 真の犯人: 起動毎の region backfill (60万行×47回 UPDATE) を一度だけに
+- 「ログイン/オペレーター取得/自動ピックアップ何もできない」事象の根本原因。
+- 直近何度もユーザーが Restart しても症状が直らなかった原因がこれ。
+- 問題: server.js の `runMigrations` 内で `companies.region` の正規化を **毎回起動時に実行**していた:
+  - 47都道府県分のループ
+  - 各 `UPDATE companies SET region = ? WHERE address LIKE 'XX%'`
+  - 60万行 × 47回 = **DB を起動毎に数分〜数十分ロック**
+  - 起動直後の SELECT (operators, login, getCallList) が軒並み詰まる
+- 修正: `system_settings.region_backfill_done` フラグでチェック。一度実行したらスキップ。
+- これでデプロイ毎の DB ロックがなくなり、起動後すぐ全API が応答する。
+
 ### axios timeout: 30秒 → 60秒に拡張 (Railway 混雑時の canceled 回避)
 - 「operators が canceled (30秒で打ち切り)」事象対策。
 - フロントの axios timeout が 30 秒だったため Railway backend の応答待ちでブラウザ側がキャンセルしていた。
