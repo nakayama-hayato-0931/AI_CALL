@@ -138,9 +138,48 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/cpa-v2', cpaV2Routes);
 
-// ヘルスチェック
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'OK', timestamp: new Date().toISOString() });
+// backend プロセス自体が生きているか確認用 (DB 一切触らない)
+app.get('/api/_alive', (req, res) => {
+  res.json({ alive: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), timestamp: new Date().toISOString() });
+});
+
+// ヘルスチェック (DB latency 含む診断情報)
+app.get('/api/health', async (req, res) => {
+  const poolLocal = require('../config/database');
+  const status = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    uptimeSec: Math.round(process.uptime()),
+    db: { ok: false, latencyMs: null, error: null },
+    pool: {
+      total: poolLocal.pool?._allConnections?.length ?? null,
+      free: poolLocal.pool?._freeConnections?.length ?? null,
+      waiting: poolLocal.pool?._connectionQueue?.length ?? null,
+    },
+  };
+  const t0 = Date.now();
+  let timer;
+  try {
+    const queryP = poolLocal.query('SELECT 1 AS ok');
+    const timeoutP = new Promise((r) => { timer = setTimeout(() => r('__TIMEOUT__'), 5000); });
+    const result = await Promise.race([queryP, timeoutP]);
+    if (timer) clearTimeout(timer);
+    status.db.latencyMs = Date.now() - t0;
+    if (result === '__TIMEOUT__') status.db.error = 'timeout 5s';
+    else status.db.ok = true;
+  } catch (e) {
+    if (timer) clearTimeout(timer);
+    status.db.latencyMs = Date.now() - t0;
+    status.db.error = `${e.code || ''} ${e.message}`;
+  }
+  // 進行中の長時間 query があれば表示
+  try {
+    const [longQ] = await poolLocal.query(
+      "SELECT id, user, time, command, LEFT(info, 200) AS info FROM information_schema.processlist WHERE command != 'Sleep' AND time > 5 ORDER BY time DESC LIMIT 20"
+    );
+    status.longQueries = longQ;
+  } catch (e) { status.longQueriesError = e.message; }
+  res.json(status);
 });
 
 // uploadsディレクトリ作成
