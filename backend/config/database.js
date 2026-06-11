@@ -4,10 +4,9 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// Railway の public proxy (hopper.proxy.rlwy.net 等) 経由のときは SSL/TLS が必須なケースがある。
-// DB_HOST に proxy.rlwy.net が含まれているときは SSL を有効化する。
-const isRailwayPublicProxy = (process.env.DB_HOST || '').includes('rlwy.net');
-
+// SSL は付けない。 Railway proxy 経由の TCP は plain で繋がる (確認済 /api/_tcptest)
+// SSL を入れると mysql2 v3.6.5 が SSL handshake で無限 hang する症状あり。
+// DB_SSL=1 のときだけ明示的に SSL を有効化。
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 3306,
@@ -21,7 +20,7 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
   timezone: '+09:00',
   dateStrings: true,
-  ...(isRailwayPublicProxy ? { ssl: { rejectUnauthorized: false } } : {}),
+  ...(process.env.DB_SSL === '1' ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
 // 接続テスト + JST タイムゾーン設定
