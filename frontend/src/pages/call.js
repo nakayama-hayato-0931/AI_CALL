@@ -966,16 +966,42 @@ export default function CallPage() {
                 ))}
               </div>
               {pickupMode === 'industry' && (
-                <select
-                  value={selectedIndustry}
-                  onChange={e => setSelectedIndustry(e.target.value)}
-                  className="input text-xs mt-1.5 w-full"
-                >
-                  <option value="">業種を選択</option>
-                  {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
-                    <option key={ind} value={ind}>{ind}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={selectedIndustry}
+                    onChange={e => setSelectedIndustry(e.target.value)}
+                    className="input text-xs mt-1.5 w-full"
+                  >
+                    <option value="">業種を選択</option>
+                    {['飲食', '製造', '小売', '建設', '宿泊', '農業', '介護'].map(ind => (
+                      <option key={ind} value={ind}>{ind}</option>
+                    ))}
+                  </select>
+                  {selectedIndustry && (
+                    <select
+                      value={selectedRegion}
+                      onChange={e => setSelectedRegion(e.target.value)}
+                      className="input text-xs mt-1.5 w-full"
+                      title={availableRegions.length === 0
+                        ? '業種地域ルール未設定のため全都道府県から選択可'
+                        : '架電ルールで設定された都道府県を優先表示'}
+                    >
+                      <option value="">全都道府県 (絞り込みなし)</option>
+                      {(availableRegions.length > 0 ? availableRegions : [
+                        '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+                        '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+                        '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+                        '岐阜県', '静岡県', '愛知県', '三重県',
+                        '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+                        '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+                        '徳島県', '香川県', '愛媛県', '高知県',
+                        '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+                      ]).map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  )}
+                </>
               )}
               {pickupMode === 'special' && (
                 <div className="mt-2">

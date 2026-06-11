@@ -31,6 +31,15 @@
 - 修正後: `untouchedRows.length === 0` のときだけ Tier 4/5 を結合。
 - Tier 1 (recall)、Tier 2 (golden_time) は従来通り併用 (リコールとゴールデンタイムは別軸の高優先候補)。
 
+### 架電画面: 業種別ピックアップに都道府県絞込 UI を復活
+- 「業種別に都道府県別フィルタ機能を復活させてほしい」要望に対応。
+- 以前 (d28658a) UI を一旦非表示にしていたが、バックエンドの region パラメータ受付ロジックと state は残置していた。今回 UI のみ復活。
+- 業種別モードで業種選択後に都道府県 select を表示。
+  - 業種地域ルール (industry_region_rules) に該当業種の地域設定がある場合は **その地域だけを優先表示**。
+  - 未設定の業種なら **全47都道府県** から選択可能 (フォールバック)。
+- 「全都道府県 (絞り込みなし)」をデフォルト選択肢として用意。
+- バックエンドは `getCallList` で `region` パラメータを受け取って `modeFilterSQL += AND (c.region IN (?, short) OR c.address LIKE 'region%')` を AND 適用 (既存ロジック)。
+
 ### 都道府県診断: 全件対象に変更 (除外/特別/旧営業も含む)
 - 「都道府県診断は自動ピックアップだけではなく全件で実施してほしい」要望に対応。
 - `diagnosePrefecture` の region 分布クエリと関東7県カウントクエリから `exclusion_flag=0 AND is_special=0 AND is_sales_list=0` の WHERE 句を削除。
