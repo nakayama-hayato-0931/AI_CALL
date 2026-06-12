@@ -897,6 +897,16 @@ const manualAddCompany = async (req, res, next) => {
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
     }
+    if (!industry || !String(industry).trim()) {
+      return ApiResponse.badRequest(res, '業種は必須です');
+    }
+    const addrStrCl = String(address || '').trim();
+    if (!addrStrCl) {
+      return ApiResponse.badRequest(res, '住所は必須です (最低でも都道府県から入力してください)');
+    }
+    if (!PREFECTURES.some(pref => addrStrCl.includes(pref))) {
+      return ApiResponse.badRequest(res, '住所は都道府県から入力してください (例: 東京都...)');
+    }
 
     const companyName = normalizeCompanyName(company_name);
     const phoneNumber = normalizePhoneNumber(phone_number);
@@ -1265,6 +1275,16 @@ const manualAddSpecial = async (req, res, next) => {
 
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
+    }
+    if (!industry || !String(industry).trim()) {
+      return ApiResponse.badRequest(res, '業種は必須です');
+    }
+    const addrStrSp = String(address || '').trim();
+    if (!addrStrSp) {
+      return ApiResponse.badRequest(res, '住所は必須です (最低でも都道府県から入力してください)');
+    }
+    if (!PREFECTURES.some(pref => addrStrSp.includes(pref))) {
+      return ApiResponse.badRequest(res, '住所は都道府県から入力してください (例: 東京都...)');
     }
 
     const companyName = normalizeCompanyName(company_name);
