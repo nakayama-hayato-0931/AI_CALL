@@ -41,6 +41,7 @@ export default function ProjectDetailPage() {
     status: '', interview_date: '', interview_type: '', interview_attendees: '', naitei_date: '',
     document_screening: '', mail_sent: '', mail_replied: '', phone_confirmed: '', job_number: '', memo: '',
     contact_person: '', contact_phone: '', contact_email: '', dashboard_checked: false,
+    recruitment_start_date: '', resume_sent_date: '',
   });
   const [companyForm, setCompanyForm] = useState({
     company_name: '', industry: '', address: '',
@@ -152,6 +153,8 @@ export default function ProjectDetailPage() {
         contact_phone: p.contact_phone || '',
         contact_email: p.contact_email || '',
         dashboard_checked: !!p.dashboard_checked,
+        recruitment_start_date: p.recruitment_start_date ? p.recruitment_start_date.slice(0, 10) : '',
+        resume_sent_date: p.resume_sent_date ? p.resume_sent_date.slice(0, 10) : '',
       });
       setCompanyForm({
         company_name: p.company_name || '',
@@ -450,7 +453,7 @@ export default function ProjectDetailPage() {
                   <div></div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="input-label">書類選考</label>
                     <select
@@ -462,6 +465,24 @@ export default function ProjectDetailPage() {
                       <option value="required">あり</option>
                       <option value="not_required">なし</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="input-label">募集開始日</label>
+                    <input
+                      type="date"
+                      value={form.recruitment_start_date || ''}
+                      onChange={(e) => setForm({ ...form, recruitment_start_date: e.target.value || null })}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label">履歴書送付日</label>
+                    <input
+                      type="date"
+                      value={form.resume_sent_date || ''}
+                      onChange={(e) => setForm({ ...form, resume_sent_date: e.target.value || null })}
+                      className="input"
+                    />
                   </div>
                 </div>
 

@@ -3161,4 +3161,71 @@ const getInterviewSetDetail = async (req, res, next) => {
   }
 };
 
-module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx, listExtraCosts, upsertExtraCost, deleteExtraCost, getScreeningInProgressDetail, getInterviewSetDetail };
+/**
+ * GET /api/analytics/interview-done-detail
+ * 面接実施 (status IN 'KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') の案件明細。
+ * getQualityMetrics の interview_done カウントと同じ条件で抽出する。
+ * Query: date_from, date_to, user_id(任意=owner_user_id)
+ */
+const getInterviewDoneDetail = async (req, res, next) => {
+  try {
+    const { date_from, date_to, user_id } = req.query;
+    const { buildWorkCategoryFilter } = require('../middlewares/auth');
+    const wcFilter = buildWorkCategoryFilter(req, 'p.work_category');
+    const where = [
+      `p.is_legacy = 0`,
+      `p.is_prospect = 0`,
+      `p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU')`,
+    ];
+    const params = [];
+    if (date_from) { where.push(`DATE(p.created_at) >= ?`); params.push(date_from); }
+    if (date_to)   { where.push(`DATE(p.created_at) <= ?`); params.push(date_to); }
+    if (user_id)   { where.push(`p.owner_user_id = ?`);     params.push(user_id); }
+    if (wcFilter.sql) {
+      where.push(wcFilter.sql.replace(/^\s*AND\s+/i, ''));
+      params.push(...wcFilter.params);
+    }
+    const [rows] = await pool.query(
+      `SELECT p.id, p.job_number, p.created_at AS acquired_at,
+              COALESCE(c.company_name, p.legacy_company_name) AS company_name,
+              su.name AS sales_name,
+              ou.name AS caller_name,
+              p.recruitment_start_date, p.resume_sent_date, p.interview_date, p.naitei_date, p.status
+         FROM projects p
+         LEFT JOIN companies c ON p.company_id = c.id
+         LEFT JOIN users su ON p.sales_user_id = su.id
+         LEFT JOIN users ou ON p.owner_user_id = ou.id
+        WHERE ${where.join(' AND ')}
+        ORDER BY p.interview_date DESC, p.created_at DESC, p.id DESC`,
+      params
+    );
+    const statusCounts = {};
+    rows.forEach(r => {
+      const s = r.status || '不明';
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+    });
+    return ApiResponse.success(res, {
+      dateFrom: date_from || null, dateTo: date_to || null,
+      total: rows.length,
+      statusCounts,
+      rows: rows.map(r => ({
+        id: r.id,
+        jobNumber: r.job_number,
+        acquiredDate: r.acquired_at ? String(r.acquired_at).slice(0, 10) : null,
+        companyName: r.company_name,
+        salesName: r.sales_name,
+        callerName: r.caller_name,
+        recruitmentStartDate: r.recruitment_start_date ? String(r.recruitment_start_date).slice(0, 10) : null,
+        resumeSentDate: r.resume_sent_date ? String(r.resume_sent_date).slice(0, 10) : null,
+        interviewDate: r.interview_date ? String(r.interview_date).slice(0, 10) : null,
+        naiteiDate: r.naitei_date ? String(r.naitei_date).slice(0, 10) : null,
+        status: r.status,
+      })),
+    });
+  } catch (err) {
+    logger.error(`[getInterviewDoneDetail] ${err.message}`);
+    return ApiResponse.error(res, err.message, 500);
+  }
+};
+
+module.exports = { getCpaMetrics, getQualityMetrics, getOperators, importCostCsv, importCostPdf, importStampCsv, getCpaAll, getQualityAll, getSalesPerformance, getSalesDetail, getSalesPerformanceByIndustry, getWaitingContactDetail, getIndustryMonthlyAnalysis, getQualityIndustryDetail, getIndustryPeriodDetail, importPayrollManual, importPayrollXlsx, listExtraCosts, upsertExtraCost, deleteExtraCost, getScreeningInProgressDetail, getInterviewSetDetail, getInterviewDoneDetail };
