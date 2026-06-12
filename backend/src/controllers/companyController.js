@@ -1074,6 +1074,12 @@ const getCallList = async (req, res, next) => {
       untouched: untouchedRows.length,
       retry_no_answer: retryRows.length,
       retry_ng: ngRetryRows.length,
+      userRole: req.user.role,
+      isSalesRole,
+      asFilterBypassed: !asFilter,
+      irFilterBypassed: !irFilter,
+      goldenIndFilterBypassed: !goldenIndFilter,
+      prefectureFilterApplied: !!prefectureFilter,
     } };
     // refresh のときはキャッシュ保存もしない (毎回ランダム結果を返したい)
     if (!req.query.exclude && !req.query.refresh) callListCache.set(cacheKey, { at: Date.now(), payload });
