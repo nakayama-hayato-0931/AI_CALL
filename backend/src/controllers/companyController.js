@@ -416,15 +416,17 @@ const getNextCallTarget = async (req, res, next) => {
     // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
     // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
     // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
-    // 営業ロール (role='sales') は assignmentFilterSQL をバイパス。
-    // 営業は company_assignments を持たない運用のため、 他オペレーター割当済みの企業も
-    // ピックアップ対象に含めないと、 リコール以外が全く出なくなる事象が発生する。
+    // 営業ロール (role='sales') はオペレーター用リスト (is_sales_list=0) を兼用で参照しつつ、
+    // 業種地域ルール / 割当フィルタ / 自動ピックアップ業種フィルタを全部バイパスする。
+    // 営業は company_assignments を持たず、 業種地域ルールも営業観点では未整備のため、
+    // これらを適用すると Tier 2-5 が全部空になり「リコール以外出ない」 状態になる。
     const isSalesRole = req.user.role === 'sales';
-    const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
+    const irFilter = (isMyList || isSpecialList || mode === 'industry' || isSalesRole) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
     // autoモードのみ: ゴールデンタイム未設定業種を除外
-    const goldenIndFilter = (mode === 'auto')
+    // 営業ロールは industry_time_rules に登録された業種に限定しない
+    const goldenIndFilter = (mode === 'auto' && !isSalesRole)
       ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
       : '';
 
@@ -695,11 +697,12 @@ const getCallList = async (req, res, next) => {
     // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
     // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
     // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
-    // 営業ロール (role='sales') は assignmentFilterSQL をバイパス。
-    // 営業は company_assignments を持たない運用のため、 他オペレーター割当済みの企業も
-    // ピックアップ対象に含めないと、 リコール以外が全く出なくなる事象が発生する。
+    // 営業ロール (role='sales') はオペレーター用リスト (is_sales_list=0) を兼用で参照しつつ、
+    // 業種地域ルール / 割当フィルタ / 自動ピックアップ業種フィルタを全部バイパスする。
+    // 営業は company_assignments を持たず、 業種地域ルールも営業観点では未整備のため、
+    // これらを適用すると Tier 2-5 が全部空になり「リコール以外出ない」 状態になる。
     const isSalesRole = req.user.role === 'sales';
-    const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
+    const irFilter = (isMyList || isSpecialList || mode === 'industry' || isSalesRole) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
     const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
     // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外
@@ -707,7 +710,8 @@ const getCallList = async (req, res, next) => {
     //   ゴールデンタイム優先はTier2でJOIN industry_time_rulesにより実現
     let goldenIndFilter = '';
     const goldenIndParams = [];
-    if (mode === 'auto') {
+    // 営業ロールは自動ピックアップ業種フィルタもバイパス (全業種から拾える状態に)
+    if (mode === 'auto' && !isSalesRole) {
       try {
         const [rows] = await pool.execute(
           "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
