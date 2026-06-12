@@ -337,6 +337,15 @@ const assignmentFilterSQL = `
 `;
 
 /**
+ * 営業ロール用の assignment passthrough。
+ * SQL の ? 数を assignmentFilterSQL と揃えるため、 userId param を消費しつつ常に true 評価。
+ * これがないと params 不一致で全 Tier クエリが SQL エラーになり空配列が返る。
+ */
+const assignmentPassthruSalesSQL = `
+  AND (? IS NOT NULL)
+`;
+
+/**
  * 再ピックアップ除外SQL
  * - SKIP/PROJECT/RECALL/INTERESTED: 永久除外（再ピックアップ禁止）
  * - NO_ANSWER: 最終架電から2日後以降に再ピックアップ可能（リコール由来の不通のみ別途1時間後、endCall側で制御）
@@ -423,7 +432,10 @@ const getNextCallTarget = async (req, res, next) => {
     const isSalesRole = req.user.role === 'sales';
     const irFilter = (isMyList || isSpecialList || mode === 'industry' || isSalesRole) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
-    const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
+    // 営業は assignment フィルタを "?を消費しつつ常に true" の dummy に置き換え (params 数を保つため)
+    const asFilter = (isMyList || isSpecialList)
+      ? ''
+      : (isSalesRole ? assignmentPassthruSalesSQL : assignmentFilterSQL);
     // autoモードのみ: ゴールデンタイム未設定業種を除外
     // 営業ロールは industry_time_rules に登録された業種に限定しない
     const goldenIndFilter = (mode === 'auto' && !isSalesRole)
@@ -704,7 +716,10 @@ const getCallList = async (req, res, next) => {
     const isSalesRole = req.user.role === 'sales';
     const irFilter = (isMyList || isSpecialList || mode === 'industry' || isSalesRole) ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
-    const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
+    // 営業は assignment フィルタを "?を消費しつつ常に true" の dummy に置き換え (params 数を保つため)
+    const asFilter = (isMyList || isSpecialList)
+      ? ''
+      : (isSalesRole ? assignmentPassthruSalesSQL : assignmentFilterSQL);
     // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外
     // ※ 旧「ゴールデンタイム未設定業種除外」は STRICT equality でAUTOが全除外される問題があったため削除
     //   ゴールデンタイム優先はTier2でJOIN industry_time_rulesにより実現
