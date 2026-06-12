@@ -236,6 +236,9 @@ const getDailyStats = async (req, res, next) => {
     }
 
     // 手動入力の稼働時間
+    // work_hours にも業務カテゴリフィルタを適用 (技人国/特定技能の振替が反映されるように)
+    const whWcSql = wcFilter.sql.replace(/c\.work_category/g, 'wh.work_category');
+    const whWcSqlNoAlias = wcFilter.sql.replace(/c\.work_category/g, 'work_category');
     let manualWorkHours = null;
     if (scope === 'team') {
       // チーム全体: 全員のwork_hoursを集計（期間範囲内）
@@ -250,8 +253,8 @@ const getDailyStats = async (req, res, next) => {
            COUNT(*) as entry_count
          FROM work_hours wh
          JOIN users u ON wh.user_id = u.id AND u.is_test_account = 0
-         WHERE wh.date BETWEEN ? AND ?`,
-        [dateFrom, dateTo]
+         WHERE wh.date BETWEEN ? AND ? ${whWcSql}`,
+        [dateFrom, dateTo, ...wcFilter.params]
       );
       if (whTeamRows[0] && whTeamRows[0].total_minutes) {
         manualWorkHours = { totalMinutes: whTeamRows[0].total_minutes, entryCount: whTeamRows[0].entry_count };
@@ -259,9 +262,9 @@ const getDailyStats = async (req, res, next) => {
     } else {
       const whUserId = (scope === 'operator' && targetUserId) ? targetUserId : req.user.id;
       if (period === 'daily') {
-        const [whRows] = await pool.execute(
-          'SELECT start_time, end_time, break_minutes FROM work_hours WHERE user_id = ? AND date = ?',
-          [whUserId, date]
+        const [whRows] = await pool.query(
+          `SELECT start_time, end_time, break_minutes FROM work_hours WHERE user_id = ? AND date = ? ${whWcSqlNoAlias}`,
+          [whUserId, date, ...wcFilter.params]
         );
         manualWorkHours = whRows[0] || null;
       } else {
@@ -276,8 +279,8 @@ const getDailyStats = async (req, res, next) => {
              ) as total_minutes,
              COUNT(*) as entry_count
            FROM work_hours
-           WHERE user_id = ? AND date BETWEEN ? AND ?`,
-          [whUserId, dateFrom, dateTo]
+           WHERE user_id = ? AND date BETWEEN ? AND ? ${whWcSqlNoAlias}`,
+          [whUserId, dateFrom, dateTo, ...wcFilter.params]
         );
         if (whRows[0] && whRows[0].total_minutes) {
           manualWorkHours = { totalMinutes: whRows[0].total_minutes, entryCount: whRows[0].entry_count };
@@ -298,12 +301,14 @@ const getDailyStats = async (req, res, next) => {
       projUserParams = [req.user.id];
     }
     const projCallTypeFilter = "AND p.call_type = '" + (callType === 'sales' ? 'sales' : 'operator') + "'";
+    // projects にも業務カテゴリフィルタを適用
+    const pcWcSql = wcFilter.sql.replace(/c\.work_category/g, 'p.work_category');
     const [projRows] = await pool.query(
       `SELECT COUNT(*) as cnt FROM projects p
        WHERE p.is_legacy = 0 AND p.is_prospect = 0
          AND DATE(p.created_at) BETWEEN ? AND ?
-         ${projCallTypeFilter} ${projUserCondition}`,
-      [dateFrom, dateTo, ...projUserParams]
+         ${projCallTypeFilter} ${projUserCondition} ${pcWcSql}`,
+      [dateFrom, dateTo, ...projUserParams, ...wcFilter.params]
     );
     const projectCount = Number(projRows[0].cnt) || 0;
 
