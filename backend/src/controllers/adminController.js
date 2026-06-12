@@ -267,14 +267,6 @@ const getAllOperatorPerformance = async (req, res, next) => {
     const { buildWorkCategoryFilter } = require('../middlewares/auth');
     const wcFilter = buildWorkCategoryFilter(req, 'c.work_category');
 
-    // users.default_work_category を考慮: 業務カテゴリ指定時 (wcFilter あり) は
-    // そのカテゴリ専属 or 未指定 (NULL) のオペレーターのみ表示。
-    // 永井さん・渡邊さんを 'specific_skill' に設定すれば技人国画面から消える。
-    const wcValue = wcFilter.params[0] || null;
-    const userWcFilterSql = wcValue
-      ? `AND (u.default_work_category IS NULL OR u.default_work_category = ?)`
-      : '';
-    const userWcFilterParams = wcValue ? [wcValue] : [];
     const [rows] = await pool.query(
       `SELECT
         u.id as user_id, u.name, u.role, u.operator_level, u.is_active,
@@ -293,10 +285,9 @@ const getAllOperatorPerformance = async (req, res, next) => {
       LEFT JOIN calls c ON c.user_id = u.id AND DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code != 'SKIP' ${callTypeFilter}${wcFilter.sql}
       LEFT JOIN ai_evaluations ae ON ae.call_id = c.id
       WHERE u.role IN (${targetRoles}) AND u.is_test_account = 0
-        ${userWcFilterSql}
       GROUP BY u.id, u.name, u.role, u.is_active
       ORDER BY u.id ASC`,
-      [dateFrom, dateTo, ...wcFilter.params, ...userWcFilterParams]
+      [dateFrom, dateTo, ...wcFilter.params]
     );
 
     // 平均通話時間（秒）を一括取得（ai_evaluations を JOIN しない素の calls で算出）

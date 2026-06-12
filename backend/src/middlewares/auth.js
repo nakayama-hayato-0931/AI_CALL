@@ -90,12 +90,21 @@ const requireEditor = (req, res, next) => {
 const buildWorkCategoryFilter = (req, columnExpr = 'work_category') => {
   let value = null;
   if (req.query && req.query.work_category) {
+    // 明示指定: 'all' なら全体表示 (フィルタなし)、 'general'/'specific_skill' はそのまま
+    if (req.query.work_category === 'all') {
+      return { sql: '', params: [] };
+    }
     value = req.query.work_category;
   } else if (req.user) {
     const role = req.user.role;
     const isOperatorOrSales = ['operator', 'intern', 'sales'].includes(role);
     if (isOperatorOrSales) {
       value = req.user.workCategory || 'general';
+    } else {
+      // admin/manager/consultant: 明示指定なしのデフォルトは技人国 (general)。
+      // 特定技能を見たいときは specific-skill 管理画面 or ?work_category=specific_skill を使う。
+      // 全体表示が必要なら ?work_category=all を付ける。
+      value = 'general';
     }
   }
   if (!value) return { sql: '', params: [] };
