@@ -365,7 +365,11 @@ const getNextCallTarget = async (req, res, next) => {
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
     // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
     // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
-    const salesListFilter = 'AND c.is_sales_list = 0';
+    // 営業ロールは営業専用リスト (is_sales_list=1)、 それ以外はオペレーター用リスト (is_sales_list=0) を参照。
+    // 営業がリコール以外出ない事象の修正 (2026-06)。
+    const salesListFilter = req.user.role === 'sales'
+      ? 'AND c.is_sales_list = 1'
+      : 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
@@ -638,7 +642,11 @@ const getCallList = async (req, res, next) => {
     }
     // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
     // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
-    const salesListFilter = 'AND c.is_sales_list = 0';
+    // 営業ロールは営業専用リスト (is_sales_list=1)、 それ以外はオペレーター用リスト (is_sales_list=0) を参照。
+    // 営業がリコール以外出ない事象の修正 (2026-06)。
+    const salesListFilter = req.user.role === 'sales'
+      ? 'AND c.is_sales_list = 1'
+      : 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
