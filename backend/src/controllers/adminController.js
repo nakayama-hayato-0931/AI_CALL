@@ -1373,7 +1373,7 @@ const swapWorkCategory = async (req, res) => {
     const targets = [
       { table: 'calls',      user_col: 'user_id',       date_col: 'DATE(call_started_at)' },
       { table: 'projects',   user_col: 'owner_user_id', date_col: 'DATE(created_at)' },
-      { table: 'work_hours', user_col: 'user_id',       date_col: 'work_date' },
+      { table: 'work_hours', user_col: 'user_id',       date_col: 'date' },
     ];
     const counts = {};
     for (const t of targets) {
