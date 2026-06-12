@@ -275,6 +275,7 @@ const getAllOperatorPerformance = async (req, res, next) => {
         CAST(SUM(CASE WHEN c.is_person_in_charge = 1 THEN 1 ELSE 0 END) AS SIGNED) as person_connections,
         CAST(SUM(CASE WHEN c.result_code = 'PROJECT' THEN 1 ELSE 0 END) AS SIGNED) as projects,
         CAST(SUM(CASE WHEN c.result_code = 'RECALL' THEN 1 ELSE 0 END) AS SIGNED) as recall_gained,
+        CAST(SUM(CASE WHEN c.result_code = 'NG' THEN 1 ELSE 0 END) AS SIGNED) as ng_count,
         COALESCE(ROUND(AVG(ae.overall_score), 1), 0) as avg_ai_score,
         COALESCE(ROUND(AVG(ae.opening_score), 1), 0) as avg_opening,
         COALESCE(ROUND(AVG(ae.clarity_score), 1), 0) as avg_clarity,
@@ -1412,8 +1413,64 @@ const swapWorkCategory = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/ng-detail
+ * 指定オペレーター・期間・業務カテゴリの NG 架電一覧を返す。
+ * Query: user_id, date_from, date_to, work_category(任意)
+ * 列: 架電日時 / 企業名 / 業種 / 都道府県 (region or address先頭) / NG理由
+ */
+const getNgDetail = async (req, res) => {
+  try {
+    const { user_id, date_from, date_to, work_category } = req.query;
+    if (!user_id || !date_from || !date_to) {
+      return ApiResponse.badRequest(res, 'user_id, date_from, date_to は必須です');
+    }
+    const where = [
+      'c.user_id = ?',
+      'c.result_code = ?',
+      'DATE(c.call_started_at) BETWEEN ? AND ?',
+    ];
+    const params = [user_id, 'NG', date_from, date_to];
+    if (work_category && work_category !== 'all') {
+      where.push('c.work_category = ?');
+      params.push(work_category);
+    }
+    const [rows] = await pool.query(
+      `SELECT c.id, c.call_started_at, c.ng_reason,
+              comp.company_name, comp.industry, comp.region, comp.prefecture, comp.address,
+              u.name AS operator_name
+       FROM calls c
+       LEFT JOIN companies comp ON c.company_id = comp.id
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE ${where.join(' AND ')}
+       ORDER BY c.call_started_at DESC
+       LIMIT 1000`,
+      params
+    );
+    return ApiResponse.success(res, {
+      userId: Number(user_id), operatorName: rows[0]?.operator_name || null,
+      dateFrom: date_from, dateTo: date_to, workCategory: work_category || null,
+      total: rows.length,
+      rows: rows.map(r => ({
+        id: r.id,
+        calledAt: r.call_started_at,
+        companyName: r.company_name,
+        industry: r.industry,
+        region: r.region,
+        prefecture: r.prefecture,
+        address: r.address,
+        ngReason: r.ng_reason,
+      })),
+    });
+  } catch (err) {
+    logger.error(`[getNgDetail] ${err.code || ''} ${err.message}`);
+    return ApiResponse.error(res, `NG内訳の取得に失敗: ${err.sqlMessage || err.message}`, 500);
+  }
+};
+
 module.exports = {
   swapWorkCategory,
+  getNgDetail,
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany, bulkAssignSpecial,

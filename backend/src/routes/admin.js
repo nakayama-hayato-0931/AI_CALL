@@ -40,6 +40,7 @@ const {
   backfillRecruitmentStartDate,
   backfillJobNumbers,
   swapWorkCategory,
+  getNgDetail,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -113,6 +114,9 @@ router.put('/kpi-adjustment', requireAdmin, saveKpiAdjustment);
 
 // 業務カテゴリ振替 (admin only) — オペレーターの指定期間データを general↔specific_skill に一括変更
 router.post('/work-category-swap', requireAdmin, swapWorkCategory);
+
+// NG 内訳 (admin + manager 等) — オペレーター・期間・カテゴリ指定の NG 架電一覧
+router.get('/ng-detail', requireManager, getNgDetail);
 
 // 特別リスト進捗管理
 router.get('/special-list-batches', requireManager, getSpecialListBatches);
