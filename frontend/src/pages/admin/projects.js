@@ -614,7 +614,16 @@ export default function AdminProjects() {
                     </td>
                     <td className="table-cell truncate" title={p.owner_name}>{p.owner_name || '-'}</td>
                     <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
-                    <td className="table-cell font-medium truncate" title={p.company_name}>{p.company_name}</td>
+                    <td className="table-cell font-medium" title={`${p.company_name || ''}${p.industry ? ' / ' + p.industry : ''}${p.region || p.prefecture ? ' / ' + (p.region || p.prefecture) : ''}`}>
+                      <div className="truncate">{p.company_name}</div>
+                      {(p.industry || p.region || p.prefecture) && (
+                        <div className="text-[10px] text-gray-400 font-normal truncate">
+                          {p.industry && <span>{p.industry}</span>}
+                          {p.industry && (p.region || p.prefecture) && <span className="mx-1">/</span>}
+                          {(p.region || p.prefecture) && <span>{p.region || p.prefecture}</span>}
+                        </div>
+                      )}
+                    </td>
                     <td className="table-cell" onClick={e => e.stopPropagation()}>
                       <select
                         value={p.sales_user_id || ''}

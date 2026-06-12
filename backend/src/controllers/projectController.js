@@ -134,7 +134,7 @@ const getProjects = async (req, res, next) => {
 
     const [rows] = await pool.execute(
       `SELECT p.*, COALESCE(c.company_name, p.legacy_company_name) as company_name,
-              COALESCE(c.phone_number, p.legacy_phone) as phone_number, c.industry,
+              COALESCE(c.phone_number, p.legacy_phone) as phone_number, c.industry, c.region, c.prefecture,
               COALESCE(u.name, p.legacy_operator_name) as owner_name,
               COALESCE(su.name, p.legacy_sales_name) as sales_name
        FROM projects p
