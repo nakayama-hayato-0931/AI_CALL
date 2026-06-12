@@ -40,6 +40,24 @@ const STATUS_STYLES = {
   MODORI:           'bg-emerald-50 text-emerald-700 border border-emerald-200/60',
 };
 
+// 47都道府県と短縮形 → 正式名のマップ。
+// c.region/c.prefecture に「関東」「近畿」「中部」等の地方区分が紛れているデータがあるため、
+// 都道府県名だけを抽出して表示する。 region/prefecture が空なら address 先頭からも抽出。
+const PREFECTURES = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+const PREF_SHORT = { '青森':'青森県','岩手':'岩手県','宮城':'宮城県','秋田':'秋田県','山形':'山形県','福島':'福島県','茨城':'茨城県','栃木':'栃木県','群馬':'群馬県','埼玉':'埼玉県','千葉':'千葉県','東京':'東京都','神奈川':'神奈川県','新潟':'新潟県','富山':'富山県','石川':'石川県','福井':'福井県','山梨':'山梨県','長野':'長野県','岐阜':'岐阜県','静岡':'静岡県','愛知':'愛知県','三重':'三重県','滋賀':'滋賀県','京都':'京都府','大阪':'大阪府','兵庫':'兵庫県','奈良':'奈良県','和歌山':'和歌山県','鳥取':'鳥取県','島根':'島根県','岡山':'岡山県','広島':'広島県','山口':'山口県','徳島':'徳島県','香川':'香川県','愛媛':'愛媛県','高知':'高知県','福岡':'福岡県','佐賀':'佐賀県','長崎':'長崎県','熊本':'熊本県','大分':'大分県','宮崎':'宮崎県','鹿児島':'鹿児島県','沖縄':'沖縄県' };
+const pickPrefecture = (p) => {
+  if (!p) return null;
+  if (p.prefecture && PREFECTURES.includes(p.prefecture)) return p.prefecture;
+  if (p.region && PREFECTURES.includes(p.region)) return p.region;
+  if (p.region && PREF_SHORT[p.region]) return PREF_SHORT[p.region];
+  const addr = p.address || '';
+  if (addr) {
+    for (const pref of PREFECTURES) if (addr.startsWith(pref)) return pref;
+    for (const [short, full] of Object.entries(PREF_SHORT)) if (addr.startsWith(short)) return full;
+  }
+  return null;
+};
+
 const RESULT_BADGES = {
   NO_ANSWER: { bg: 'bg-gray-100', text: 'text-gray-600', label: '不通' },
   NG: { bg: 'bg-red-50', text: 'text-red-600', label: 'NG' },
@@ -614,13 +632,13 @@ export default function AdminProjects() {
                     </td>
                     <td className="table-cell truncate" title={p.owner_name}>{p.owner_name || '-'}</td>
                     <td className="table-cell text-gray-500 truncate" title={p.job_number || ''}>{p.job_number || '-'}</td>
-                    <td className="table-cell font-medium" title={`${p.company_name || ''}${p.industry ? ' / ' + p.industry : ''}${p.region || p.prefecture ? ' / ' + (p.region || p.prefecture) : ''}`}>
+                    <td className="table-cell font-medium" title={`${p.company_name || ''}${p.industry ? ' / ' + p.industry : ''}${pickPrefecture(p) ? ' / ' + pickPrefecture(p) : ''}`}>
                       <div className="truncate">{p.company_name}</div>
-                      {(p.industry || p.region || p.prefecture) && (
+                      {(p.industry || pickPrefecture(p)) && (
                         <div className="text-[10px] text-gray-400 font-normal truncate">
                           {p.industry && <span>{p.industry}</span>}
-                          {p.industry && (p.region || p.prefecture) && <span className="mx-1">/</span>}
-                          {(p.region || p.prefecture) && <span>{p.region || p.prefecture}</span>}
+                          {p.industry && pickPrefecture(p) && <span className="mx-1">/</span>}
+                          {pickPrefecture(p) && <span>{pickPrefecture(p)}</span>}
                         </div>
                       )}
                     </td>
