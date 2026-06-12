@@ -1344,7 +1344,76 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
   }, errors.length > 0 ? `${excludedCount}件除外（${errors.length}件エラー発生）` : `${excludedCount}件の企業を除外しました`);
 };
 
+/**
+ * POST /api/admin/work-category-swap
+ * 指定オペレーターの指定期間内のデータ (calls / projects / work_hours) の
+ * work_category を一括変更する。 dry_run=true なら影響件数のみ返し、 実 UPDATE はしない。
+ * Body: { user_id, date_from, date_to, from, to, dry_run }
+ */
+const swapWorkCategory = async (req, res) => {
+  const { user_id, date_from, date_to, from, to, dry_run } = req.body || {};
+  if (!user_id || !date_from || !date_to || !from || !to) {
+    return ApiResponse.badRequest(res, 'user_id, date_from, date_to, from, to は必須です');
+  }
+  const VALID = ['general', 'specific_skill'];
+  if (!VALID.includes(from) || !VALID.includes(to)) {
+    return ApiResponse.badRequest(res, 'from / to は general または specific_skill のみ');
+  }
+  if (from === to) {
+    return ApiResponse.badRequest(res, 'from と to が同じです');
+  }
+  const isDryRun = !!dry_run;
+  try {
+    // ユーザー存在確認
+    const [userRows] = await pool.query('SELECT id, name FROM users WHERE id = ? LIMIT 1', [user_id]);
+    if (userRows.length === 0) return ApiResponse.notFound(res, 'オペレーターが見つかりません');
+    const userName = userRows[0].name;
+
+    // 影響対象を SELECT で件数確認
+    const targets = [
+      { table: 'calls',      user_col: 'user_id',       date_col: 'DATE(call_started_at)' },
+      { table: 'projects',   user_col: 'owner_user_id', date_col: 'DATE(created_at)' },
+      { table: 'work_hours', user_col: 'user_id',       date_col: 'work_date' },
+    ];
+    const counts = {};
+    for (const t of targets) {
+      const [r] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM ${t.table} WHERE ${t.user_col} = ? AND ${t.date_col} BETWEEN ? AND ? AND work_category = ?`,
+        [user_id, date_from, date_to, from]
+      );
+      counts[t.table] = Number(r[0].cnt) || 0;
+    }
+    const totalAffected = Object.values(counts).reduce((s, n) => s + n, 0);
+    if (isDryRun) {
+      return ApiResponse.success(res, {
+        dryRun: true, userName, from, to, dateFrom: date_from, dateTo: date_to, counts, totalAffected,
+      }, `${totalAffected}件が対象 (dry-run)`);
+    }
+
+    // 実行: 各テーブルで UPDATE
+    const updated = {};
+    for (const t of targets) {
+      const [r] = await pool.execute(
+        `UPDATE ${t.table} SET work_category = ? WHERE ${t.user_col} = ? AND ${t.date_col} BETWEEN ? AND ? AND work_category = ?`,
+        [to, user_id, date_from, date_to, from]
+      );
+      updated[t.table] = r.affectedRows || 0;
+    }
+    const totalUpdated = Object.values(updated).reduce((s, n) => s + n, 0);
+    logger.info(`[swapWorkCategory] user=${user_id}(${userName}) ${date_from}〜${date_to} ${from}→${to} updated=${JSON.stringify(updated)}`);
+    return ApiResponse.success(res, {
+      dryRun: false, userName, from, to, dateFrom: date_from, dateTo: date_to, updated, totalUpdated,
+    }, `${totalUpdated}件のレコードを ${from} → ${to} に振替えました`);
+  } catch (err) {
+    logger.error(`[swapWorkCategory] ${err.code || ''} ${err.message}`);
+    return ApiResponse.error(res, `振替に失敗しました: ${err.sqlMessage || err.message}`, 500, {
+      code: err.code, sqlMessage: err.sqlMessage, sql: (err.sql || '').slice(0, 300),
+    });
+  }
+};
+
 module.exports = {
+  swapWorkCategory,
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany, bulkAssignSpecial,

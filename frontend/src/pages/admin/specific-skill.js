@@ -13,10 +13,59 @@ import useAuth from '../../hooks/useAuth';
 export default function SpecificSkillAdmin() {
   const { user } = useAuth();
   const isManager = ['admin', 'manager', 'consultant'].includes(user?.role);
+  const isAdmin = user?.role === 'admin';
   const [loading, setLoading] = useState(true);
   const [operators, setOperators] = useState([]);
   const [period, setPeriod] = useState('monthly');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  // 業務カテゴリ振替ツール
+  const today = new Date().toISOString().slice(0, 10);
+  const [allOperators, setAllOperators] = useState([]);
+  const [swapForm, setSwapForm] = useState({ user_id: '', date_from: today, date_to: today, from: 'general', to: 'specific_skill' });
+  const [swapPreview, setSwapPreview] = useState(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const { data } = await api.get('/api/auth/operators');
+        if (data?.success) setAllOperators(data.data || []);
+      } catch (_e) { /* ignore */ }
+    })();
+  }, [isAdmin]);
+  const runSwapPreview = async () => {
+    if (!swapForm.user_id) { toast.error('オペレーターを選択してください'); return; }
+    if (swapForm.from === swapForm.to) { toast.error('振替元と振替先が同じです'); return; }
+    setSwapBusy(true);
+    try {
+      const { data } = await api.post('/api/admin/work-category-swap', { ...swapForm, dry_run: true });
+      if (data?.success) {
+        setSwapPreview(data.data);
+        toast.success(`プレビュー: ${data.data.totalAffected}件が対象`);
+      } else {
+        toast.error(data?.message || 'プレビューに失敗しました');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'プレビューに失敗しました');
+    } finally { setSwapBusy(false); }
+  };
+  const runSwapExecute = async () => {
+    if (!swapPreview || swapPreview.totalAffected === 0) { toast.error('先にプレビューで対象を確認してください'); return; }
+    const msg = `${swapPreview.userName} さんの ${swapPreview.dateFrom}〜${swapPreview.dateTo} のデータを\n${swapPreview.from === 'general' ? '技人国' : '特定技能'} → ${swapPreview.to === 'general' ? '技人国' : '特定技能'}\nに振り替えます。\n\ncalls: ${swapPreview.counts.calls}件 / projects: ${swapPreview.counts.projects}件 / work_hours: ${swapPreview.counts.work_hours}件 (計 ${swapPreview.totalAffected}件)\n\n実行しますか? (この操作は元に戻せません)`;
+    if (!window.confirm(msg)) return;
+    setSwapBusy(true);
+    try {
+      const { data } = await api.post('/api/admin/work-category-swap', { ...swapForm, dry_run: false });
+      if (data?.success) {
+        toast.success(`${data.data.totalUpdated}件のレコードを振替えました`);
+        setSwapPreview(null);
+      } else {
+        toast.error(data?.message || '振替に失敗しました');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || '振替に失敗しました');
+    } finally { setSwapBusy(false); }
+  };
 
   useEffect(() => {
     if (!isManager) return;
@@ -143,6 +192,83 @@ export default function SpecificSkillAdmin() {
           </div>
         )}
       </div>
+
+      {/* ===== 業務カテゴリ振替ツール (admin専用) ===== */}
+      {isAdmin && (
+        <div className="card overflow-hidden mt-6">
+          <div className="px-3 py-2 bg-rose-50/60 border-b border-rose-200 text-xs font-semibold text-rose-700 flex items-center justify-between">
+            <span>業務カテゴリ振替 (技人国 ↔ 特定技能)</span>
+            <span className="text-[10px] text-rose-500 font-normal">誤入力のリカバリ用 / admin のみ</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-[11px] text-gray-500">
+              指定オペレーターの指定期間内の架電記録 (calls)・案件 (projects)・労働時間 (work_hours) の業務カテゴリを一括変更します。
+              まず「プレビュー」 で件数を確認してから「実行」 してください。 操作は元に戻せません。
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs">
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">オペレーター</label>
+                <select value={swapForm.user_id}
+                  onChange={e => { setSwapForm({ ...swapForm, user_id: e.target.value }); setSwapPreview(null); }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 bg-white">
+                  <option value="">選択してください</option>
+                  {allOperators.map(op => (
+                    <option key={op.id} value={op.id}>{op.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">期間 (開始)</label>
+                <input type="date" value={swapForm.date_from}
+                  onChange={e => { setSwapForm({ ...swapForm, date_from: e.target.value }); setSwapPreview(null); }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">期間 (終了)</label>
+                <input type="date" value={swapForm.date_to}
+                  onChange={e => { setSwapForm({ ...swapForm, date_to: e.target.value }); setSwapPreview(null); }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">振替元</label>
+                <select value={swapForm.from}
+                  onChange={e => { setSwapForm({ ...swapForm, from: e.target.value }); setSwapPreview(null); }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 bg-white">
+                  <option value="general">技人国</option>
+                  <option value="specific_skill">特定技能</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">振替先</label>
+                <select value={swapForm.to}
+                  onChange={e => { setSwapForm({ ...swapForm, to: e.target.value }); setSwapPreview(null); }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 bg-white">
+                  <option value="general">技人国</option>
+                  <option value="specific_skill">特定技能</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={runSwapPreview} disabled={swapBusy}
+                className="px-4 py-1.5 text-xs font-medium rounded bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50">
+                プレビュー (件数のみ取得)
+              </button>
+              <button onClick={runSwapExecute} disabled={swapBusy || !swapPreview || swapPreview.totalAffected === 0}
+                className="px-4 py-1.5 text-xs font-medium rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                実行 (UPDATE)
+              </button>
+              {swapPreview && (
+                <span className="text-[11px] text-gray-600 ml-2">
+                  対象: <span className="font-bold text-rose-700">{swapPreview.totalAffected}件</span>
+                  <span className="ml-2 text-gray-400">
+                    (calls:{swapPreview.counts.calls} / projects:{swapPreview.counts.projects} / work_hours:{swapPreview.counts.work_hours})
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

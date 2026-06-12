@@ -39,6 +39,7 @@ const {
   diagnoseVisaPayment,
   backfillRecruitmentStartDate,
   backfillJobNumbers,
+  swapWorkCategory,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -109,6 +110,9 @@ router.put('/requests/:id', requireEditor, replyToRequest);
 
 // KPI補正（管理者のみ）
 router.put('/kpi-adjustment', requireAdmin, saveKpiAdjustment);
+
+// 業務カテゴリ振替 (admin only) — オペレーターの指定期間データを general↔specific_skill に一括変更
+router.post('/work-category-swap', requireAdmin, swapWorkCategory);
 
 // 特別リスト進捗管理
 router.get('/special-list-batches', requireManager, getSpecialListBatches);
