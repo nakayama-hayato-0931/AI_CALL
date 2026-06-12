@@ -365,11 +365,9 @@ const getNextCallTarget = async (req, res, next) => {
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
     // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
     // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
-    // 営業ロールは営業専用リスト (is_sales_list=1)、 それ以外はオペレーター用リスト (is_sales_list=0) を参照。
-    // 営業がリコール以外出ない事象の修正 (2026-06)。
-    const salesListFilter = req.user.role === 'sales'
-      ? 'AND c.is_sales_list = 1'
-      : 'AND c.is_sales_list = 0';
+    // 営業もオペレーターと同じリスト (is_sales_list=0) を参照する設計。
+    // 架電結果集計は call_type で分離している。
+    const salesListFilter = 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
@@ -418,9 +416,13 @@ const getNextCallTarget = async (req, res, next) => {
     // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
     // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
     // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
+    // 営業ロール (role='sales') は assignmentFilterSQL をバイパス。
+    // 営業は company_assignments を持たない運用のため、 他オペレーター割当済みの企業も
+    // ピックアップ対象に含めないと、 リコール以外が全く出なくなる事象が発生する。
+    const isSalesRole = req.user.role === 'sales';
     const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
-    const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
+    const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
     // autoモードのみ: ゴールデンタイム未設定業種を除外
     const goldenIndFilter = (mode === 'auto')
       ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
@@ -642,11 +644,9 @@ const getCallList = async (req, res, next) => {
     }
     // 営業もオペレーターと同じリスト (is_sales_list=0) を参照するよう統一。
     // call_type による分岐は撤回。架電結果集計は引き続き call_type で分離。
-    // 営業ロールは営業専用リスト (is_sales_list=1)、 それ以外はオペレーター用リスト (is_sales_list=0) を参照。
-    // 営業がリコール以外出ない事象の修正 (2026-06)。
-    const salesListFilter = req.user.role === 'sales'
-      ? 'AND c.is_sales_list = 1'
-      : 'AND c.is_sales_list = 0';
+    // 営業もオペレーターと同じリスト (is_sales_list=0) を参照する設計。
+    // 架電結果集計は call_type で分離している。
+    const salesListFilter = 'AND c.is_sales_list = 0';
 
     // ピックアップモードフィルタ
     const mode = req.query.mode || 'auto';
@@ -695,9 +695,13 @@ const getCallList = async (req, res, next) => {
     // 業種別モードでは ③業種地域ルール (industry_region_rules) をバイパスする。
     // ユーザーが明示的に業種を選んでいるため、ルール側の地域制限や業種除外を
     // すり抜けて出すのが直感的 (「建設で絞ったのに建設が出ない」事象の修正)。
+    // 営業ロール (role='sales') は assignmentFilterSQL をバイパス。
+    // 営業は company_assignments を持たない運用のため、 他オペレーター割当済みの企業も
+    // ピックアップ対象に含めないと、 リコール以外が全く出なくなる事象が発生する。
+    const isSalesRole = req.user.role === 'sales';
     const irFilter = (isMyList || isSpecialList || mode === 'industry') ? '' : industryRegionFilterSQL;
     const lrFilter = (isMyList || isSpecialList) ? '' : lastResultExclusionSQL;
-    const asFilter = (isMyList || isSpecialList) ? '' : assignmentFilterSQL;
+    const asFilter = (isMyList || isSpecialList || isSalesRole) ? '' : assignmentFilterSQL;
     // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外
     // ※ 旧「ゴールデンタイム未設定業種除外」は STRICT equality でAUTOが全除外される問題があったため削除
     //   ゴールデンタイム優先はTier2でJOIN industry_time_rulesにより実現
