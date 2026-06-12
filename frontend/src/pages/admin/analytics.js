@@ -1465,6 +1465,64 @@ export default function AnalyticsPage() {
         );
       })()}
 
+      {/* ===== 指標の算出方法 備忘録 ===== */}
+      <details className="card mt-5 overflow-hidden">
+        <summary className="px-5 py-3 border-b border-gray-100 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+          <span className="text-sm font-bold text-slate-800">指標の算出方法 (備忘録)</span>
+          <span className="text-[11px] text-slate-500 ml-2">クリックで展開 / 各項目がどのデータから計算されているか</span>
+        </summary>
+        <div className="px-5 py-4 grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs text-gray-700">
+          {/* CPA 指標 */}
+          <div>
+            <h3 className="font-bold text-gray-900 mb-2 pb-1 border-b border-gray-200">CPA 指標</h3>
+            <dl className="space-y-1.5">
+              <div><dt className="inline font-semibold text-blue-700">コスト</dt><dd className="inline text-gray-600"> : 給与 (payroll_monthly) + 追加コスト (extra_costs)。 期間内に該当する月の按分。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">労働時間</dt><dd className="inline text-gray-600"> : work_hours テーブルの合計 (Excel 取込・打刻同期)。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">稼働率</dt><dd className="inline text-gray-600"> : 通話実時間 (calls.actual_duration_sec) ÷ 労働時間。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">架電数 / 有効 / 案件化</dt><dd className="inline text-gray-600"> : calls テーブルから集計。 有効 = NG/INTERESTED/PROJECT/RECALL。 案件化 = result_code='PROJECT'。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">面接CPA</dt><dd className="inline text-gray-600"> : コスト ÷ 面接実施数 (status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU'))。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">面接実施率</dt><dd className="inline text-gray-600"> : 面接実施数 ÷ 案件総数 × 100%。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">内定</dt><dd className="inline text-gray-600"> : projects.status = 'NAITEI' の件数 (期間内 created_at)。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">不合格</dt><dd className="inline text-gray-600"> : projects.status = 'FUGOKAKU' の件数。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">バラシ/失注</dt><dd className="inline text-gray-600"> : projects.status IN ('BARASHI', 'LOST') の件数。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">初回入金</dt><dd className="inline text-gray-600"> : project_hires.initial_payment 合計 (status='NAITEI' かつ未取消)。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">見込売上</dt><dd className="inline text-gray-600"> : project_hires.expected_revenue 合計。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">ROAS</dt><dd className="inline text-gray-600"> : 見込売上 ÷ コスト × 100%。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">入金実績</dt><dd className="inline text-gray-600"> : project_hires.payment_actual 合計 (CPA v2: 月別 sales_projects_v2 集計)。</dd></div>
+              <div><dt className="inline font-semibold text-blue-700">実績ROAS</dt><dd className="inline text-gray-600"> : 入金実績 ÷ コスト × 100%。</dd></div>
+            </dl>
+          </div>
+          {/* 案件質 指標 */}
+          <div>
+            <h3 className="font-bold text-gray-900 mb-2 pb-1 border-b border-gray-200">案件質 指標</h3>
+            <dl className="space-y-1.5">
+              <div><dt className="inline font-semibold text-emerald-700">案件数</dt><dd className="inline text-gray-600"> : projects テーブル、 期間内に created_at の全件 (is_legacy=0, is_prospect=0)。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">失注</dt><dd className="inline text-gray-600"> : status = 'LOST' の件数。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">連絡待ち</dt><dd className="inline text-gray-600"> : status = 'BOSHUCHU' かつ mail_sent / mail_replied / phone_confirmed の少なくとも 1 つが未入力。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">書類選考中</dt><dd className="inline text-gray-600"> : document_screening = 'required' かつ status = 'BOSHUCHU'。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">面接日確定</dt><dd className="inline text-gray-600"> : interview_date IS NOT NULL かつ status が中間外 (LOST/BARASHI/HORYU/MODOSHI/SHORUI_CHU/SHORUI_OCHI でない) かつ (面接日が未来 OR 結果系ステータス)。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">面接実施</dt><dd className="inline text-gray-600"> : status IN ('KEKKA_MACHI', 'NAITEI', 'NAITEI_TORIKESHI', 'FUGOKAKU') の件数。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">バラシ</dt><dd className="inline text-gray-600"> : status = 'BARASHI' の件数。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">オンライン面接</dt><dd className="inline text-gray-600"> : interview_type = 'online' の件数 (面接日確定済みのうち)。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">書類選考無し</dt><dd className="inline text-gray-600"> : document_screening = 'not_required' の件数。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">書類選考落ち</dt><dd className="inline text-gray-600"> : status = 'SHORUI_OCHI' の件数。</dd></div>
+              <div><dt className="inline font-semibold text-emerald-700">割合 (Pct)</dt><dd className="inline text-gray-600"> : 各項目の件数 ÷ 案件総数 × 100% (テーブルの下段に表示)。</dd></div>
+            </dl>
+          </div>
+          {/* 補足 */}
+          <div className="lg:col-span-2 mt-2 p-3 bg-amber-50/50 border border-amber-100 rounded">
+            <h4 className="font-bold text-amber-900 text-[11px] mb-1">補足</h4>
+            <ul className="text-[11px] text-amber-800 space-y-0.5 list-disc list-inside">
+              <li>過去案件 (移行前データ): past_quality_data / past_cpa_data テーブルから合算。 移行後 (2026-03 以降) は projects から計算。</li>
+              <li>業務カテゴリ (技人国/特定技能) で絞り込み時は projects.work_category でフィルタ。</li>
+              <li>「全体」 行のコストには追加コスト (コンサル料等) が加算される。 各オペレーター行には加算されない。</li>
+              <li>テーブルの数値セル (青色下線) はクリックで業種別 / 案件詳細モーダル表示。</li>
+              <li>CPA モード切替: 旧 (projects 由来) ↔ 新 v2 (sales_projects_v2 / interview_records_v2 由来)。 v2 は月単位で精度の高い数値を算出。</li>
+            </ul>
+          </div>
+        </div>
+      </details>
+
       {/* 手動補正モーダル */}
       {kpiModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setKpiModal(null)}>
