@@ -259,10 +259,15 @@ export default function SpecificSkillAdmin() {
               </button>
               {swapPreview && (
                 <span className="text-[11px] text-gray-600 ml-2">
-                  対象: <span className="font-bold text-rose-700">{swapPreview.totalAffected}件</span>
+                  対象: <span className={`font-bold ${swapPreview.totalAffected === 0 ? 'text-gray-400' : 'text-rose-700'}`}>{swapPreview.totalAffected}件</span>
                   <span className="ml-2 text-gray-400">
                     (calls:{swapPreview.counts.calls} / projects:{swapPreview.counts.projects} / work_hours:{swapPreview.counts.work_hours})
                   </span>
+                  {swapPreview.totalAffected === 0 && (
+                    <span className="ml-3 text-[11px] text-emerald-600 font-medium">
+                      振替対象がありません (既に振替済 or 元データが無い状態です)
+                    </span>
+                  )}
                 </span>
               )}
             </div>
