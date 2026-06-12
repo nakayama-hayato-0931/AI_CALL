@@ -787,6 +787,9 @@ const runMigrations = async () => {
   //   'general' = 技人国 (技術・人文知識・国際業務、デフォルト)
   //   'specific_skill' = 特定技能
   // ログイン時に選択 → 通話結果保存時に calls/projects に記録 → 集計を分離するために使う。
+  // 各オペレーターの「業務カテゴリ専属」 設定。 NULL なら両カテゴリで集計表示、
+  // 'specific_skill' / 'general' なら指定カテゴリの集計画面にのみ表示される。
+  try { await pool.execute("ALTER TABLE users ADD COLUMN default_work_category VARCHAR(20) DEFAULT NULL"); } catch (e) {}
   try { await pool.execute("ALTER TABLE calls ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
   try { await pool.execute("ALTER TABLE projects ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
   try { await pool.execute("ALTER TABLE work_hours ADD COLUMN work_category VARCHAR(20) NOT NULL DEFAULT 'general'"); } catch (e) {}
