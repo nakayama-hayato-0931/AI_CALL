@@ -794,6 +794,19 @@ const runMigrations = async () => {
   try { await pool.execute('CREATE INDEX idx_projects_work_category ON projects(work_category, created_at)'); } catch (e) {}
   try { await pool.execute('CREATE INDEX idx_work_hours_wc ON work_hours(work_category, date)'); } catch (e) {}
 
+  // 2026-06 perf: ダッシュボード/CPA/案件質の遅延対策。 dashboardController と
+  // analyticsController の集計クエリで利用頻度が高い複合インデックスを追加。
+  // 既存があれば 'Duplicate key name' で catch されて無害。
+  try { await pool.execute('CREATE INDEX idx_work_hours_user_date ON work_hours(user_id, date)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_owner_created ON projects(owner_user_id, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_owner_status_created ON projects(owner_user_id, status, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_sales_created ON projects(sales_user_id, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_sales_status ON projects(sales_user_id, status, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_flags_created ON projects(is_legacy, is_prospect, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_projects_status_created ON projects(status, created_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_calls_wc_user_started ON calls(work_category, user_id, call_started_at)'); } catch (e) {}
+  try { await pool.execute('CREATE INDEX idx_monthly_extra_costs_ym ON monthly_extra_costs(period_ym)'); } catch (e) {}
+
   // ※ 上記カラム追加とインデックスは起動時 criticalPreflight() で先行実行済み
   // バックフィル: 既存データに対し1回だけ実行（非同期＋チャンク化）。
   // 起動完了をブロックしない・他リクエストを長時間待たせない設計。

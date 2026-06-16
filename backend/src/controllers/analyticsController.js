@@ -54,6 +54,39 @@ const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
 const _wcRatiosCache = new Map();
 const _WC_RATIOS_TTL_MS = 60 * 1000;
 
+// 汎用集計キャッシュ (60秒)。 getCpaAll / getQualityAll など全員集計型の
+// 重い API レスポンス全体をキャッシュ。 req.query + ロール + work_category 等で
+// キーを生成し、 同じ条件の連続リクエスト (タブ切替・ポーリング) を高速化。
+const _aggCache = new Map();
+const _AGG_TTL_MS = 60 * 1000;
+const _AGG_MAX_ENTRIES = 200;
+const aggCacheKey = (req, scope) => {
+  const u = req.user || {};
+  return JSON.stringify({
+    s: scope,
+    q: req.query,
+    r: u.role,
+    wc: u.workCategory,
+  });
+};
+const aggCacheGet = (key) => {
+  const c = _aggCache.get(key);
+  if (!c) return null;
+  if ((Date.now() - c.at) >= _AGG_TTL_MS) {
+    _aggCache.delete(key);
+    return null;
+  }
+  return c.value;
+};
+const aggCacheSet = (key, value) => {
+  if (_aggCache.size >= _AGG_MAX_ENTRIES) {
+    // 単純な LRU: 最古エントリを 1 件削除
+    const firstKey = _aggCache.keys().next().value;
+    if (firstKey) _aggCache.delete(firstKey);
+  }
+  _aggCache.set(key, { at: Date.now(), value });
+};
+
 /**
  * 期間内の「特定技能時間」 比率を計算し、 月給確定値 (PDF) を完全保存する形で
  * 技人国/特定技能に按分するためのヘルパー。
@@ -937,6 +970,10 @@ const importCostPdf = async (req, res, next) => {
  */
 const getCpaAll = async (req, res, next) => {
   try {
+    // 60秒メモリキャッシュ: タブ切替・周期ポーリングで重複呼び出しを高速化
+    const _cacheKey = aggCacheKey(req, 'cpaAll');
+    const _cached = aggCacheGet(_cacheKey);
+    if (_cached) return ApiResponse.success(res, _cached);
     const period = req.query.period || 'monthly';
     // 集計の日付基準:
     //  - 'acquisition'(既定): すべて案件獲得日(created_at)基準
@@ -1374,7 +1411,9 @@ const getCpaAll = async (req, res, next) => {
       extraCostIncluded: includeExtra,
     };
 
-    return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
+    const _payload = { dateFrom, dateTo, team, operators };
+    aggCacheSet(_cacheKey, _payload);
+    return ApiResponse.success(res, _payload);
   } catch (err) {
     next(err);
   }
@@ -1386,6 +1425,10 @@ const getCpaAll = async (req, res, next) => {
  */
 const getQualityAll = async (req, res, next) => {
   try {
+    // 60秒メモリキャッシュ
+    const _cacheKey = aggCacheKey(req, 'qualityAll');
+    const _cached = aggCacheGet(_cacheKey);
+    if (_cached) return ApiResponse.success(res, _cached);
     const period = req.query.period || 'monthly';
     let dateFrom, dateTo;
     if (req.query.date_from && req.query.date_to) {
@@ -1547,7 +1590,9 @@ const getQualityAll = async (req, res, next) => {
       return (Number(op.total) || 0) > 0;
     });
 
-    return ApiResponse.success(res, { dateFrom, dateTo, team, operators });
+    const _payload = { dateFrom, dateTo, team, operators };
+    aggCacheSet(_cacheKey, _payload);
+    return ApiResponse.success(res, _payload);
   } catch (err) {
     next(err);
   }
