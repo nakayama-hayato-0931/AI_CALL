@@ -128,7 +128,7 @@ const getNavSections = (role, adminView) => {
           ...(!isSalesView ? [{ href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' }] : []),
           ...(!isSalesView ? [{ href: '/admin/specific-skill', label: '特定技能管理', icon: 'performance' }] : []),
           ...(role === 'admin' ? [{ href: '/admin/users', label: 'ユーザー管理', icon: 'users' }] : []),
-          ...(!isSalesView ? [{ href: '/admin/requests', label: 'メッセージ管理', icon: 'request' }] : []),
+          ...(!isSalesView ? [{ href: '/admin/requests', label: 'メッセージ', icon: 'request' }] : []),
         ],
       },
     ];
