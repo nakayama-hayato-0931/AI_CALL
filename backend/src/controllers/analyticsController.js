@@ -50,44 +50,55 @@ const HOURLY_RATE = 1500; // 時給（円）
 const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
 
 /**
- * 期間内のユーザー別 work_category 別 時間比率を計算するヘルパー。
- *   ratio = (指定カテゴリの時間) / (総時間)
+ * 期間内の「特定技能時間」 比率を計算し、 月給確定値 (PDF) を完全保存する形で
+ * 技人国/特定技能に按分するためのヘルパー。
  *
- * payroll_monthly / cost_records / extra_costs には work_category 区分がないため、
- * これらのコスト額を「work_hours の時間按分」 で技人国/特定技能に振り分ける目的で使う。
+ * 計算方針:
+ *   specific_ratio = 特定技能時間 / 全時間
+ *   - targetWc === 'specific_skill': cost ratio = specific_ratio
+ *   - targetWc === 'general'        : cost ratio = 1 - specific_ratio  (=確定値 - 特定技能分)
+ *   - targetWc === 'all' / 未指定   : null (按分なし = 確定値そのまま)
  *
- * @param {string} dateFrom YYYY-MM-DD
- * @param {string} dateTo   YYYY-MM-DD
- * @param {string|undefined} targetWc 'general' | 'specific_skill' | 'all' | undefined
- * @returns {{ userMap: Map<number, number>, teamRatio: number } | null}
- *   targetWc が 'all' / null / undefined のときは null (按分不要 = 全額計上)
+ * これにより:
+ *   技人国コスト + 特定技能コスト = 月給確定値 が常に成立。
+ *   work_hours が無いユーザーは specific_ratio=0 として扱われるため、
+ *   技人国タブでは確定値全額、 特定技能タブでは 0 になる (defaultRatio で吸収)。
+ *
+ * @returns {{ userMap, teamRatio, defaultRatio } | null}
  */
 const getWorkCategoryRatios = async (dateFrom, dateTo, targetWc) => {
   if (!targetWc || targetWc === 'all') return null;
   const [rows] = await pool.query(
     `SELECT user_id,
-       SUM(CASE WHEN work_category = ? THEN
+       SUM(CASE WHEN work_category = 'specific_skill' THEN
          GREATEST(0, TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i')) - COALESCE(break_minutes, 0))
-       ELSE 0 END) AS target_minutes,
+       ELSE 0 END) AS specific_minutes,
        SUM(GREATEST(0, TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i')) - COALESCE(break_minutes, 0))) AS total_minutes
      FROM work_hours
      WHERE date BETWEEN ? AND ?
        AND start_time IS NOT NULL AND end_time IS NOT NULL
      GROUP BY user_id`,
-    [targetWc, dateFrom, dateTo]
+    [dateFrom, dateTo]
   );
   const userMap = new Map();
-  let teamTarget = 0;
+  let teamSpecific = 0;
   let teamTotal = 0;
   for (const r of rows) {
     const total = Number(r.total_minutes) || 0;
-    const target = Number(r.target_minutes) || 0;
-    userMap.set(r.user_id, total > 0 ? target / total : 0);
-    teamTarget += target;
+    const specific = Number(r.specific_minutes) || 0;
+    const specificRatio = total > 0 ? specific / total : 0;
+    const ratio = targetWc === 'specific_skill' ? specificRatio : (1 - specificRatio);
+    userMap.set(r.user_id, ratio);
+    teamSpecific += specific;
     teamTotal += total;
   }
-  const teamRatio = teamTotal > 0 ? teamTarget / teamTotal : 0;
-  return { userMap, teamRatio };
+  const teamSpecificRatio = teamTotal > 0 ? teamSpecific / teamTotal : 0;
+  const teamRatio = targetWc === 'specific_skill' ? teamSpecificRatio : (1 - teamSpecificRatio);
+  // work_hours の無いユーザー (勤怠未入力) のデフォルト比率:
+  // - 技人国タブ: 1 (確定値全額をそのまま技人国扱い)
+  // - 特定技能タブ: 0 (記録がないので特定技能側には計上しない)
+  const defaultRatio = targetWc === 'specific_skill' ? 0 : 1;
+  return { userMap, teamRatio, defaultRatio };
 };
 
 // ユーザーのロールに応じたコスト計算
@@ -182,11 +193,13 @@ const getCpaMetrics = async (req, res, next) => {
       }
     }
     // 業務カテゴリ按分: cost_records / payroll に work_category 区分がないため、
-    // work_hours の指定カテゴリ時間比率で cost を按分する。
-    // (technical国/特定技能で切り替えたとき コスト額が動かない事象の修正)
+    // work_hours から「特定技能時間 / 全時間」 比率を取り、
+    //   - 特定技能タブ: cost × specific_ratio
+    //   - 技人国タブ:   cost × (1 - specific_ratio)
+    // で按分。 work_hours 未入力ユーザーは defaultRatio (技人国=1, 特定技能=0) を適用。
     const wcRatiosSummary = await getWorkCategoryRatios(dateFrom, dateTo, req.query.work_category);
     if (wcRatiosSummary && targetUserId) {
-      const ratio = wcRatiosSummary.userMap.get(Number(targetUserId)) ?? 0;
+      const ratio = wcRatiosSummary.userMap.get(Number(targetUserId)) ?? wcRatiosSummary.defaultRatio;
       cost = Math.round(cost * ratio);
     }
 
@@ -990,17 +1003,20 @@ const getCpaAll = async (req, res, next) => {
     } catch (e) { /* table may not exist yet */ }
 
     // 業務カテゴリ按分: cost_records / monthly_payroll_records に work_category 区分が
-    // ないため、 work_hours の指定カテゴリ時間比率で costMap を一括按分する。
-    // 技人国タブで特定技能のコストが減算され、 特定技能タブで特定技能のコストだけが残る。
+    // ないため、 work_hours から「特定技能時間 / 全時間」 比率を取り、
+    //   - 特定技能タブ: cost × specific_ratio
+    //   - 技人国タブ:   cost × (1 - specific_ratio) = 確定値 - 特定技能コスト
+    // で按分。 技人国 + 特定技能 = 月給確定値 が常に成立。
+    // work_hours 未入力ユーザーは defaultRatio (技人国=1, 特定技能=0)。
     const wcRatiosAll = await getWorkCategoryRatios(dateFrom, dateTo, req.query.work_category);
     if (wcRatiosAll) {
       for (const uid of [...costMap.keys()]) {
-        const ratio = wcRatiosAll.userMap.get(uid) ?? 0;
+        const ratio = wcRatiosAll.userMap.get(uid) ?? wcRatiosAll.defaultRatio;
         costMap.set(uid, Math.round((costMap.get(uid) || 0) * ratio));
       }
-      // workHoursMap も同じ比率で按分 (オペレーター行に表示される稼働時間)
+      // workHoursMap (オペレーター行の稼働時間表示) も同じ比率で按分
       for (const uid of [...workHoursMap.keys()]) {
-        const ratio = wcRatiosAll.userMap.get(uid) ?? 0;
+        const ratio = wcRatiosAll.userMap.get(uid) ?? wcRatiosAll.defaultRatio;
         workHoursMap.set(uid, Math.round((workHoursMap.get(uid) || 0) * ratio * 10) / 10);
       }
     }
