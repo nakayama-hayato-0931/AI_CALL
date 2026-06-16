@@ -362,11 +362,12 @@ const getAllOperatorPerformance = async (req, res, next) => {
       } catch (e) { /* keep calls-based count */ }
 
       // KPI補正値: 日別は上書き、月別/週別/累計は集計（合計）として加算
-      // 業務カテゴリで絞り込まれている場合 (特定技能管理画面など) は KPI 補正を適用しない。
-      // kpi_adjustments テーブルには work_category 区分がなく、無条件で適用すると特定技能側に
-      // 技人国の補正値が漏れる事象になる。
-      if (wcFilter.sql) {
-        // 業務カテゴリ絞込時はスキップ
+      // kpi_adjustments テーブルには work_category 区分がないため、 特定技能が
+      // 明示指定された画面 (specific-skill 管理 / ?work_category=specific_skill) のみ
+      // KPI 補正をスキップ。 技人国 (デフォルト/明示) と全体表示では補正を適用。
+      const skipKpiAdjustment = req.query.work_category === 'specific_skill';
+      if (skipKpiAdjustment) {
+        // 特定技能絞込時のみスキップ
       } else
       try {
         const [adjRows] = await pool.query(
