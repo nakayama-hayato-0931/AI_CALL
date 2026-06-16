@@ -311,18 +311,44 @@ const updateProject = async (req, res, next) => {
     }
 
     // 企業情報の更新（company_name, industry, region, address）
+    // company_id が NULL の案件 (手動追加 or 移行前) は WHERE id=NULL で 0 件マッチに
+    // なるため、 新規 companies を INSERT して projects.company_id に紐づけ直す。
     if (company_name || industry !== undefined || region !== undefined || address !== undefined) {
-      const [proj] = await pool.execute('SELECT company_id FROM projects WHERE id = ?', [id]);
+      const [proj] = await pool.execute('SELECT company_id, legacy_phone, legacy_company_name FROM projects WHERE id = ?', [id]);
       if (proj.length > 0) {
-        await pool.execute(
-          `UPDATE companies SET
-            company_name = COALESCE(?, company_name),
-            industry = COALESCE(?, industry),
-            region = COALESCE(?, region),
-            address = COALESCE(?, address)
-           WHERE id = ?`,
-          [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, address !== undefined ? (address || null) : null, proj[0].company_id]
-        );
+        let companyId = proj[0].company_id;
+        if (!companyId) {
+          // 手動追加/移行前案件: companies テーブルに新規 INSERT して紐づける
+          const insertName = company_name || proj[0].legacy_company_name || null;
+          const insertPhone = proj[0].legacy_phone || null;
+          try {
+            const [insertResult] = await pool.execute(
+              `INSERT INTO companies (company_name, phone_number, industry, region, address, exclusion_flag, is_special, is_sales_list)
+               VALUES (?, ?, ?, ?, ?, 0, 0, 0)`,
+              [insertName, insertPhone, industry || null, region || null, address || null]
+            );
+            companyId = insertResult.insertId;
+            await pool.execute('UPDATE projects SET company_id = ? WHERE id = ?', [companyId, id]);
+            logger.info(`[updateProject] companies INSERT for project=${id}, new company_id=${companyId}`);
+          } catch (insErr) {
+            logger.error(`[updateProject] companies INSERT failed: project=${id} ${insErr.code} ${insErr.message}`);
+            throw insErr;
+          }
+        } else {
+          // 既存案件: companies を UPDATE
+          const [r] = await pool.execute(
+            `UPDATE companies SET
+              company_name = COALESCE(?, company_name),
+              industry = COALESCE(?, industry),
+              region = COALESCE(?, region),
+              address = COALESCE(?, address)
+             WHERE id = ?`,
+            [company_name || null, industry !== undefined ? (industry || null) : null, region !== undefined ? (region || null) : null, address !== undefined ? (address || null) : null, companyId]
+          );
+          logger.info(`[updateProject] companies UPDATE project=${id} company_id=${companyId} affected=${r.affectedRows}`);
+        }
+      } else {
+        logger.warn(`[updateProject] projects record not found: id=${id}`);
       }
     }
 
