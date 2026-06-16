@@ -49,6 +49,11 @@ const { getVisaPaymentMap, lookupVisaPayment } = require('../services/googleShee
 const HOURLY_RATE = 1500; // 時給（円）
 const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
 
+// 60秒メモリキャッシュ。 ダッシュボード/CPA/案件質 が同じ期間で同じ wcRatios を
+// 何度も計算するのを避ける。 期間とカテゴリでキー、 TTL 60秒。
+const _wcRatiosCache = new Map();
+const _WC_RATIOS_TTL_MS = 60 * 1000;
+
 /**
  * 期間内の「特定技能時間」 比率を計算し、 月給確定値 (PDF) を完全保存する形で
  * 技人国/特定技能に按分するためのヘルパー。
@@ -68,6 +73,12 @@ const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
  */
 const getWorkCategoryRatios = async (dateFrom, dateTo, targetWc) => {
   if (!targetWc || targetWc === 'all') return null;
+  // キャッシュ確認: 同じ期間+カテゴリ なら 60秒間は再計算しない
+  const cacheKey = `${dateFrom}|${dateTo}|${targetWc}`;
+  const cached = _wcRatiosCache.get(cacheKey);
+  if (cached && (Date.now() - cached.at) < _WC_RATIOS_TTL_MS) {
+    return cached.value;
+  }
   const [rows] = await pool.query(
     `SELECT user_id,
        SUM(CASE WHEN work_category = 'specific_skill' THEN
@@ -98,7 +109,9 @@ const getWorkCategoryRatios = async (dateFrom, dateTo, targetWc) => {
   // - 技人国タブ: 1 (確定値全額をそのまま技人国扱い)
   // - 特定技能タブ: 0 (記録がないので特定技能側には計上しない)
   const defaultRatio = targetWc === 'specific_skill' ? 0 : 1;
-  return { userMap, teamRatio, defaultRatio };
+  const result = { userMap, teamRatio, defaultRatio };
+  _wcRatiosCache.set(cacheKey, { at: Date.now(), value: result });
+  return result;
 };
 
 // ユーザーのロールに応じたコスト計算
