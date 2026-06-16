@@ -999,7 +999,13 @@ export default function AnalyticsPage() {
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">
             CPA / 案件質分析
             {workCategoryQuery === 'specific_skill' && (
-              <span className="ml-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md align-middle">特定技能で絞込中</span>
+              <span className="ml-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md align-middle">特定技能</span>
+            )}
+            {workCategoryQuery === 'all' && (
+              <span className="ml-2 text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-md align-middle">全体集計</span>
+            )}
+            {!workCategoryQuery && (
+              <span className="ml-2 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md align-middle">技人国</span>
             )}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
@@ -1009,6 +1015,30 @@ export default function AnalyticsPage() {
           </p>
         </div>
         <div className="flex items-end gap-2">
+          {/* 業務カテゴリ切替 (技人国 / 特定技能 / 全体) */}
+          <div>
+            <label className="input-label">業務カテゴリ</label>
+            <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => {
+                  const { work_category, ...rest } = router.query;
+                  router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: false });
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${!workCategoryQuery ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                技人国
+              </button>
+              <button
+                onClick={() => router.replace({ pathname: router.pathname, query: { ...router.query, work_category: 'specific_skill' } }, undefined, { shallow: false })}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${workCategoryQuery === 'specific_skill' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                特定技能
+              </button>
+              <button
+                onClick={() => router.replace({ pathname: router.pathname, query: { ...router.query, work_category: 'all' } }, undefined, { shallow: false })}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${workCategoryQuery === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                全体
+              </button>
+            </div>
+          </div>
           {/* 旧CPA / 新CPA 切替トグル (デフォルト: 新CPA) */}
           <div>
             <label className="input-label">表示モード</label>
