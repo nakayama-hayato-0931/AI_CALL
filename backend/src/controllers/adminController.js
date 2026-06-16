@@ -1469,9 +1469,78 @@ const getNgDetail = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/transcript-diag
+ * 文字起こしキャッシュの状態を返す。 ?refresh=1 でキャッシュをクリア + 再構築。
+ * ?phone=XXX で特定電話番号の Sheets 上のレコードを確認可能。
+ */
+const getTranscriptDiag = async (req, res) => {
+  try {
+    const { getTranscriptCacheStatus, clearTranscriptCache, getTranscriptIndex } = require('../services/googleSheetsService');
+    const result = {};
+    // refresh=1 ならキャッシュをクリア
+    if (req.query.refresh === '1') {
+      clearTranscriptCache();
+      result.cacheCleared = true;
+    }
+    // 初期 cache 状態
+    result.cacheBefore = getTranscriptCacheStatus();
+    // index を取得 (キャッシュが空なら再構築)
+    let index = null;
+    let buildMs = null;
+    try {
+      const t0 = Date.now();
+      index = await getTranscriptIndex();
+      buildMs = Date.now() - t0;
+    } catch (e) {
+      result.indexError = `${e.code || ''} ${e.message}`;
+    }
+    result.indexBuildMs = buildMs;
+    result.cacheAfter = getTranscriptCacheStatus();
+    // 任意の電話番号で照会
+    if (req.query.phone && index) {
+      const norm = String(req.query.phone).replace(/[-\s()+]/g, '');
+      const entries = index.get(norm);
+      if (entries) {
+        result.phoneLookup = {
+          phone: norm,
+          entryCount: entries.length,
+          entries: entries.slice(0, 10).map(e => ({
+            time: e.time ? new Date(e.time).toISOString() : null,
+            transcriptLength: (e.transcript || '').length,
+            transcriptPreview: (e.transcript || '').slice(0, 80),
+            durationSec: e.durationSec,
+          })),
+        };
+      } else {
+        result.phoneLookup = { phone: norm, found: false, message: 'この電話番号のレコードがSheetsにありません' };
+      }
+    }
+    // 空 transcript の件数
+    if (index) {
+      let totalEntries = 0;
+      let emptyTranscriptEntries = 0;
+      for (const entries of index.values()) {
+        for (const e of entries) {
+          totalEntries++;
+          if (!e.transcript || e.transcript.length === 0) emptyTranscriptEntries++;
+        }
+      }
+      result.totalEntries = totalEntries;
+      result.emptyTranscriptEntries = emptyTranscriptEntries;
+      result.emptyRatio = totalEntries > 0 ? (emptyTranscriptEntries / totalEntries * 100).toFixed(1) + '%' : '0%';
+    }
+    return ApiResponse.success(res, result);
+  } catch (err) {
+    logger.error(`[getTranscriptDiag] ${err.code || ''} ${err.message}`);
+    return ApiResponse.error(res, `Transcript診断失敗: ${err.message}`, 500);
+  }
+};
+
 module.exports = {
   swapWorkCategory,
   getNgDetail,
+  getTranscriptDiag,
   getUsers, createUser, updateUser, deleteUser,
   getAllOperatorPerformance,
   getCompanies, assignCompany, unassignCompany, bulkAssignSpecial,

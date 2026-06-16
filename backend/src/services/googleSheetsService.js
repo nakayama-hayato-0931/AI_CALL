@@ -96,7 +96,7 @@ const searchCallLogs = async (phoneNumber) => {
 };
 
 // ===== Transcriptキャッシュ（5分間保持） =====
-const TRANSCRIPT_CACHE_TTL = 5 * 60 * 1000; // 5分
+const TRANSCRIPT_CACHE_TTL = 2 * 60 * 1000; // 2分 (旧5分、 Sheetsの直近データを早く反映するため短縮)
 let transcriptCache = null; // { index: Map<phone, [{transcript, time}]>, fetchedAt: number }
 
 const normalize = (num) => {
@@ -344,4 +344,27 @@ const probeVisaSheet = async () => {
   }
 };
 
-module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch, getVisaPaymentMap, lookupVisaPayment, probeVisaSheet };
+/**
+ * Transcriptキャッシュの状態を返す (診断用)
+ */
+const getTranscriptCacheStatus = () => {
+  if (!transcriptCache) return { cached: false, age: null, size: 0 };
+  return {
+    cached: true,
+    fetchedAt: new Date(transcriptCache.fetchedAt).toISOString(),
+    ageMs: Date.now() - transcriptCache.fetchedAt,
+    ttlMs: TRANSCRIPT_CACHE_TTL,
+    expired: (Date.now() - transcriptCache.fetchedAt) >= TRANSCRIPT_CACHE_TTL,
+    size: transcriptCache.index?.size || 0,
+    spreadsheetIdSet: !!process.env.GOOGLE_TRANSCRIPT_SPREADSHEET_ID,
+  };
+};
+
+/**
+ * Transcriptキャッシュを強制クリア (次のリクエストで再構築される)
+ */
+const clearTranscriptCache = () => {
+  transcriptCache = null;
+};
+
+module.exports = { searchCallLogs, findTranscript, findTranscriptsBatch, findDurationsBatch, getVisaPaymentMap, lookupVisaPayment, probeVisaSheet, getTranscriptCacheStatus, clearTranscriptCache, getTranscriptIndex };

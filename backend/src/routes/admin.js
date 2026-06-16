@@ -41,6 +41,7 @@ const {
   backfillJobNumbers,
   swapWorkCategory,
   getNgDetail,
+  getTranscriptDiag,
 } = require('../controllers/adminController');
 const { getAllRequests, replyToRequest } = require('../controllers/requestController');
 const {
@@ -117,6 +118,9 @@ router.post('/work-category-swap', requireAdmin, swapWorkCategory);
 
 // NG 内訳 (admin + manager 等) — オペレーター・期間・カテゴリ指定の NG 架電一覧
 router.get('/ng-detail', requireManager, getNgDetail);
+
+// 文字起こし診断 (admin) — Sheets キャッシュ状態確認 + 強制リフレッシュ + 電話番号照会
+router.get('/transcript-diag', requireAdmin, getTranscriptDiag);
 
 // 特別リスト進捗管理
 router.get('/special-list-batches', requireManager, getSpecialListBatches);
