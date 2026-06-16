@@ -49,6 +49,47 @@ const { getVisaPaymentMap, lookupVisaPayment } = require('../services/googleShee
 const HOURLY_RATE = 1500; // 時給（円）
 const INTERN_HOURLY_RATE = 1250; // インターン時給（円）
 
+/**
+ * 期間内のユーザー別 work_category 別 時間比率を計算するヘルパー。
+ *   ratio = (指定カテゴリの時間) / (総時間)
+ *
+ * payroll_monthly / cost_records / extra_costs には work_category 区分がないため、
+ * これらのコスト額を「work_hours の時間按分」 で技人国/特定技能に振り分ける目的で使う。
+ *
+ * @param {string} dateFrom YYYY-MM-DD
+ * @param {string} dateTo   YYYY-MM-DD
+ * @param {string|undefined} targetWc 'general' | 'specific_skill' | 'all' | undefined
+ * @returns {{ userMap: Map<number, number>, teamRatio: number } | null}
+ *   targetWc が 'all' / null / undefined のときは null (按分不要 = 全額計上)
+ */
+const getWorkCategoryRatios = async (dateFrom, dateTo, targetWc) => {
+  if (!targetWc || targetWc === 'all') return null;
+  const [rows] = await pool.query(
+    `SELECT user_id,
+       SUM(CASE WHEN work_category = ? THEN
+         GREATEST(0, TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i')) - COALESCE(break_minutes, 0))
+       ELSE 0 END) AS target_minutes,
+       SUM(GREATEST(0, TIMESTAMPDIFF(MINUTE, STR_TO_DATE(start_time, '%H:%i'), STR_TO_DATE(end_time, '%H:%i')) - COALESCE(break_minutes, 0))) AS total_minutes
+     FROM work_hours
+     WHERE date BETWEEN ? AND ?
+       AND start_time IS NOT NULL AND end_time IS NOT NULL
+     GROUP BY user_id`,
+    [targetWc, dateFrom, dateTo]
+  );
+  const userMap = new Map();
+  let teamTarget = 0;
+  let teamTotal = 0;
+  for (const r of rows) {
+    const total = Number(r.total_minutes) || 0;
+    const target = Number(r.target_minutes) || 0;
+    userMap.set(r.user_id, total > 0 ? target / total : 0);
+    teamTarget += target;
+    teamTotal += total;
+  }
+  const teamRatio = teamTotal > 0 ? teamTarget / teamTotal : 0;
+  return { userMap, teamRatio };
+};
+
 // ユーザーのロールに応じたコスト計算
 const calcUserCost = (totalMinutes, workDays, user) => {
   const isIntern = user?.role === 'intern';
@@ -139,6 +180,14 @@ const getCpaMetrics = async (req, res, next) => {
         }
         if (u.role === 'intern') cost = Math.round(cost / 2);
       }
+    }
+    // 業務カテゴリ按分: cost_records / payroll に work_category 区分がないため、
+    // work_hours の指定カテゴリ時間比率で cost を按分する。
+    // (technical国/特定技能で切り替えたとき コスト額が動かない事象の修正)
+    const wcRatiosSummary = await getWorkCategoryRatios(dateFrom, dateTo, req.query.work_category);
+    if (wcRatiosSummary && targetUserId) {
+      const ratio = wcRatiosSummary.userMap.get(Number(targetUserId)) ?? 0;
+      cost = Math.round(cost * ratio);
     }
 
     // コール数
@@ -940,6 +989,22 @@ const getCpaAll = async (req, res, next) => {
       }
     } catch (e) { /* table may not exist yet */ }
 
+    // 業務カテゴリ按分: cost_records / monthly_payroll_records に work_category 区分が
+    // ないため、 work_hours の指定カテゴリ時間比率で costMap を一括按分する。
+    // 技人国タブで特定技能のコストが減算され、 特定技能タブで特定技能のコストだけが残る。
+    const wcRatiosAll = await getWorkCategoryRatios(dateFrom, dateTo, req.query.work_category);
+    if (wcRatiosAll) {
+      for (const uid of [...costMap.keys()]) {
+        const ratio = wcRatiosAll.userMap.get(uid) ?? 0;
+        costMap.set(uid, Math.round((costMap.get(uid) || 0) * ratio));
+      }
+      // workHoursMap も同じ比率で按分 (オペレーター行に表示される稼働時間)
+      for (const uid of [...workHoursMap.keys()]) {
+        const ratio = wcRatiosAll.userMap.get(uid) ?? 0;
+        workHoursMap.set(uid, Math.round((workHoursMap.get(uid) || 0) * ratio * 10) / 10);
+      }
+    }
+
     // 月次追加コスト（コンサル料など、特定オペレーターに紐付かない費用）
     // チーム合計にのみ加算。週リクエストや任意期間では二重計上を避けるため
     //  - include_extra=0 で明示的にスキップ
@@ -961,6 +1026,11 @@ const getCpaAll = async (req, res, next) => {
         if (includeExtra) extraCostSum += Number(r.amount) || 0;
       }
     } catch (e) { /* table may not exist yet */ }
+    // 業務カテゴリ按分: extra_costs にも work_category 区分がないため、
+    // チーム全体の指定カテゴリ時間比率で extraCostSum を按分する。
+    if (wcRatiosAll && extraCostSum > 0) {
+      extraCostSum = Math.round(extraCostSum * wcRatiosAll.teamRatio);
+    }
 
     // テスト運用期間: 2026年3月末まではシステムデータをCPA計算から除外
     // （past_cpa_dataの手動入力データのみ使用）
