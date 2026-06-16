@@ -11,7 +11,9 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [step, setStep] = useState('select'); // 'select' | 'operator' | 'other'
   const [operators, setOperators] = useState([]);
+  const [operatorsLoaded, setOperatorsLoaded] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [manualUserId, setManualUserId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [workCategory, setWorkCategory] = useState('general'); // 'general'=技人国 / 'specific_skill'=特定技能
@@ -20,11 +22,13 @@ export default function LoginPage() {
   // オペレーター一覧取得
   useEffect(() => {
     if (step === 'operator') {
+      setOperatorsLoaded(false);
       api.get('/api/auth/operators')
         .then(res => {
-          if (res.data.success) setOperators(res.data.data);
+          if (res.data.success) setOperators(res.data.data || []);
         })
-        .catch(() => toast.error('オペレーター一覧の取得に失敗しました'));
+        .catch(() => { /* バックエンド側でフォールバックして空配列を返すのでここはあまり呼ばれない */ })
+        .finally(() => setOperatorsLoaded(true));
     }
   }, [step]);
 
