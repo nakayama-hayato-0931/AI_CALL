@@ -26,18 +26,9 @@ const pool = mysql.createPool({
   ...(process.env.DB_SSL === '1' ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
-// 各 connection の session time_zone を JST に設定。
-// これが無いと NOW() が UTC で返り、 call_started_at 等が 9 時間ずれて保存される
-// (結果ログの日時が深夜表示、 文字起こし照合が ±5分窓を外れて取得不能になる事象)。
-//
-// 注意: mysql2 v3.19 で pool.on('connection') のコールバック内で
-//   await conn.query(...) を直接 await すると pool 内 queue が破壊される事象あり
-//   (過去ログイン全機能停止の真因 commit a29d1c8 参照)。 setImmediate と
-//   .catch(() => {}) の fire-and-forget で回避する。
-pool.on('connection', (conn) => {
-  setImmediate(() => {
-    conn.query("SET time_zone = '+09:00'").catch(() => {});
-  });
-});
+// 注意: 過去 pool.on('connection') の追加で pool queue を破壊し全機能停止した
+// 事象あり (commit a29d1c8)。 setImmediate fire-and-forget でも healthcheck
+// failure を起こす (commit 8d01b70 で再現)。 タイムゾーン対応は SQL 側で
+// CONVERT_TZ(NOW(), '+00:00', '+09:00') する方針に切り替え (DB pool は触らない)。
 
 module.exports = pool;

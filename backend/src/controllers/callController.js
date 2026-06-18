@@ -54,8 +54,8 @@ const startCall = async (req, res, next) => {
     );
     if (existingUnsaved.length > 0) {
       const reuseId = existingUnsaved[0].id;
-      await pool.execute('UPDATE calls SET call_started_at = NOW() WHERE id = ?', [reuseId]);
-      await pool.execute('UPDATE companies SET last_called_at = NOW(), locked_at = NOW() WHERE id = ?', [company_id]);
+      await pool.execute('UPDATE calls SET call_started_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?', [reuseId]);
+      await pool.execute('UPDATE companies SET last_called_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), locked_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?', [company_id]);
       logger.info(`架電開始(未完了枠を再利用): user=${userId}, company=${company_id}, call=${reuseId}`);
       return ApiResponse.created(res, { callId: reuseId }, '架電を開始しました');
     }
@@ -65,7 +65,7 @@ const startCall = async (req, res, next) => {
     try {
       [result] = await pool.execute(
         `INSERT INTO calls (user_id, company_id, call_started_at, call_type, work_category)
-         VALUES (?, ?, NOW(), ?, ?)`,
+         VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), ?, ?)`,
         [userId, company_id, resolvedCallType, workCategory]
       );
     } catch (insertErr) {
@@ -73,7 +73,7 @@ const startCall = async (req, res, next) => {
       logger.warn(`[startCall] work_category付きINSERT失敗、フォールバック: ${insertErr.code} ${insertErr.sqlMessage || insertErr.message}`);
       try {
         [result] = await pool.execute(
-          `INSERT INTO calls (user_id, company_id, call_started_at) VALUES (?, ?, NOW())`,
+          `INSERT INTO calls (user_id, company_id, call_started_at) VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))`,
           [userId, company_id]
         );
       } catch (insertErr2) {
@@ -84,7 +84,7 @@ const startCall = async (req, res, next) => {
 
     // 企業のlast_called_atを更新 & ロック時刻も更新（長時間通話対応）
     await pool.execute(
-      'UPDATE companies SET last_called_at = NOW(), locked_at = NOW() WHERE id = ?',
+      'UPDATE companies SET last_called_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), locked_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?',
       [company_id]
     );
 
@@ -191,7 +191,7 @@ const endCall = async (req, res, next) => {
     try {
       [updateResult] = await pool.execute(
         `UPDATE calls SET
-          call_ended_at = NOW(),
+          call_ended_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR),
           result_code = ?,
           memo = ?,
           recall_at = ?,
@@ -224,7 +224,7 @@ const endCall = async (req, res, next) => {
       logger.warn(`[endCall] contact_person columns missing? ${colErr.message}`);
       [updateResult] = await pool.execute(
         `UPDATE calls SET
-          call_ended_at = NOW(),
+          call_ended_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR),
           result_code = ?,
           memo = ?,
           recall_at = ?,
@@ -348,7 +348,7 @@ const endCall = async (req, res, next) => {
       try {
         const [bumped] = await pool.execute(
           `UPDATE recall_tasks
-             SET recall_at = DATE_ADD(NOW(), INTERVAL 1 HOUR), call_id = ?
+             SET recall_at = DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 HOUR), call_id = ?
            WHERE company_id = ? AND status = 'pending'`,
           [id, call.company_id]
         );
@@ -489,13 +489,13 @@ const skipCall = async (req, res, next) => {
     // SKIPの通話レコード作成（開始と終了を同時刻で記録）
     await conn.execute(
       `INSERT INTO calls (user_id, company_id, call_started_at, call_ended_at, result_code, memo)
-       VALUES (?, ?, NOW(), NOW(), 'SKIP', ?)`,
+       VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), 'SKIP', ?)`,
       [userId, company_id, memo || null]
     );
 
     // last_called_atを更新し、ロック解除
     await conn.execute(
-      'UPDATE companies SET last_called_at = NOW(), locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
+      'UPDATE companies SET last_called_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), locked_by_user_id = NULL, locked_at = NULL WHERE id = ?',
       [company_id]
     );
 
