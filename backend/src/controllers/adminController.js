@@ -1516,20 +1516,97 @@ const getTranscriptDiag = async (req, res) => {
         result.phoneLookup = { phone: norm, found: false, message: 'この電話番号のレコードがSheetsにありません' };
       }
     }
-    // 空 transcript の件数
+    // 空 transcript の件数 + Sheets 上の最新時刻
     if (index) {
       let totalEntries = 0;
       let emptyTranscriptEntries = 0;
+      let latestSheetsTimeMs = 0;
+      let latestNonEmptySheetsTimeMs = 0;
       for (const entries of index.values()) {
         for (const e of entries) {
           totalEntries++;
-          if (!e.transcript || e.transcript.length === 0) emptyTranscriptEntries++;
+          if (!e.transcript || e.transcript.length === 0) {
+            emptyTranscriptEntries++;
+          } else if (e.time && e.time > latestNonEmptySheetsTimeMs) {
+            latestNonEmptySheetsTimeMs = e.time;
+          }
+          if (e.time && e.time > latestSheetsTimeMs) latestSheetsTimeMs = e.time;
         }
       }
       result.totalEntries = totalEntries;
       result.emptyTranscriptEntries = emptyTranscriptEntries;
       result.emptyRatio = totalEntries > 0 ? (emptyTranscriptEntries / totalEntries * 100).toFixed(1) + '%' : '0%';
+      result.latestSheetsEntryTime = latestSheetsTimeMs ? new Date(latestSheetsTimeMs).toISOString() : null;
+      result.latestNonEmptyTranscriptTime = latestNonEmptySheetsTimeMs ? new Date(latestNonEmptySheetsTimeMs).toISOString() : null;
     }
+
+    // DB の calls と照合: 「最後に文字起こしが取れた架電」 を見つける。
+    // 直近 200 件を新しい順に走査して transcript が見つかった最新を報告。
+    // タイムゾーン補正の基準点になる。
+    try {
+      const [recentCalls] = await pool.query(
+        `SELECT id, user_id, phone_number, call_started_at
+         FROM calls
+         WHERE phone_number IS NOT NULL AND call_started_at IS NOT NULL
+         ORDER BY call_started_at DESC
+         LIMIT 200`
+      );
+      let lastMatched = null;
+      const noMatchTopRecent = [];
+      if (index) {
+        const normPhone = (p) => String(p || '').replace(/[-\s()+]/g, '');
+        const toMs = (s) => {
+          const str = String(s);
+          return (str.includes('T') || str.includes('Z'))
+            ? new Date(s).getTime()
+            : new Date(str.replace(' ', 'T') + '+09:00').getTime();
+        };
+        for (const c of recentCalls) {
+          const entries = index.get(normPhone(c.phone_number));
+          if (!entries) {
+            if (noMatchTopRecent.length < 5) noMatchTopRecent.push({ id: c.id, call_started_at: c.call_started_at, phone: c.phone_number, reason: 'phoneNotInSheets' });
+            continue;
+          }
+          const callMs = toMs(c.call_started_at);
+          const matched = entries.find(e => e.transcript && e.time && Math.abs(callMs - e.time) <= 5 * 60 * 1000);
+          if (matched) {
+            if (!lastMatched) {
+              lastMatched = {
+                callId: c.id,
+                callStartedAt: c.call_started_at,
+                phone: c.phone_number,
+                sheetsTime: new Date(matched.time).toISOString(),
+                timeDiffSec: Math.round((matched.time - callMs) / 1000),
+                transcriptPreview: matched.transcript.slice(0, 80),
+              };
+            }
+          } else {
+            if (noMatchTopRecent.length < 5) {
+              const closestEntry = entries.reduce((best, e) => {
+                if (!e.time) return best;
+                const diff = Math.abs(callMs - e.time);
+                return !best || diff < best.diff ? { diff, entry: e } : best;
+              }, null);
+              noMatchTopRecent.push({
+                id: c.id,
+                call_started_at: c.call_started_at,
+                phone: c.phone_number,
+                reason: 'timeMismatch',
+                closestSheetTime: closestEntry?.entry?.time ? new Date(closestEntry.entry.time).toISOString() : null,
+                diffSec: closestEntry ? Math.round(closestEntry.diff / 1000) : null,
+                transcriptEmpty: !(closestEntry?.entry?.transcript),
+              });
+            }
+          }
+        }
+      }
+      result.lastSuccessfulTranscript = lastMatched;
+      result.recentFailedSamples = noMatchTopRecent;
+      result.scannedCalls = recentCalls.length;
+    } catch (e) {
+      result.callsScanError = e.message;
+    }
+
     return ApiResponse.success(res, result);
   } catch (err) {
     logger.error(`[getTranscriptDiag] ${err.code || ''} ${err.message}`);
