@@ -422,6 +422,10 @@ const criticalPreflight = async () => {
   // (起動だけ通れば軽量な API は応答できる。次のデプロイでスキーマを再試行可能。)
   try { await pool.execute('SET SESSION lock_wait_timeout = 30'); } catch (e) {}
   try { await pool.execute('SET SESSION innodb_lock_wait_timeout = 30'); } catch (e) {}
+  // タイムゾーン: NOW() / CURDATE() 等が JST を返すよう session+global を JST に。
+  // global は SUPER 権限必要だが、 Railway MySQL の root は持っているはず (失敗時 catch)。
+  try { await pool.execute("SET SESSION time_zone = '+09:00'"); } catch (e) {}
+  try { await pool.execute("SET GLOBAL time_zone = '+09:00'"); } catch (e) { logger.warn(`[Preflight] SET GLOBAL time_zone failed (権限不足の可能性): ${e.message}`); }
   // 前回起動時の長時間 UPDATE が MySQL 側で生き残っていると 新規 SELECT を全部詰まらせる。
   // 60秒以上 UPDATE/DELETE しているクエリを強制終了。 SUPER 権限が無くても自分の接続なら KILL 可。
   try {
