@@ -6,6 +6,80 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: タイムゾーン (UTC ズレ) 全面修正
+#### 背景・経緯
+- 2026-06-11 頃の commit a29d1c8 (DB pool 最小化) で `database.js` から `pool.on('connection', conn => conn.query("SET time_zone = '+09:00'"))` を削除していた。
+- 結果として MySQL 接続の session time_zone が UTC のまま → `NOW()` が UTC を返し、 `call_started_at` / `last_called_at` / `recall_at` 等が **9 時間早く** 保存されるようになっていた。
+- 症状: 結果ログの日時が深夜帯 (実体は昼間の架電) で表示される、 文字起こし照合 (call_started_at vs Sheets time、 ±5分窓) が 9時間ズレで全て外れて `findTranscript` が NULL を返す = 「文字起こしが取れない」。
+
+#### コード修正 (commit 4517443 / 225dc1a / 225dc1a の方針への切り替え)
+- `pool.on('connection')` 復活案 (commit 8d01b70) は Railway healthcheck failure を再発 (mysql2 v3.19 で pool queue 競合) → **撤回**。
+- 代替策: **全コントローラ・サービスの `NOW()` を `DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)` に一括置換**。
+  - `UTC_TIMESTAMP()` は MySQL 仕様で session/global time_zone に依存せず必ず UTC を返すため、 +9 で確実に JST。
+  - pool レベルでの session 設定が不要なので mysql2 のバージョン依存リスクを完全に排除。
+- 対象 11 ファイル (controllers 7 + services 4):
+  - `controllers/`: callController, adminController, projectController, companyController, csvController, faxCrmWebhookController, scriptController, requestController
+  - `services/`: cpa-v2/{salesProjectService, interviewService, jobPostingService}, faxCrmDbWriter
+
+#### 既存データの補正 (運用作業、 Railway MySQL Console で実行)
+- 補正対象期間: `2026-06-12 00:00:00` 〜 `2026-06-18 04:08:00` (UTC) の calls / companies / recall_tasks。
+- 安全装置として `HOUR(...) < 14` (= JST 22時より前) を AND 条件に入れて深夜帯架電 (もしあれば) を除外。
+- 実行クエリ (3本に分けて順次実行、 Railway Database タブは複数文一括実行非対応):
+  ```sql
+  UPDATE calls SET
+    call_started_at = DATE_ADD(call_started_at, INTERVAL 9 HOUR),
+    call_ended_at = CASE WHEN call_ended_at IS NOT NULL
+                         THEN DATE_ADD(call_ended_at, INTERVAL 9 HOUR) ELSE NULL END
+  WHERE call_started_at >= '2026-06-12 00:00:00'
+    AND call_started_at <  '2026-06-18 04:08:00'
+    AND HOUR(call_started_at) < 14;
+  -- 同じ条件で companies.last_called_at と recall_tasks.recall_at も補正
+  ```
+- 実行結果: calls 約 3942 件、 companies/recall_tasks も同条件で補正。
+
+#### 副次的改善 (同セッション内)
+- 文字起こしキャッシュ TTL を 5min → 2min に短縮 (Sheets への直近データ反映遅延を見越して、 commit 2359da5)。
+- 新 endpoint `GET /api/admin/transcript-diag` 追加 (admin only) — cache 状態 + `?refresh=1` で強制クリア + `?phone=XXX` で電話番号照会 + `lastSuccessfulTranscript` (最後に取得できた通話) と `recentFailedSamples` を返す (commit ac58eea)。
+
+### 2026-06-18: 業務カテゴリ (技人国/特定技能) のコスト按分
+- CPA画面で「特定技能で稼働した日のコストを技人国から減算して特定技能側に計上したい」 要望対応。
+- `cost_records` / `monthly_payroll_records` / `monthly_extra_costs` に work_category 区分が無いため、 `work_hours` の指定カテゴリ時間比率で按分。
+- 月給確定値 (PDF) を完全保存する形:
+  - 特定技能タブ: `cost × (特定技能時間 / 全時間)`
+  - 技人国タブ: `cost × (1 - 特定技能時間 / 全時間)` (= 確定値 - 特定技能コスト)
+  - 全体タブ: 按分なし (旧挙動)
+- 新ヘルパー `getWorkCategoryRatios()` 追加 + 60秒メモリキャッシュ。 `getCpaSummary` / `getCpaAll` 双方で適用。
+
+### 2026-06-18: ダッシュボード/CPA/案件質 パフォーマンス改善
+- 9 本の複合インデックスを `server.js runMigrations` に追加 (work_hours / projects / calls / monthly_extra_costs)。
+- `getCpaAll` / `getQualityAll` に 60秒メモリキャッシュ (LRU 200 エントリ、 req.query + role + workCategory でキー化)。
+- タブ切替・周期ポーリング・同じ期間の連続リクエストを大幅高速化。
+
+### 2026-06-17: 営業/案件管理 関連の機能追加・修正
+- 営業アカウントの自動ピックアップでリコール以外が出ない事象を修正 (assignmentFilterSQL を sales ロールでバイパス、 営業もオペレーター用リスト is_sales_list=0 を兼用)。
+- 営業画面の案件管理に **書類選考あり 詳細モーダル** を追加 (管理者画面と同等)。
+- 案件管理一覧の企業名セルに **業種 / 都道府県** を併記 (region/prefecture/address 先頭から都道府県を抽出)。
+- 案件管理の手動追加で **業種と住所 (都道府県含む) を必須化** (frontend + backend 両方で検証)。
+- 案件詳細画面で **「募集開始日」「履歴書送付日」** フィールドを追加 (form state と UI に統合)。
+- 案件詳細の企業情報更新で `company_id` が NULL (手動追加・移行前案件) のとき companies に新規 INSERT して紐づける処理を追加 (それまでは UPDATE WHERE id=NULL で 0 件マッチで保存されていなかった)。
+
+### 2026-06-17: 案件質分析の内訳モーダル拡張
+- **面接日確定** 列を clickable 化、 案件リスト+ステータス内訳サマリ モーダル (`/api/analytics/interview-set-detail`)。
+- **面接実施** 列を clickable 化、 案件リスト+ステータス内訳サマリ モーダル (`/api/analytics/interview-done-detail`)。
+- 算出方法の備忘録セクションを CPA画面最下部に折りたたみ表示。
+
+### 2026-06-17: 特定技能管理の機能拡張
+- **NG 数列**を追加、 クリックで NG 内訳モーダル (`/api/admin/ng-detail`) を表示 (架電日時 / 企業名 / 業種 / 都道府県 / NG理由)。
+- **業務カテゴリ振替ツール** (admin only) を追加 — オペレーターの指定期間データ (calls/projects/work_hours) の work_category を一括変更。 プレビュー + 実行ボタン分離、 confirm 必須。
+
+### 2026-06-17: 業務カテゴリ表示制御
+- `buildWorkCategoryFilter` (auth.js) の admin/manager/consultant ロールのデフォルトを `general` (技人国) に変更。
+  - 旧: 未指定で全件 (技人国+特定技能 合算)
+  - 新: 未指定で技人国のみ、 `?work_category=specific_skill` で特定技能、 `?work_category=all` で全体
+- KPI 補正適用ロジック (`getAllOperatorPerformance`) のスキップ条件を `wcFilter.sql ありなら全部スキップ` → `req.query.work_category === 'specific_skill'` のみスキップに変更 (技人国側で補正が消える事象を修正)。
+- CPA/案件質分析画面に **業務カテゴリ切替タブ** を表示モード切替の隣に追加 (技人国 / 特定技能 / 全体)。
+- dashboardController の `work_hours` 集計 (team/operator) と `projects` 集計に `wcFilter` 適用 (技人国/特定技能の二重表示事象を修正)。
+
 ### 架電リスト(緊急fix): 業種別モード時は Tier 0/1 にも業種フィルタを適用
 - 「業種別が効かない (業種を変えても同じ企業が出る)」事象を修正。
 - 原因: Tier 0 (assigned) と Tier 1 (recall) は modeFilterSQL を含まず、業種に関係なく LIST_SIZE(25) を埋めることがあり、Tier 2-5 の業種別企業が表示されていなかった。
