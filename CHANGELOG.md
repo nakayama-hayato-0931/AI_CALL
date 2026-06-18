@@ -6,6 +6,27 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 「コール数」 の集計式を全画面で統一
+#### 背景
+- 「同じオペレーター・同じ期間なのに admin 画面 (101件) と個人ダッシュボード (125件) で数字が違う」 事象。
+- 原因: コール数の集計式が画面ごとに不統一だった:
+  - 個人ダッシュボード (`dashboardController.getDashboardData`): `COUNT(DISTINCT c.company_id)` = **ユニーク企業数**
+  - 管理者画面 (`adminController.getAllOperatorPerformance`): `COUNT(DISTINCT c.id)` = 全コール件数
+  - CPA画面 (`analyticsController.getCpaSummary` / `getCpaAll`): `COUNT(*)` = 全コール件数
+
+#### 修正 (commit 564017d)
+- 全画面で **`COUNT(DISTINCT c.company_id)`** (= アプローチした企業数) に統一。
+- 「コール数」 = 「何社にアプローチしたか」 が意味的に明確で、 同一企業への複数回コールで水増しされない。
+- 案件化率 = 案件数 / 企業数 となるため、 「アプローチ企業あたりの案件化率」 として読み解ける。
+
+#### 例外
+- `adminController.js` L1060 の業種別時間帯別接続率分析の `COUNT(*)` は「時間帯あたりの接続率」 算出ベースが必要なので変更せず維持。
+
+#### 重要な仕様メモ
+- **コール数 = ユニーク企業数 (DISTINCT company_id)** が今後の標準仕様。
+- 新規追加クエリで「コール数」 を集計するときは必ず `COUNT(DISTINCT c.company_id)` を使うこと。
+- 「全コール件数 (実イベント数)」 を集計したい場合は別名 (例: `total_call_events`) で命名して混同を避ける。
+
 ### 2026-06-18: タイムゾーン (UTC ズレ) 全面修正
 #### 背景・経緯
 - 2026-06-11 頃の commit a29d1c8 (DB pool 最小化) で `database.js` から `pool.on('connection', conn => conn.query("SET time_zone = '+09:00'"))` を削除していた。

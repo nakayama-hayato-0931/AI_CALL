@@ -52,6 +52,8 @@
 - **既存モックHTMLを流用しない**: `docs/mockups/` 等の古いモックを参照・転用しない。
 - **スキーマ変更**は上記「起動時の冪等 ALTER」パターンで `server.js` に追記する。
 - **DB予約語に注意**: `year_month` は MySQL 8 予約語のためカラム名は `period_ym`。
+- **「コール数」 の集計仕様**: 全画面で **`COUNT(DISTINCT c.company_id)`** (ユニーク企業数 = アプローチした企業数) に統一。 同一企業への複数回コールは 1 件として数える。 案件化率 = 案件数 / 企業数 と読む。 新規クエリで「コール数」 を扱うときは必ずこの式を使う。 「全コール件数 (call レコード数)」 を集計したい場合は別名 (例: `total_call_events`) で命名して混同を避けること。 (2026-06-18 commit 564017d で統一)
+- **`NOW()` を直接使わない**: MySQL の `NOW()` はセッション time_zone に依存し、 過去に UTC ズレ事故を起こした (commit a29d1c8 / 8d01b70)。 タイムスタンプには **`DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)`** を使うこと (`UTC_TIMESTAMP()` は仕様で必ず UTC を返す)。 既存全 controller / service は 2026-06-18 commit 4517443 で一括置換済み。
 - **作業完了ごとに確認なしで `main` へ commit & push する**（main push が Railway 自動デプロイのトリガー。毎回プッシュまで完了させる）。自分の変更ファイルだけをステージし、無関係な未追跡ファイル（`scripts/generate-service-jwt.js` 等）は含めない。コミットメッセージは絵文字なし・`feat()/fix()/perf()` 形式。
 
 ## 6. ローカル起動（概要）
