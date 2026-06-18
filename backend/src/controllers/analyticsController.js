@@ -249,9 +249,9 @@ const getCpaMetrics = async (req, res, next) => {
       cost = Math.round(cost * ratio);
     }
 
-    // コール数
+    // コール数 = ユニーク企業数 (同一企業への複数回コールは 1 件として数える、 dashboard と統一)
     const [callRows] = await pool.query(
-      `SELECT COUNT(*) as call_count
+      `SELECT COUNT(DISTINCT c.company_id) as call_count
        FROM calls c
        WHERE DATE(c.call_started_at) BETWEEN ? AND ?
          AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
@@ -1115,10 +1115,11 @@ const getCpaAll = async (req, res, next) => {
     const wcProjFilter = buildWorkCategoryFilter(req, 'p.work_category');
 
     // コール数（全員分一括）- 4月以降のみ
+    // コール数はユニーク企業数 (DISTINCT company_id) に統一 (dashboard / admin/performance と一致)
     let callMap = new Map();
     if (systemDateFrom) {
       const [callAll] = await pool.query(
-        `SELECT c.user_id, COUNT(*) as cnt
+        `SELECT c.user_id, COUNT(DISTINCT c.company_id) as cnt
          FROM calls c WHERE DATE(c.call_started_at) BETWEEN ? AND ? AND c.result_code IS NOT NULL AND c.result_code != 'SKIP'
          ${wcCallFilter.sql}
          GROUP BY c.user_id`,
