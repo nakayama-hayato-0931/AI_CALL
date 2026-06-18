@@ -542,7 +542,7 @@ const importCompanies = async (req, res, next) => {
           // priority_expires_at をまとめて更新（IN句）
           try {
             await conn.query(
-              `UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id IN (${ids.map(() => '?').join(',')})`,
+              `UPDATE companies SET priority_expires_at = DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY) WHERE id IN (${ids.map(() => '?').join(',')})`,
               [graceDays, ...ids]
             );
             const aPh = [];
@@ -1212,7 +1212,7 @@ const importSpecialList = async (req, res, next) => {
         // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
         if (priorityOperatorIds.length > 0 && graceDays > 0) {
           await conn.execute(
-            'UPDATE companies SET priority_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?',
+            'UPDATE companies SET priority_expires_at = DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY) WHERE id = ?',
             [graceDays, insertResult.insertId]
           );
           for (const opId of priorityOperatorIds) {

@@ -129,7 +129,7 @@ const approveScript = async (req, res, next) => {
   try {
     const { id } = req.params;
     const [result] = await pool.execute(
-      'UPDATE script_items SET status = "approved", approved_by = ?, approved_at = NOW() WHERE id = ? AND status = "pending"',
+      'UPDATE script_items SET status = "approved", approved_by = ?, approved_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ? AND status = "pending"',
       [req.user.id, id]
     );
 

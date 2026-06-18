@@ -822,7 +822,7 @@ const promoteProject = async (req, res, next) => {
 
     // 見込フラグを解除、昇格日時を記録
     await conn.execute(
-      'UPDATE projects SET is_prospect = 0, promoted_at = NOW() WHERE id = ?',
+      'UPDATE projects SET is_prospect = 0, promoted_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?',
       [id]
     );
 

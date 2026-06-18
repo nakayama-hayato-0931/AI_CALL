@@ -69,7 +69,7 @@ async function upsertRecords(records) {
         `INSERT INTO job_postings_v2 (
           external_key, acquired_date, job_number, company_name,
           sales_owner, industry, source_kind, status_label, is_cancelled, source_row, synced_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))
         ON DUPLICATE KEY UPDATE
           acquired_date = VALUES(acquired_date),
           job_number = VALUES(job_number),
@@ -80,7 +80,7 @@ async function upsertRecords(records) {
           status_label = VALUES(status_label),
           is_cancelled = VALUES(is_cancelled),
           source_row = VALUES(source_row),
-          synced_at = NOW()`,
+          synced_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)`,
         [r.external_key, r.acquired_date, r.job_number, r.company_name,
          r.sales_owner, r.industry, r.source_kind, r.status_label, r.is_cancelled, r.source_row]
       );
@@ -119,7 +119,7 @@ async function markSync(status, message) {
   const pool = getPool();
   await pool.query(
     `UPDATE sheets_config_v2 SET
-       jobs_last_synced_at    = NOW(),
+       jobs_last_synced_at    = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR),
        jobs_last_sync_status  = ?,
        jobs_last_sync_message = ?
      WHERE id = 1`,

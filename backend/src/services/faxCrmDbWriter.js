@@ -75,7 +75,7 @@ async function upsertToFaxCrm(company) {
       const ph = Object.keys(cols).map(() => '?').join(', ');
       const [ins] = await conn.query(
         `INSERT INTO customers (${colNames}, imported_at, source_file)
-         VALUES (${ph}, NOW(), 'callcenter-shadow')`,
+         VALUES (${ph}, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), 'callcenter-shadow')`,
         Object.values(cols)
       );
       faxId = ins.insertId;

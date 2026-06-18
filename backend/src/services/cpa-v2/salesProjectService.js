@@ -82,7 +82,7 @@ async function upsertProjects(projects) {
           first_payment, expected_revenue, payment_actual,
           status_label, is_cancelled, is_declined,
           source_row, synced_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))
         ON DUPLICATE KEY UPDATE
           offer_date = VALUES(offer_date),
           acquired_date = VALUES(acquired_date),
@@ -98,7 +98,7 @@ async function upsertProjects(projects) {
           is_cancelled = VALUES(is_cancelled),
           is_declined = VALUES(is_declined),
           source_row = VALUES(source_row),
-          synced_at = NOW()`,
+          synced_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)`,
         [
           p.external_key, p.offer_date, p.acquired_date, p.job_number, p.company_name,
           p.candidate_registration_no, p.sales_owner, p.industry,
@@ -145,7 +145,7 @@ async function markSync(status, message) {
   const pool = getPool();
   await pool.query(
     `UPDATE sheets_config_v2 SET
-       projects_last_synced_at    = NOW(),
+       projects_last_synced_at    = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR),
        projects_last_sync_status  = ?,
        projects_last_sync_message = ?
      WHERE id = 1`,

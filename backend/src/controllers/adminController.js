@@ -1064,7 +1064,7 @@ const aiSuggestTimeRules = async (req, res, next) => {
         SUM(CASE WHEN c.result_code IN ('INTERESTED','PROJECT') THEN 1 ELSE 0 END) as positive_results
       FROM calls c
       JOIN companies co ON c.company_id = co.id
-      WHERE c.call_started_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+      WHERE c.call_started_at >= DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 3 MONTH)
         AND c.result_code IS NOT NULL
         AND c.result_code != 'SKIP'
         AND co.industry IN (${placeholders})
@@ -2343,7 +2343,7 @@ async function _pushOneToFaxCrm(id) {
     address: company.address,
   });
 
-  await pool.execute(`UPDATE companies SET last_synced_to_faxcrm_at = NOW() WHERE id = ?`, [id]);
+  await pool.execute(`UPDATE companies SET last_synced_to_faxcrm_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?`, [id]);
 
   return { ok: true, pushed, failed, meta_ok: !!meta.ok };
 }
@@ -2374,13 +2374,13 @@ async function _pullOneFromFaxCrm(id) {
     const memo = `${tag} ${ev.memo || ''}`.trim();
     await pool.query(
       `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
-       VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
+       VALUES (?, NULL, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))`,
       [id, actionDate, actionType, result, memo]
     );
     inserted++;
   }
 
-  await pool.execute(`UPDATE companies SET last_synced_from_faxcrm_at = NOW() WHERE id = ?`, [id]);
+  await pool.execute(`UPDATE companies SET last_synced_from_faxcrm_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?`, [id]);
 
   return { ok: true, fetched: events.length, inserted, skipped };
 }
@@ -2540,7 +2540,7 @@ async function getAllRecalls(req, res, next) {
     const params = [];
     if (status && status !== 'all') {
       if (status === 'overdue') {
-        conditions.push("rt.status = 'pending' AND rt.recall_at < NOW()");
+        conditions.push("rt.status = 'pending' AND rt.recall_at < DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)");
       } else {
         conditions.push('rt.status = ?');
         params.push(status);
@@ -2572,13 +2572,13 @@ async function getAllRecalls(req, res, next) {
               u.name AS user_name,
               (SELECT cl.memo FROM calls cl WHERE cl.id = rt.call_id) AS last_memo,
               (SELECT cl.result_code FROM calls cl WHERE cl.id = rt.call_id) AS last_result,
-              (TIMESTAMPDIFF(MINUTE, rt.recall_at, NOW())) AS overdue_minutes
+              (TIMESTAMPDIFF(MINUTE, rt.recall_at, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))) AS overdue_minutes
        FROM recall_tasks rt
        LEFT JOIN companies c ON rt.company_id = c.id
        INNER JOIN users u ON rt.user_id = u.id
        ${fullWhere}
        ORDER BY
-         CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 0
+         CASE WHEN rt.status = 'pending' AND rt.recall_at < DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) THEN 0
               WHEN rt.status = 'pending' THEN 1
               ELSE 2 END,
          rt.recall_at ASC
@@ -2590,8 +2590,8 @@ async function getAllRecalls(req, res, next) {
     const [summary] = await pool.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
-         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= NOW() THEN 1 ELSE 0 END) AS upcoming_count,
+         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) THEN 1 ELSE 0 END) AS overdue_count,
+         SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) THEN 1 ELSE 0 END) AS upcoming_count,
          SUM(CASE WHEN rt.status = 'done' THEN 1 ELSE 0 END) AS done_count,
          SUM(CASE WHEN rt.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
        FROM recall_tasks rt
@@ -2602,8 +2602,8 @@ async function getAllRecalls(req, res, next) {
     // オペレーター別カウント（有効なオペレーターのみ）
     const [byUser] = await pool.query(
       `SELECT u.id AS user_id, u.name AS user_name,
-              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
-              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= NOW() THEN 1 ELSE 0 END) AS upcoming_count,
+              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at < DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) THEN 1 ELSE 0 END) AS overdue_count,
+              SUM(CASE WHEN rt.status = 'pending' AND rt.recall_at >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) THEN 1 ELSE 0 END) AS upcoming_count,
               SUM(CASE WHEN rt.status = 'pending' THEN 1 ELSE 0 END) AS pending_count
        FROM users u
        LEFT JOIN recall_tasks rt ON rt.user_id = u.id
@@ -3176,7 +3176,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `UPDATE calls SET transcript = NULL
            WHERE transcript IS NOT NULL
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY)`,
           [drop_transcripts_days]
         );
         results.transcriptsCleared = r.affectedRows;
@@ -3189,7 +3189,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `DELETE FROM calls
            WHERE result_code = 'SKIP'
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY)`,
           [drop_skip_days]
         );
         results.skipCallsDeleted = r.affectedRows;
@@ -3202,7 +3202,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `DELETE FROM calls
            WHERE result_code IS NULL
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL 1 DAY)`
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 DAY)`
         );
         results.staleCallsDeleted = r.affectedRows;
       } catch (e) { results.staleError = e.message; }
@@ -3214,7 +3214,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `DELETE FROM calls
            WHERE result_code = 'NO_ANSWER'
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY)`,
           [drop_no_answer_days]
         );
         results.noAnswerDeleted = r.affectedRows;
@@ -3227,7 +3227,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `DELETE FROM calls
            WHERE result_code = 'NG'
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY)`,
           [drop_ng_days]
         );
         results.ngDeleted = r.affectedRows;
@@ -3240,7 +3240,7 @@ async function cleanupDatabase(req, res, next) {
         const [r] = await pool.execute(
           `DELETE FROM calls
            WHERE result_code = 'RECALL'
-             AND call_started_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+             AND call_started_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY)`,
           [drop_recall_days]
         );
         results.recallDeleted = r.affectedRows;

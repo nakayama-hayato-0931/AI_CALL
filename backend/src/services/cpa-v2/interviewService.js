@@ -117,7 +117,7 @@ async function markSync(status, message) {
   const pool = getPool();
   await pool.query(
     `UPDATE sheets_config_v2 SET
-       interviews_last_synced_at    = NOW(),
+       interviews_last_synced_at    = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR),
        interviews_last_sync_status  = ?,
        interviews_last_sync_message = ?
      WHERE id = 1`,

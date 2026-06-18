@@ -117,7 +117,7 @@ const replyToRequest = async (req, res, next) => {
       params.push(admin_reply);
       updates.push('replied_by = ?');
       params.push(req.user.id);
-      updates.push('replied_at = NOW()');
+      updates.push('replied_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)');
     }
     if (status) {
       updates.push('status = ?');

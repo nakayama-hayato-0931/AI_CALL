@@ -69,12 +69,12 @@ async function receiveEvent(req, res) {
     const memo = `${tag} ${ev.memo || ''}`.trim();
     await pool.query(
       `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
-       VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
+       VALUES (?, NULL, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))`,
       [companyId, actionDate, actionType, result, memo]
     );
 
     await pool.execute(
-      `UPDATE companies SET last_synced_from_faxcrm_at = NOW() WHERE id = ?`,
+      `UPDATE companies SET last_synced_from_faxcrm_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?`,
       [companyId]
     );
 
@@ -121,7 +121,7 @@ async function receiveEventsBulk(req, res) {
       const memo = `${tag} ${ev.memo || ''}`.trim();
       await pool.query(
         `INSERT INTO company_actions (company_id, user_id, action_date, action_type, result, memo, created_at)
-         VALUES (?, NULL, ?, ?, ?, ?, NOW())`,
+         VALUES (?, NULL, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))`,
         [companyId, actionDate, actionType, result, memo]
       );
       inserted++;
@@ -131,7 +131,7 @@ async function receiveEventsBulk(req, res) {
       const ids = Array.from(touched);
       const placeholders = ids.map(() => '?').join(',');
       await pool.query(
-        `UPDATE companies SET last_synced_from_faxcrm_at = NOW() WHERE id IN (${placeholders})`,
+        `UPDATE companies SET last_synced_from_faxcrm_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id IN (${placeholders})`,
         ids
       );
     }

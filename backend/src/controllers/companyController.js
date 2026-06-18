@@ -66,7 +66,7 @@ const invalidateCallListCache = (userId) => {
 const lockFilterSQL = `
   AND (c.locked_by_user_id IS NULL
        OR c.locked_by_user_id = ?
-       OR c.locked_at < DATE_SUB(NOW(), INTERVAL ${LOCK_TIMEOUT_MINUTES} MINUTE))
+       OR c.locked_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ${LOCK_TIMEOUT_MINUTES} MINUTE))
 `;
 
 /**
@@ -332,7 +332,7 @@ const assignmentFilterSQL = `
   AND (
     NOT EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.is_auto = 0)
     OR EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0)
-    OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= NOW())
+    OR (c.priority_expires_at IS NOT NULL AND c.priority_expires_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))
   )
 `;
 
@@ -517,7 +517,7 @@ const getNextCallTarget = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
-         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 DAY))
          ${lrFilter}
          ${asFilter}
          ${irFilter}
@@ -561,7 +561,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NO_ANSWER')}
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
+         AND c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
          ${goldenIndFilter}
@@ -584,7 +584,7 @@ const getNextCallTarget = async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NG')}
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
+         AND c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 3 MONTH)
          ${lastUserNotEqualSQL()}
          ${asFilter}
          ${irFilter}
@@ -947,7 +947,7 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
-         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 DAY))
          ${lrFilter}
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -994,7 +994,7 @@ const getCallList = async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NO_ANSWER')}
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
+         AND c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 2 DAY)
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${asFilter}
@@ -1016,7 +1016,7 @@ const getCallList = async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NG')}
-         AND c.last_called_at < DATE_SUB(NOW(), INTERVAL 3 MONTH)
+         AND c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 3 MONTH)
          ${lastUserNotEqualSQL()}
          ${lockFilterSQL}
          ${recentCallFilterSQL}
@@ -1189,7 +1189,7 @@ const lockCallTarget = async (req, res, next) => {
 
     // ロック取得
     await conn.execute(
-      'UPDATE companies SET locked_by_user_id = ?, locked_at = NOW() WHERE id = ?',
+      'UPDATE companies SET locked_by_user_id = ?, locked_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR) WHERE id = ?',
       [userId, id]
     );
 
