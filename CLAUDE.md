@@ -27,6 +27,10 @@
 - 外部連携: Zoom Phone（`zoomphone://` 発信）、Google Sheets（文字起こし・通話時間）、fax-crm（webhook 双方向同期）
 - **デプロイ: Railway**（GitHub `main` ブランチ自動デプロイ）。
   ※ README にある「お名前.com / PM2」は旧情報。現状は Railway。
+- **本流 GitHub リポジトリ**: `nakayama-hayato-0931/AI_CALL` (モノレポ、 `/backend` と `/frontend` で1リポジトリ)。
+  - Railway は 2 サービス構成: `AI callcenter backend` (`/backend`) と `AI callcenter frontend` (`/frontend`)、 両方とも同じリポジトリの `main` を Auto-deploy。
+  - **`git push origin main` 1 回で両 Railway が自動デプロイされる**。
+  - 旧リポジトリ `test-hitokiwa/callcenter-ai-system` は 2026-06-18 まで本流として並走していたが、 同日 nakayama リポジトリ側に統合 (merge commit 17e5b4c) して以降は legacy 扱い。 ローカルには `legacy_test_hitokiwa` リモート名で残置のみ (push しない)。
 
 ## 4. アーキテクチャの最重要ポイント
 

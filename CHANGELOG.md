@@ -6,6 +6,25 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: GitHub リポジトリを `nakayama-hayato-0931/AI_CALL` に統一
+#### 背景
+- 旧構成: `test-hitokiwa/callcenter-ai-system` と `nakayama-hayato-0931/AI_CALL` の 2 リポジトリが並走。
+  - backend Railway: 旧来は `test-hitokiwa/...` を見ていた (本セッション中盤までは)。 同日中に `nakayama/...` に張り替え済み。
+  - frontend Railway: ずっと `nakayama/...` を見ていたが、 2 日前から実質デッドになっていた (「Repo not found」 エラー + 自動デプロイ不発火)。
+- ローカル git は両リポジトリをリモートに持っていたが、 push 先が `origin = test-hitokiwa` 一択になっていたため `nakayama` 側に変更が反映されず、 frontend が古いコードのまま放置されていた。
+
+#### 修正
+- ローカル git の 11 コミット (2026-06-17 〜 06-18 の作業全部) と、 `nakayama/main` にあった 3 コミット (Layout/requests のメッセージ表記改名) を merge (commit 17e5b4c)。 コンフリクトなし。
+- `nakayama-hayato-0931/AI_CALL` の main に push → 両 Railway が同コミットを自動デプロイ・反映成功を確認。
+- ローカル git remote 整理:
+  - `origin` → `nakayama-hayato-0931/AI_CALL` (新本流)
+  - `legacy_test_hitokiwa` → `test-hitokiwa/callcenter-ai-system` (旧、 念のため残置)
+- CLAUDE.md 「3. 技術スタック / デプロイ」 セクションに本流リポジトリの明示と push 先のルールを追記。
+
+#### 今後の運用
+- すべての push は `git push origin main` でこのリポジトリに行く。 これで backend/frontend 両 Railway が自動デプロイ。
+- 旧 `legacy_test_hitokiwa` リモートには push しない。
+
 ### 2026-06-18: 案件詳細をモーダル化 — 「一覧に戻る」 を不要に
 #### 背景
 - 「案件詳細について、 いちいちページが切り替わって一覧に戻るのが手間」 という要望。
