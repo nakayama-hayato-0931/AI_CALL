@@ -3208,6 +3208,7 @@ const getScreeningInProgressDetail = async (req, res, next) => {
               su.name AS sales_name,
               ou.name AS caller_name,
               c.industry, c.prefecture, c.region,
+              p.document_screening,
               p.recruitment_start_date, p.resume_sent_date, p.interview_date
          FROM projects p
          LEFT JOIN companies c ON p.company_id = c.id
@@ -3238,6 +3239,7 @@ const getScreeningInProgressDetail = async (req, res, next) => {
           if (r.region) { for (const p of PREFS) if (r.region.startsWith(p)) return p; }
           return null;
         })(),
+        documentScreening: r.document_screening || null,
       })),
     });
   } catch (err) {
