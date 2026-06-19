@@ -6,6 +6,31 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 文字起こし + 通話時間の一括取得を定時自動化 (12:00/17:00/21:00 JST)
+#### 背景
+- 「架電結果ログのログ一括取得と通話時間一括取得を定時で自動取得してほしい。 毎日昼の12時と17時と21時の3回」 の要望。
+- これまでは管理者が `/admin/call-logs` 画面で 「ログ一括取得」 / 「通話時間を一括取得(過去分)」 ボタンを毎回手動で押す運用だった。
+
+#### 修正
+- `backend/package.json`: `node-cron@^4.4.1` を追加。
+- `backend/src/controllers/callController.js`:
+  - 既存の `refreshTranscriptsBulk` / `backfillDurations` から内部処理を切り出し、 純粋関数 `_refreshTranscriptsBulkInternal({date_from, date_to, user_id})` / `_backfillDurationsInternal({...})` を新設。 戻り値: `{ found/total, error? }` / `{ target, updated, error? }`。
+  - 既存 endpoint はこの内部関数を呼ぶ薄いラッパーに変更。 既存 API レスポンスは互換性を維持。
+  - module.exports に内部関数を追加 (scheduledTasks から呼ぶ)。
+- `backend/src/services/scheduledTasks.js` (新規):
+  - `node-cron` で毎日 **12:00/17:00/21:00 JST** に登録 (`timezone: 'Asia/Tokyo'`)。
+  - 対象期間は **当日 (JST)** のみ。 過去全期間スキャンは Google Sheets API 負荷を考慮して避ける (フロントからの手動全期間実行は引き続き可)。
+  - 1 ジョブで「文字起こし → 通話時間」 を順次実行。 失敗してもプロセスを止めない (logger.error で記録)。
+  - 多重起動防止フラグ (`running`) で同じジョブが重なって走るのを防止。
+  - 環境変数 `DISABLE_SCHEDULED_TASKS=1` で全停止可能 (緊急停止・本番外環境用)。
+- `backend/src/server.js`: `app.listen()` 完了後に `startScheduledTasks()` を呼び出し (runMigrations と同じく非同期で副次的に起動)。
+- `CLAUDE.md` 「4. アーキテクチャの最重要ポイント」 に「定時バッチ」 項目を追加。
+
+#### 結果
+- 営業時間中に追加された架電結果の文字起こしと実通話時間が、 12:00/17:00/21:00 のタイミングで自動的に取り込まれる。
+- ダッシュボードの平均通話時間や案件分析の精度がリアルタイム性を持つ (最遅でも 21:00 までに当日分が反映)。
+- 手動の「ログ一括取得」 ボタンは引き続き使用可能 (即時実行したい場合用)。
+
 ### 2026-06-18: 顧客マスタに NG理由フィルタ追加 + タイトル横に件数表示
 #### 背景
 - 「結果を NG に選んだ時 NG理由でもフィルタ出来る項目を結果欄の右に増やしてほしい」 「顧客マスタの右に該当件数も表示してほしい」 の要望。

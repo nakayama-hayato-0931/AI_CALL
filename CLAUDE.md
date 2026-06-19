@@ -49,6 +49,7 @@
 - **テストアカウント**は DB 書き込みをスキップしてダミー応答を返す（`req.user.isTestAccount`）。
 - **認証**: JWT + bcrypt。`isServiceAccount`（fax-crm 同期バッチ用）はレート制限から除外。
 - **AI機能**: `backend/src/services/aiEvaluationService.js`。通話品質6項目×100点採点、デイリーバッチ、個人コーチング、ステータスシート（7段階研修）自動生成。
+- **定時バッチ (node-cron)**: `backend/src/services/scheduledTasks.js` で server.js 起動時に登録。 毎日 **12:00/17:00/21:00 JST** に「文字起こし一括取得」 (refreshTranscriptsBulk) と「通話時間一括取得」 (backfillDurations) を **当日分** に対して実行。 controller の内部関数 `_refreshTranscriptsBulkInternal` / `_backfillDurationsInternal` を直接呼ぶ (HTTP リクエスト経由しない、 認証不要)。 多重起動防止フラグあり。 環境変数 `DISABLE_SCHEDULED_TASKS=1` で全停止可能。
 
 ## 5. 開発規約（このプロジェクト固有・厳守）
 

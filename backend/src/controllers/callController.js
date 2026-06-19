@@ -796,57 +796,107 @@ const refreshTranscript = async (req, res, next) => {
 };
 
 /**
+ * 文字起こし一括取得 (内部関数)
+ * cron / route 両方から呼ぶ。 戻り値: { found, total, error? }
+ */
+async function _refreshTranscriptsBulkInternal({ date_from, date_to, user_id } = {}) {
+  const whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "(c.transcript IS NULL OR c.transcript = '')"];
+  const params = [];
+  if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
+  if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
+  if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
+
+  const [rows] = await pool.query(
+    `SELECT c.id, c.call_started_at, co.phone_number
+     FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+     WHERE ${whereClauses.join(' AND ')}
+     ORDER BY c.call_started_at DESC LIMIT 200`,
+    params
+  );
+  if (rows.length === 0) return { found: 0, total: 0 };
+
+  const eligible = rows.filter(r => r.phone_number && r.call_started_at);
+  let transcriptMap;
+  try {
+    transcriptMap = await findTranscriptsBatch(eligible);
+  } catch (gsErr) {
+    logger.error(`文字起こしシート取得エラー: ${gsErr.message}`);
+    return { found: 0, total: eligible.length, error: gsErr.message };
+  }
+  const found = transcriptMap.size;
+  const entries = Array.from(transcriptMap.entries());
+  for (let i = 0; i < entries.length; i += 5) {
+    const batch = entries.slice(i, i + 5);
+    await Promise.all(batch.map(([callId, transcript]) =>
+      pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]).catch(e => {
+        logger.error(`文字起こし保存エラー call=${callId}: ${e.message}`);
+      })
+    ));
+  }
+  logger.info(`文字起こし一括取得: ${found}/${eligible.length}件`);
+  return { found, total: eligible.length };
+}
+
+/**
  * POST /api/calls/refresh-transcripts-bulk
  * 文字起こし未取得の通話を一括でGoogle Sheetsから取得
  */
 const refreshTranscriptsBulk = async (req, res, next) => {
   try {
     const { date_from, date_to, user_id } = req.body;
-    let whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "(c.transcript IS NULL OR c.transcript = '')"];
-    let params = [];
-    if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
-    if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
-    if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
-
-    const [rows] = await pool.query(
-      `SELECT c.id, c.call_started_at, co.phone_number
-       FROM calls c LEFT JOIN companies co ON c.company_id = co.id
-       WHERE ${whereClauses.join(' AND ')}
-       ORDER BY c.call_started_at DESC LIMIT 200`,
-      params
-    );
-
-    if (rows.length === 0) {
-      return ApiResponse.success(res, { found: 0, total: 0 }, '未取得の通話はありません');
+    const result = await _refreshTranscriptsBulkInternal({ date_from, date_to, user_id });
+    if (result.error) {
+      return ApiResponse.success(res, result, 'Google Sheetsへのアクセスに失敗しました');
     }
-
-    const eligible = rows.filter(r => r.phone_number && r.call_started_at);
-    let transcriptMap;
-    try {
-      transcriptMap = await findTranscriptsBatch(eligible);
-    } catch (gsErr) {
-      logger.error(`文字起こしシート取得エラー: ${gsErr.message}`);
-      return ApiResponse.success(res, { found: 0, total: eligible.length, error: gsErr.message }, 'Google Sheetsへのアクセスに失敗しました');
+    if (result.total === 0) {
+      return ApiResponse.success(res, result, '未取得の通話はありません');
     }
-    const found = transcriptMap.size;
-    // バッチ更新（並列5件ずつ）
-    const entries = Array.from(transcriptMap.entries());
-    for (let i = 0; i < entries.length; i += 5) {
-      const batch = entries.slice(i, i + 5);
-      await Promise.all(batch.map(([callId, transcript]) =>
-        pool.execute('UPDATE calls SET transcript = ? WHERE id = ?', [transcript, callId]).catch(e => {
-          logger.error(`文字起こし保存エラー call=${callId}: ${e.message}`);
-        })
-      ));
-    }
-
-    logger.info(`文字起こし一括取得: ${found}/${eligible.length}件`);
-    return ApiResponse.success(res, { found, total: eligible.length }, `${found}件の文字起こしを取得しました`);
+    return ApiResponse.success(res, result, `${result.found}件の文字起こしを取得しました`);
   } catch (err) {
     logger.error(`文字起こし一括取得エラー: code=${err.code} message=${err.message}`);
     return ApiResponse.error(res, `一括取得失敗: ${err.sqlMessage || err.message}`, 500);
   }
 };
+
+/**
+ * 通話時間一括取得 (内部関数)
+ * cron / route 両方から呼ぶ。 戻り値: { target, updated, error? }
+ */
+async function _backfillDurationsInternal({ date_from, date_to, user_id } = {}) {
+  const whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "c.actual_duration_seconds IS NULL"];
+  const params = [];
+  if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
+  if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
+  if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
+
+  const [rows] = await pool.query(
+    `SELECT c.id, c.call_started_at, co.phone_number
+     FROM calls c LEFT JOIN companies co ON c.company_id = co.id
+     WHERE ${whereClauses.join(' AND ')} AND co.phone_number IS NOT NULL`,
+    params
+  );
+  if (rows.length === 0) return { target: 0, updated: 0 };
+
+  let durationMap;
+  try {
+    durationMap = await findDurationsBatch(rows);
+  } catch (gsErr) {
+    logger.error(`通話時間シート取得エラー: ${gsErr.message}`);
+    return { target: rows.length, updated: 0, error: gsErr.message };
+  }
+
+  let updated = 0;
+  const entries = Array.from(durationMap.entries());
+  for (let i = 0; i < entries.length; i += 10) {
+    const batch = entries.slice(i, i + 10);
+    await Promise.all(batch.map(([id, sec]) =>
+      pool.execute('UPDATE calls SET actual_duration_seconds = ? WHERE id = ?', [sec, id]).catch(() => {})
+    ));
+    updated += batch.length;
+  }
+  logger.info(`通話時間一括取得: ${updated}/${rows.length}件保存`);
+  return { target: rows.length, updated };
+}
 
 /**
  * POST /api/calls/backfill-durations
@@ -857,41 +907,14 @@ const refreshTranscriptsBulk = async (req, res, next) => {
 const backfillDurations = async (req, res, next) => {
   try {
     const { date_from, date_to, user_id } = req.body || {};
-    const whereClauses = ["c.result_code IS NOT NULL", "c.result_code != 'SKIP'", "c.actual_duration_seconds IS NULL"];
-    const params = [];
-    if (date_from) { whereClauses.push('DATE(c.call_started_at) >= ?'); params.push(date_from); }
-    if (date_to) { whereClauses.push('DATE(c.call_started_at) <= ?'); params.push(date_to); }
-    if (user_id) { whereClauses.push('c.user_id = ?'); params.push(user_id); }
-
-    const [rows] = await pool.query(
-      `SELECT c.id, c.call_started_at, co.phone_number
-       FROM calls c LEFT JOIN companies co ON c.company_id = co.id
-       WHERE ${whereClauses.join(' AND ')} AND co.phone_number IS NOT NULL`,
-      params
-    );
-    if (rows.length === 0) {
-      return ApiResponse.success(res, { target: 0, updated: 0 }, '対象の通話がありません（全て取得済み）');
+    const result = await _backfillDurationsInternal({ date_from, date_to, user_id });
+    if (result.error) {
+      return ApiResponse.error(res, `Google Sheetsへのアクセスに失敗: ${result.error}`, 502);
     }
-
-    let durationMap;
-    try {
-      durationMap = await findDurationsBatch(rows);
-    } catch (gsErr) {
-      logger.error(`通話時間シート取得エラー: ${gsErr.message}`);
-      return ApiResponse.error(res, `Google Sheetsへのアクセスに失敗: ${gsErr.message}`, 502);
+    if (result.target === 0) {
+      return ApiResponse.success(res, result, '対象の通話がありません（全て取得済み）');
     }
-
-    let updated = 0;
-    const entries = Array.from(durationMap.entries());
-    for (let i = 0; i < entries.length; i += 10) {
-      const batch = entries.slice(i, i + 10);
-      await Promise.all(batch.map(([id, sec]) =>
-        pool.execute('UPDATE calls SET actual_duration_seconds = ? WHERE id = ?', [sec, id]).catch(() => {})
-      ));
-      updated += batch.length;
-    }
-    logger.info(`通話時間一括取得: ${updated}/${rows.length}件保存`);
-    return ApiResponse.success(res, { target: rows.length, updated }, `${updated}件の実通話時間を保存しました（対象 ${rows.length}件）`);
+    return ApiResponse.success(res, result, `${result.updated}件の実通話時間を保存しました（対象 ${result.target}件）`);
   } catch (err) {
     logger.error(`通話時間一括取得エラー: ${err.message}`);
     return ApiResponse.error(res, `一括取得失敗: ${err.sqlMessage || err.message}`, 500);
@@ -938,4 +961,9 @@ const getCallTranscript = async (req, res, next) => {
   }
 };
 
-module.exports = { startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators, refreshTranscript, refreshTranscriptsBulk, backfillDurations, bulkCancelUnsaved, getCallTranscript };
+module.exports = {
+  startCall, endCall, cancelCall, cancelCallBeacon, skipCall, getCalls, updateCall, getOperators,
+  refreshTranscript, refreshTranscriptsBulk, backfillDurations, bulkCancelUnsaved, getCallTranscript,
+  // 内部関数 (scheduledTasks.js から呼ぶ)
+  _refreshTranscriptsBulkInternal, _backfillDurationsInternal,
+};

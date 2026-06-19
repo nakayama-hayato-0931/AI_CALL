@@ -1116,6 +1116,14 @@ let server;
   }
   // 残りの重いマイグレーション・region正規化・seed投入などは非同期で実行
   runMigrations().catch(e => logger.error(`[Migration] background failed: ${e.message}`));
+
+  // 定時バッチ (毎日 12:00/17:00/21:00 JST に文字起こし+通話時間一括取得)
+  try {
+    const { startScheduledTasks } = require('./services/scheduledTasks');
+    startScheduledTasks();
+  } catch (e) {
+    logger.error(`[Scheduler] 起動失敗: ${e.message}`);
+  }
 })();
 
 module.exports = app;
