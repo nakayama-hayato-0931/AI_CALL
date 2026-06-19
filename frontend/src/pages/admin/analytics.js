@@ -2241,6 +2241,8 @@ export default function AnalyticsPage() {
                       <th className="border px-2 py-1.5 text-left">募集開始日</th>
                       <th className="border px-2 py-1.5 text-left">履歴書送付日</th>
                       <th className="border px-2 py-1.5 text-left">面接日</th>
+                      <th className="border px-2 py-1.5 text-left">業種</th>
+                      <th className="border px-2 py-1.5 text-left">都道府県</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2262,6 +2264,8 @@ export default function AnalyticsPage() {
                         <td className="border px-2 py-1">{r.recruitmentStartDate ? new Date(r.recruitmentStartDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1">{r.resumeSentDate ? new Date(r.resumeSentDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1">{r.interviewDate ? new Date(r.interviewDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
+                        <td className="border px-2 py-1">{r.industry || '-'}</td>
+                        <td className="border px-2 py-1">{r.prefecture || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
