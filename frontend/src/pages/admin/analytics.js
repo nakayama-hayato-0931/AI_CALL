@@ -2268,7 +2268,7 @@ export default function AnalyticsPage() {
                         <td className="border px-2 py-1">{r.resumeSentDate ? new Date(r.resumeSentDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1">{r.interviewDate ? new Date(r.interviewDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1 text-center">
-                          <input type="checkbox" checked={r.documentScreening === 'required'} readOnly className="cursor-default" />
+                          <input type="checkbox" defaultChecked={false} className="cursor-pointer" />
                         </td>
                       </tr>
                     ))}
