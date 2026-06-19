@@ -893,8 +893,9 @@ const getCallList = async (req, res, next) => {
     // ===== Tier 0: 自分割り当て中の企業を必ず先頭に表示 =====
     // 管理画面で「○○割り当て中」とオレンジ表示される企業は、本人がオペレーター画面でも
     // 必ず架電できるようにする。
-    // 永久除外 (SKIP/PROJECT/RECALL/INTERESTED)・業種地域フィルタ・last_called_at 経過日数条件
-    // をバイパスし、ロック・1時間以内・recall除外を適用。
+    // 業種地域フィルタ・last_called_at 経過日数条件はバイパスし、
+    // **永久除外 (lrFilter: SKIP/PROJECT/RECALL/INTERESTED/NG)**・ロック・1時間以内・recall除外は適用。
+    // 2026-06-18: SKIP/NG された企業を再表示しないという運用方針に従い lrFilter を追加。
     // ②自動ピックアップ対象都道府県 (prefectureFilter) は最優先=絶対条件として常に適用。
     // 業種別モード時は modeFilterSQL も適用して業種絞込を尊重 (業種別が効かない事象の修正)。
     const [assignedRows] = await tQuery(
@@ -905,6 +906,7 @@ const getCallList = async (req, res, next) => {
        WHERE c.exclusion_flag = 0 AND c.is_special = 0
          AND EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0)
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
+         ${lrFilter}
          ${lockFilterSQL}
          ${recentCallFilterSQL}
          ${prefectureFilter}
