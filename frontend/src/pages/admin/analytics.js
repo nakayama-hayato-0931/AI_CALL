@@ -517,7 +517,7 @@ export default function AnalyticsPage() {
   // 案件質指標の列定義
   // clickable: 'waiting' = 連絡待ち / 'industry:STATUS' = 業種別内訳モーダル
   const qualColumns = [
-    { key: 'total', label: '案件数' },
+    { key: 'total', label: '案件数', clickable: 'industry:ALL' },
     { key: 'lost', label: '失注', pctKey: 'lostPct', clickable: 'industry:LOST' },
     { key: 'waitingContact', label: '連絡待ち', pctKey: 'waitingContactPct', clickable: 'waiting' },
     { key: 'screeningInProgress', label: '書類選考中', pctKey: 'screeningInProgressPct', clickable: 'screening' },
@@ -688,7 +688,7 @@ export default function AnalyticsPage() {
     if (!data) return;
     const dateFrom = data.dateFrom || (status === 'NAITEI' ? '2026-01-01' : '2026-04-01');
     const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
-    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定', BARASHI_LOST: 'バラシ/失注' };
+    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定', BARASHI_LOST: 'バラシ/失注', ALL: '全案件' };
     setIndustryModal({
       title: `${name} - ${labelMap[status] || status} 業種別内訳`,
       status, userId, dateFrom, dateTo,
@@ -1678,9 +1678,17 @@ export default function AnalyticsPage() {
                           {waitingModal.data.withInterview.map(p => (
                             <tr key={p.projectId} className="border-t hover:bg-gray-50">
                               <td className="px-2 py-1">
-                                <a href={`/admin/projects?focus=${p.projectId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                  {p.companyName || '-'}
-                                </a>
+                                {p.projectId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailProjectId(p.projectId)}
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    {p.companyName || '-'}
+                                  </button>
+                                ) : (
+                                  <span>{p.companyName || '-'}</span>
+                                )}
                               </td>
                               <td className="px-2 py-1">{p.jobNumber || '-'}</td>
                               <td className="px-2 py-1">{p.ownerName || '-'}</td>
@@ -1718,9 +1726,17 @@ export default function AnalyticsPage() {
                           {waitingModal.data.withoutInterview.map(p => (
                             <tr key={p.projectId} className="border-t hover:bg-gray-50">
                               <td className="px-2 py-1">
-                                <a href={`/admin/projects?focus=${p.projectId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                  {p.companyName || '-'}
-                                </a>
+                                {p.projectId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailProjectId(p.projectId)}
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    {p.companyName || '-'}
+                                  </button>
+                                ) : (
+                                  <span>{p.companyName || '-'}</span>
+                                )}
                               </td>
                               <td className="px-2 py-1">{p.jobNumber || '-'}</td>
                               <td className="px-2 py-1">{p.ownerName || '-'}</td>
@@ -2232,7 +2248,15 @@ export default function AnalyticsPage() {
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="border px-2 py-1">{r.acquiredDate ? new Date(r.acquiredDate).toLocaleDateString('ja-JP') : '-'}</td>
                         <td className="border px-2 py-1 font-mono text-[11px]">{r.jobNumber || '-'}</td>
-                        <td className="border px-2 py-1">{r.companyName || '-'}</td>
+                        <td className="border px-2 py-1">
+                          {r.id ? (
+                            <button type="button" onClick={() => setDetailProjectId(r.id)} className="text-blue-600 hover:underline">
+                              {r.companyName || '-'}
+                            </button>
+                          ) : (
+                            <span>{r.companyName || '-'}</span>
+                          )}
+                        </td>
                         <td className="border px-2 py-1">{r.salesName || '-'}</td>
                         <td className="border px-2 py-1 bg-amber-50/30">{r.callerName || '-'}</td>
                         <td className="border px-2 py-1">{r.recruitmentStartDate ? new Date(r.recruitmentStartDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
@@ -2296,7 +2320,15 @@ export default function AnalyticsPage() {
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="border px-2 py-1">{r.acquiredDate ? new Date(r.acquiredDate).toLocaleDateString('ja-JP') : '-'}</td>
                         <td className="border px-2 py-1 font-mono text-[11px]">{r.jobNumber || '-'}</td>
-                        <td className="border px-2 py-1">{r.companyName || '-'}</td>
+                        <td className="border px-2 py-1">
+                          {r.id ? (
+                            <button type="button" onClick={() => setDetailProjectId(r.id)} className="text-blue-600 hover:underline">
+                              {r.companyName || '-'}
+                            </button>
+                          ) : (
+                            <span>{r.companyName || '-'}</span>
+                          )}
+                        </td>
                         <td className="border px-2 py-1">{r.salesName || '-'}</td>
                         <td className="border px-2 py-1 bg-amber-50/30">{r.callerName || '-'}</td>
                         <td className="border px-2 py-1">{r.recruitmentStartDate ? new Date(r.recruitmentStartDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
@@ -2360,7 +2392,15 @@ export default function AnalyticsPage() {
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="border px-2 py-1">{r.acquiredDate ? new Date(r.acquiredDate).toLocaleDateString('ja-JP') : '-'}</td>
                         <td className="border px-2 py-1 font-mono text-[11px]">{r.jobNumber || '-'}</td>
-                        <td className="border px-2 py-1">{r.companyName || '-'}</td>
+                        <td className="border px-2 py-1">
+                          {r.id ? (
+                            <button type="button" onClick={() => setDetailProjectId(r.id)} className="text-blue-600 hover:underline">
+                              {r.companyName || '-'}
+                            </button>
+                          ) : (
+                            <span>{r.companyName || '-'}</span>
+                          )}
+                        </td>
                         <td className="border px-2 py-1">{r.salesName || '-'}</td>
                         <td className="border px-2 py-1 bg-amber-50/30">{r.callerName || '-'}</td>
                         <td className="border px-2 py-1">{r.interviewDate ? new Date(r.interviewDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>

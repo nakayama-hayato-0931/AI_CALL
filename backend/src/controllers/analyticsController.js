@@ -2478,9 +2478,10 @@ const getQualityIndustryDetail = async (req, res, next) => {
   try {
     const { date_from, date_to, user_id, status } = req.query;
     // BARASHI_LOST = バラシ(BARASHI) と 失注(LOST) を両方含む
-    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI', 'BARASHI_LOST'];
+    // ALL = 案件数 (status を問わず期間内の全案件)
+    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI', 'BARASHI_LOST', 'ALL'];
     if (!allowedStatuses.includes(status)) {
-      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI/BARASHI_LOST のいずれか');
+      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI/BARASHI_LOST/ALL のいずれか');
     }
     const dateFrom = date_from || '2026-04-01';
     const dateTo = date_to || new Date().toISOString().slice(0, 10);
@@ -2495,14 +2496,15 @@ const getQualityIndustryDetail = async (req, res, next) => {
     }
     params.push(...wcFilter.params);
     // NAITEI の日付基準: date_base='created' なら獲得日、それ以外(既定)は内定日。
-    // LOST/BARASHI/BARASHI_LOST は獲得日(created_at)。
+    // LOST/BARASHI/BARASHI_LOST/ALL は獲得日(created_at)。
     const dateCol = status === 'NAITEI'
       ? (req.query.date_base === 'created' ? 'DATE(p.created_at)' : 'p.naitei_date')
       : 'DATE(p.created_at)';
 
-    // status 条件: BARASHI_LOST のときは IN 句、それ以外は等号
-    const statusSql = status === 'BARASHI_LOST' ? `p.status IN ('BARASHI','LOST')` : `p.status = ?`;
-    const statusBind = status === 'BARASHI_LOST' ? [] : [status];
+    // status 条件: ALL は status 制限なし、 BARASHI_LOST のときは IN 句、 それ以外は等号
+    const statusSql = status === 'ALL' ? `1=1`
+      : (status === 'BARASHI_LOST' ? `p.status IN ('BARASHI','LOST')` : `p.status = ?`);
+    const statusBind = (status === 'ALL' || status === 'BARASHI_LOST') ? [] : [status];
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
     const [rows] = await pool.query(

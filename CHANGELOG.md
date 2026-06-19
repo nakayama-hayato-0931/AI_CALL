@@ -6,6 +6,28 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18 (追補): 案件質向上の全セルから案件詳細モーダルを開けるように
+#### 背景
+- 前段で「失注/バラシ」 (industryModal 経由) からは案件詳細モーダルが開くようになったが、 ユーザー指摘「失注とバラシしか適応されていない。 案件数・連絡待ち・書類選考中・面接日確定・面接実施 でもできるようにして」。
+- これらのセルクリックで開くモーダルは別物 (waitingModal/screeningModal/interviewSetModal/interviewDoneModal) で、 内部の企業名は単なる表示 (or `/admin/projects?focus=...` への新タブ遷移) になっていた。
+- 「案件数」 セルはそもそも `clickable` が無くクリック自体できなかった。
+
+#### 修正 (フロント)
+- `pages/admin/analytics.js`:
+  - **waitingModal** (連絡待ち、 withInterview/withoutInterview 2 箇所): `<a href="/admin/projects?focus=...">` を `<button onClick={setDetailProjectId(p.projectId)}>` に変更。
+  - **screeningModal** (書類選考中)、 **interviewSetModal** (面接日確定)、 **interviewDoneModal** (面接実施): 企業名セルを `<span>` 表示から `r.id` で案件詳細モーダルを開くボタンに変更。
+  - **qualColumns 案件数** に `clickable: 'industry:ALL'` を追加 (これでセル自体がクリック可能になる)。
+  - `openIndustryDetail` の `labelMap` に `ALL: '全案件'` を追加。
+
+#### 修正 (バックエンド)
+- `analyticsController.getQualityIndustryDetail`:
+  - `allowedStatuses` に `'ALL'` を追加 (LOST/BARASHI/NAITEI/BARASHI_LOST/ALL)。
+  - `statusSql` の分岐に ALL を追加 → status 制限なし (`1=1`)、 期間内の全案件を返す。
+  - 日付基準は LOST/BARASHI/BARASHI_LOST と同じく `DATE(p.created_at)` (獲得日基準)。
+
+#### 結果
+- 「案件質向上 - 期間比較」 表の全セル (案件数/失注/連絡待ち/書類選考中/面接日確定/面接実施/バラシ) でドリルダウン → 案件詳細モーダル展開 が一貫して可能に。
+
 ### 2026-06-18: CPA/案件質分析の業種別内訳から案件詳細をモーダル表示
 #### 背景
 - CPA/案件質分析画面 (`/admin/analytics`) の「案件質向上 - 期間比較」 表で、 案件数/失注/連絡待ち/書類選考中/面接日確定/面接実施/バラシ のセルをクリック → 業種別内訳モーダル (`industryModal`) が開く。
