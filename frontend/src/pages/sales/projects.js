@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
+import ProjectDetailContent from '../../components/projects/ProjectDetailContent';
 import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
@@ -82,6 +83,9 @@ export default function SalesProjects() {
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [manualForm, setManualForm] = useState({ company_name: '', phone_number: '', status: '', job_number: '', interview_date: '', interview_type: '', memo: '', contact_person: '', contact_info: '', created_date: '' });
   const [manualSaving, setManualSaving] = useState(false);
+
+  // 案件詳細モーダル
+  const [detailProjectId, setDetailProjectId] = useState(null);
 
   // 書類選考あり 詳細モーダル (管理者画面と同じ仕様)
   const [screeningModal, setScreeningModal] = useState(null);
@@ -431,7 +435,7 @@ export default function SalesProjects() {
                 const urgent = isUrgentUnconfirmed(p);
                 return (
                   <tr key={p.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
-                    onClick={() => router.push(`/projects/${p.id}`)}>
+                    onClick={() => setDetailProjectId(p.id)}>
                     <td className="table-cell text-gray-500 whitespace-nowrap">
                       {new Date(p.created_at).toLocaleDateString('ja-JP')}
                     </td>
@@ -869,6 +873,40 @@ export default function SalesProjects() {
           </div>
         );
       })()}
+
+      {/* 案件詳細モーダル */}
+      {detailProjectId && (
+        <div
+          className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 overflow-y-auto py-6 px-4"
+          onClick={() => setDetailProjectId(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-6xl my-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-xl z-10">
+              <h2 className="text-base font-bold text-gray-900">案件詳細</h2>
+              <button
+                onClick={() => setDetailProjectId(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="閉じる"
+              >
+                <svg className="w-5 h-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <ProjectDetailContent
+                id={detailProjectId}
+                embedded
+                onSaved={() => { setDetailProjectId(null); fetchProjects(); }}
+                onClose={() => setDetailProjectId(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </Layout>
   );
