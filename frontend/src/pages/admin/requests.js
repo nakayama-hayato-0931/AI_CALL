@@ -59,7 +59,7 @@ export default function AdminRequests() {
 
   return (
     <Layout>
-      <h1 className="text-xl font-bold text-gray-900 mb-6">メッセージ管理</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-6">メッセージ</h1>
 
       {/* フィルター */}
       <div className="card p-4 mb-6 flex items-end gap-4">
