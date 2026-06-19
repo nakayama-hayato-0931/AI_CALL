@@ -347,15 +347,17 @@ const assignmentPassthruSalesSQL = `
 
 /**
  * 再ピックアップ除外SQL
- * - SKIP/PROJECT/RECALL/INTERESTED: 永久除外（再ピックアップ禁止）
+ * - SKIP/PROJECT/RECALL/INTERESTED/NG: 永久除外（再ピックアップ禁止）
+ *   2026-06-18: NG を永久除外に追加 (旧仕様: 3ヶ月後+別オペでの再ピックアップ可)。
+ *   業務上 NG の企業に再架電したくないという運用方針への対応。
+ *   これに伴い Tier 5 (retry_ng) のクエリは事実上空配列を返すようになる。
  * - NO_ANSWER: 最終架電から2日後以降に再ピックアップ可能（リコール由来の不通のみ別途1時間後、endCall側で制御）
- * - NG: 最終架電から3ヶ月後以降に別オペレーターのみ再ピックアップ可能
  */
 const lastResultExclusionSQL = `
   AND NOT EXISTS (
     SELECT 1 FROM calls cl2
     WHERE cl2.company_id = c.id
-      AND cl2.result_code IN ('SKIP', 'PROJECT', 'RECALL', 'INTERESTED')
+      AND cl2.result_code IN ('SKIP', 'PROJECT', 'RECALL', 'INTERESTED', 'NG')
   )
 `;
 
