@@ -1965,6 +1965,7 @@ async function getCustomerMasterList(req, res, next) {
       limit = 50,
       page = 1,
       result,
+      ng_reason,
       user_id,
       industry,
       date_from,
@@ -1979,6 +1980,12 @@ async function getCustomerMasterList(req, res, next) {
     // 直近の架電条件で絞る場合のサブクエリ条件
     const callConds = [];
     if (result) { callConds.push('cl.result_code = ?'); params.push(result); }
+    // NG理由フィルタ: result='NG' とセット運用が前提だが、 単独で来ても result_code='NG' に強制する
+    if (ng_reason) {
+      callConds.push('cl.ng_reason = ?');
+      params.push(ng_reason);
+      if (!result) { callConds.push("cl.result_code = 'NG'"); }
+    }
     if (user_id) { callConds.push('cl.user_id = ?'); params.push(user_id); }
     if (date_from) { callConds.push('DATE(cl.call_started_at) >= ?'); params.push(date_from); }
     if (date_to) { callConds.push('DATE(cl.call_started_at) <= ?'); params.push(date_to); }
@@ -2463,6 +2470,12 @@ async function bulkSyncCustomers(req, res) {
       const params = [];
       const callConds = [];
       if (f.result)   { callConds.push('cl.result_code = ?'); params.push(f.result); }
+      // NG理由フィルタ: ng_reason 単独で来た場合は result_code='NG' を強制
+      if (f.ng_reason) {
+        callConds.push('cl.ng_reason = ?');
+        params.push(f.ng_reason);
+        if (!f.result) { callConds.push("cl.result_code = 'NG'"); }
+      }
       if (f.user_id)  { callConds.push('cl.user_id = ?'); params.push(f.user_id); }
       if (f.date_from){ callConds.push('DATE(cl.call_started_at) >= ?'); params.push(f.date_from); }
       if (f.date_to)  { callConds.push('DATE(cl.call_started_at) <= ?'); params.push(f.date_to); }

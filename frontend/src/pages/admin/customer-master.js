@@ -30,6 +30,21 @@ const RESULT_LABEL = {
 };
 const RESULT_OPTIONS = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
 
+// NG理由の選択肢 (call.js の NG結果入力フォームと一致させる)
+const NG_REASON_OPTIONS = [
+  '今は募集していない',
+  '外国人NG',
+  '技人国NG',
+  '特定技能のみ募集中',
+  'アルバイトだけ(正社員NG)',
+  '経験者のみ(専門分野を学習含む)',
+  '今忙しい(対応不可)',
+  'ハローワークからしか募集していない',
+  '決まったところ(ハローワーク以外)からしか募集していない',
+  '信用できない(怪しいから)',
+  '対面面接のみ(遠方で直接は行けない)',
+];
+
 const KIND_BADGE = {
   call: { label: '架電', cls: 'bg-blue-100 text-blue-800' },
   manual: { label: '手動', cls: 'bg-purple-100 text-purple-800' },
@@ -59,7 +74,7 @@ export default function CustomerMasterPage() {
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
-    search: '', result: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '',
+    search: '', result: '', ng_reason: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '',
   });
   const ALL_PREFECTURES_CM = [
     '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -305,7 +320,7 @@ export default function CustomerMasterPage() {
   const updateFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const clearAll = () => {
     setSearchInput('');
-    setFilters({ search: '', result: '', user_id: '', industry: '', date_from: '', date_to: '' });
+    setFilters({ search: '', result: '', ng_reason: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '' });
   };
 
   return (
@@ -313,7 +328,12 @@ export default function CustomerMasterPage() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold">顧客マスタ</h1>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              顧客マスタ
+              <span className="text-base font-normal text-gray-500">
+                {loading ? '読み込み中...' : `${Number(total).toLocaleString()}件`}
+              </span>
+            </h1>
             <p className="text-sm text-gray-500 mt-1">
               架電結果・NG理由・手動アクション・FAX CRM の履歴を統合して確認できます。
               {faxCrmEnabled
@@ -475,12 +495,30 @@ export default function CustomerMasterPage() {
 
             <div>
               <label className="block text-[11px] text-gray-500 mb-0.5">結果</label>
-              <select value={filters.result} onChange={e => updateFilter('result', e.target.value)}
-                className="border rounded px-2 py-1 text-sm">
+              <select
+                value={filters.result}
+                onChange={e => {
+                  const v = e.target.value;
+                  // 結果が NG でなくなったら ng_reason もクリア
+                  setFilters(f => ({ ...f, result: v, ng_reason: v === 'NG' ? f.ng_reason : '' }));
+                }}
+                className="border rounded px-2 py-1 text-sm"
+              >
                 <option value="">全て</option>
                 {RESULT_OPTIONS.map(r => <option key={r} value={r}>{RESULT_LABEL[r]}</option>)}
               </select>
             </div>
+
+            {filters.result === 'NG' && (
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-0.5">NG理由</label>
+                <select value={filters.ng_reason} onChange={e => updateFilter('ng_reason', e.target.value)}
+                  className="border rounded px-2 py-1 text-sm max-w-[200px]">
+                  <option value="">全て</option>
+                  {NG_REASON_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] text-gray-500 mb-0.5">期間 (開始)</label>
