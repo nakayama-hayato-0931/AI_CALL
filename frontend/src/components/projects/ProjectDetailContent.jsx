@@ -624,7 +624,7 @@ export default function ProjectDetailContent({ id, onSaved, onClose, embedded = 
       </div>
       {/* 内定者情報入力モーダル */}
       {showHireModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => { setShowHireModal(false); fetchHires(); }}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => { setShowHireModal(false); fetchHires(); }}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
               <div className="flex items-center gap-2">
@@ -767,7 +767,7 @@ export default function ProjectDetailContent({ id, onSaved, onClose, embedded = 
 
       {/* 不合格時の面接人数入力モーダル */}
       {showFugokakuModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowFugokakuModal(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setShowFugokakuModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200 bg-red-50 rounded-t-xl">
               <h2 className="text-lg font-bold text-gray-900">面接結果: 不合格</h2>

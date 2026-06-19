@@ -6,6 +6,21 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: CPA/案件質分析の業種別内訳から案件詳細をモーダル表示
+#### 背景
+- CPA/案件質分析画面 (`/admin/analytics`) の「案件質向上 - 期間比較」 表で、 案件数/失注/連絡待ち/書類選考中/面接日確定/面接実施/バラシ のセルをクリック → 業種別内訳モーダル (`industryModal`) が開く。
+- 内訳モーダル内の案件明細テーブルで企業名をクリックすると、 **新タブで顧客マスタ** (`/admin/customer-master?id=...`) が開く挙動だった。
+- 要望: 顧客マスタではなく **案件詳細をモーダル表示** したい (案件管理画面でモーダル化したのと同じ UX に統一)。
+
+#### 修正
+- `pages/admin/analytics.js`:
+  - `ProjectDetailContent` を import、 `detailProjectId` state を追加。
+  - 業種別内訳モーダルの案件明細テーブルで、 企業名の `<a href="/admin/customer-master?id=...">` を `<button onClick={setDetailProjectId(p.id)}>` に変更。 条件も `p.company_id` から `p.id` (project id) に変更。
+  - 末尾に案件詳細モーダルを追加 (`z-[60]`)。
+- `components/projects/ProjectDetailContent.jsx`:
+  - 内部の hireModal/fugokakuModal を `z-[60]` → `z-[70]` に引き上げ。
+  - 階層: industryModal (`z-50`) < 案件詳細 (`z-[60]`) < 内定者/不合格 (`z-[70]`) で重なり順を保つ。 案件一覧 (`z-40`) 側からの場合も `[40] < [70]` で問題なし。
+
 ### 2026-06-18: GitHub リポジトリを `nakayama-hayato-0931/AI_CALL` に統一
 #### 背景
 - 旧構成: `test-hitokiwa/callcenter-ai-system` と `nakayama-hayato-0931/AI_CALL` の 2 リポジトリが並走。

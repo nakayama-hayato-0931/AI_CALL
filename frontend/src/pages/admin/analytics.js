@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
+import ProjectDetailContent from '../../components/projects/ProjectDetailContent';
 import useAuth from '../../hooks/useAuth';
 import api, { directApi } from '../../utils/api';
 import toast from 'react-hot-toast';
@@ -92,6 +93,8 @@ export default function AnalyticsPage() {
   const [kpiModal, setKpiModal] = useState(null); // { date, userId, field, value }
   const [waitingModal, setWaitingModal] = useState(null); // { title, userId, dateFrom, dateTo, data, loading }
   const [industryModal, setIndustryModal] = useState(null); // { title, status, userId, dateFrom, dateTo, data, loading }
+  // 案件詳細モーダル (内訳テーブル内の企業名クリックで開く)
+  const [detailProjectId, setDetailProjectId] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
 
   const [loading, setLoading] = useState(true);
@@ -1814,10 +1817,14 @@ export default function AnalyticsPage() {
                             <tr key={p.id} className="border-t hover:bg-gray-50">
                               <td className="px-2 py-1">{p.job_number || '-'}</td>
                               <td className="px-2 py-1">
-                                {p.company_id ? (
-                                  <a href={`/admin/customer-master?id=${p.company_id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {p.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailProjectId(p.id)}
+                                    className="text-blue-600 hover:underline"
+                                  >
                                     {p.company_name || '-'}
-                                  </a>
+                                  </button>
                                 ) : (
                                   <span>{p.company_name || '-'}</span>
                                 )}
@@ -2388,6 +2395,40 @@ export default function AnalyticsPage() {
               {!v2Modal.loading && (v2Modal.type === 'interviews' || v2Modal.type === 'rejects') && (
                 <V2InterviewsTable rows={v2Modal.data?.rows || []} offerOnly={v2Modal.data?.offerOnly || []} kind={v2Modal.type} />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 案件詳細モーダル (内訳テーブル内の企業名クリックで開く) */}
+      {detailProjectId && (
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 overflow-y-auto py-6 px-4"
+          onClick={() => setDetailProjectId(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-6xl my-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-xl z-10">
+              <h2 className="text-base font-bold text-gray-900">案件詳細</h2>
+              <button
+                onClick={() => setDetailProjectId(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="閉じる"
+              >
+                <svg className="w-5 h-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <ProjectDetailContent
+                id={detailProjectId}
+                embedded
+                onSaved={() => setDetailProjectId(null)}
+                onClose={() => setDetailProjectId(null)}
+              />
             </div>
           </div>
         </div>
