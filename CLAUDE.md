@@ -43,6 +43,7 @@
   `backend/src/controllers/companyController.js` の `getNextCallTarget`（次の1件）/ `getCallList`（候補リスト）。
   優先順: (1)リコール期限 → (2)ゴールデンタイム（`industry_time_rules` 業種×時間帯）→ (3)未接触 → (4)前回不通NO_ANSWERは2日後。
   **NG は SKIP/PROJECT/RECALL/INTERESTED と同じく永久除外** (2026-06-18 変更、 旧仕様: 3ヶ月後+別オペでの再ピックアップ可)。 業務上 NG 企業へ再架電しないという運用方針。 これに伴い Tier 5 (retry_ng) は実質空クエリ。
+  **電話番号必須**: 全 Tier のピックアップクエリで `c.phone_number IS NOT NULL AND c.phone_number <> ''` を AND 適用 (2026-06-18 追加、 ユーザー要望「FAX だけは対象にしないでほしい」)。 顧客マスタ画面や全社一覧では FAX のみ顧客も引き続き表示する (情報保持目的)、 ピックアップだけ電話番号必須。
   モード: `auto` / `industry`（業種別）/ `mylist`（自作リスト）/ `special`（特別リスト）。mylist・special は業種地域/結果除外/割当フィルタをバイパス。
   業種絞り込みは `industry_category`（飲食/製造/小売…14カテゴリの事前計算カラム）＋ `industry LIKE` の併用。地域絞り込みは `c.address LIKE CONCAT(irr.region, '%')`（住所先頭の都道府県でマッチ）。
 - **通話フロー**: `callController.js` の `start`（企業ロック検証）→ `end`（結果コード `NO_ANSWER/NG/RECALL/INTERESTED/PROJECT/SKIP`、PROJECT→案件自動生成、RECALL→リコールタスク生成、終了時にロック解除）。文字起こし・実通話時間は Google Sheets から背景取得。

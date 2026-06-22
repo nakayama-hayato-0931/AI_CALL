@@ -362,6 +362,16 @@ const lastResultExclusionSQL = `
 `;
 
 /**
+ * 電話番号フィルタ
+ * 自動ピックアップは「電話番号がある顧客」 限定。
+ * FAX のみの顧客 (phone_number が NULL/空) はピックアップ対象外。
+ * 2026-06-18 追加 (ユーザー要望「FAX だけは対象にしないでほしい」)。
+ * 注: 顧客マスタや一覧表示では引き続き全顧客 (FAX のみ含む) を表示する。
+ *      ここで除外するのはピックアップ系クエリのみ。
+ */
+const hasPhoneSQL = ` AND c.phone_number IS NOT NULL AND c.phone_number <> '' `;
+
+/**
  * GET /api/companies/call-list/next
  * 次の架電先を1件取得 (自動架電リスト)
  * 割り当て優先: 自分に割り当てられた企業 → 未割り当て企業
@@ -451,7 +461,7 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
@@ -474,7 +484,7 @@ const getNextCallTarget = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+         WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
@@ -500,6 +510,7 @@ const getNextCallTarget = async (req, res, next) => {
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
+         ${hasPhoneSQL}
        ORDER BY rt.recall_at ASC
        LIMIT 1`,
       [userId, now]
@@ -516,7 +527,7 @@ const getNextCallTarget = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 DAY))
@@ -538,7 +549,7 @@ const getNextCallTarget = async (req, res, next) => {
       `SELECT c.*,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL} AND c.last_called_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${asFilter}
@@ -559,7 +570,7 @@ const getNextCallTarget = async (req, res, next) => {
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NO_ANSWER')}
@@ -582,7 +593,7 @@ const getNextCallTarget = async (req, res, next) => {
               (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NG')}
@@ -817,7 +828,7 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter}
+         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
@@ -843,7 +854,7 @@ const getCallList = async (req, res, next) => {
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+         WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
@@ -869,6 +880,7 @@ const getCallList = async (req, res, next) => {
        JOIN companies c ON rt.company_id = c.id
        WHERE rt.user_id = ? AND rt.status = 'pending' AND rt.recall_at <= ?
          AND c.exclusion_flag = 0 AND c.is_special = 0
+         ${hasPhoneSQL}
          ${lockFilterSQL}
          ${modeFilterSQL}
        ORDER BY rt.recall_at ASC
@@ -904,6 +916,7 @@ const getCallList = async (req, res, next) => {
               1 as is_assigned
        FROM companies c
        WHERE c.exclusion_flag = 0 AND c.is_special = 0
+         ${hasPhoneSQL}
          AND EXISTS (SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0)
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
@@ -948,7 +961,7 @@ const getCallList = async (req, res, next) => {
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
        JOIN industry_time_rules itr ON c.industry = itr.industry_name
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND ? BETWEEN itr.start_time AND itr.end_time
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          AND (c.last_called_at IS NULL OR c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 1 DAY))
@@ -970,7 +983,7 @@ const getCallList = async (req, res, next) => {
               'untouched' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} AND c.last_called_at IS NULL
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL} AND c.last_called_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lockFilterSQL}
@@ -994,7 +1007,7 @@ const getCallList = async (req, res, next) => {
               'retry_no_answer' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NO_ANSWER')}
@@ -1016,7 +1029,7 @@ const getCallList = async (req, res, next) => {
               'retry_ng' as reason,
               IF(EXISTS(SELECT 1 FROM company_assignments ca WHERE ca.company_id = c.id AND ca.user_id = ? AND ca.is_auto = 0), 1, 0) as is_assigned
        FROM companies c
-       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter}
+       WHERE c.exclusion_flag = 0 AND c.is_special = 0 ${salesListFilter} ${hasPhoneSQL}
          AND NOT EXISTS (SELECT 1 FROM recall_tasks rt WHERE rt.company_id = c.id AND rt.status = 'pending')
          ${lrFilter}
          ${lastResultFilterSQL('NG')}

@@ -6,6 +6,35 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 自動ピックアップ対象を「電話番号がある顧客」 限定に
+#### 背景
+- 「ピックアップ対象は電話番号がある顧客だけになってる？ FAXだけは対象にしないでほしい」 の要望。
+- これまで `companies.phone_number` が NULL/空でも (= FAX 番号のみの顧客でも) ピックアップ対象に入る可能性があった。
+
+#### 修正
+- `companyController.js` に共通定数 `hasPhoneSQL` を追加:
+  ```sql
+   AND c.phone_number IS NOT NULL AND c.phone_number <> ''
+  ```
+- ピックアップ系全 15 箇所の WHERE 句に `${hasPhoneSQL}` を適用:
+  - `getNextCallTarget` (次の 1 件取得): specialList / mylist / recall_tasks 由来 / golden / untouched / no_answer / ng_retry (7 箇所)
+  - `getCallList` (リスト取得): specialList / mylist / recall_tasks 由来 / assigned (Tier 0) / golden (Tier 2) / untouched (Tier 3) / no_answer (Tier 4) / ng_retry (Tier 5) (8 箇所)
+
+#### 動作の影響範囲
+- ピックアップに使うクエリ全てで FAX のみ顧客が除外される (NEXT も LIST も同じ動作)。
+- **顧客マスタ画面 (`/admin/customer-master`) や架電リスト管理一覧では引き続き全顧客 (FAX のみ含む) を表示** する (情報保持目的)。 ここで除外するのはピックアップ系クエリのみ。
+- CLAUDE.md 「4. アーキテクチャの最重要ポイント」 の架電優先度ロジック説明に「電話番号必須」 を追記。
+
+#### 既存データへの影響
+- FAX のみの顧客がどれだけあるかは DB を見て確認が必要。 確認 SQL (Railway MySQL Console で実行):
+  ```sql
+  SELECT
+    COUNT(*) AS total,
+    SUM(CASE WHEN phone_number IS NULL OR phone_number = '' THEN 1 ELSE 0 END) AS fax_only_or_empty,
+    SUM(CASE WHEN phone_number IS NOT NULL AND phone_number <> '' THEN 1 ELSE 0 END) AS pickup_target
+  FROM companies WHERE exclusion_flag = 0;
+  ```
+
 ### 2026-06-18: 文字起こし + 通話時間の一括取得を定時自動化 (12:00/17:00/21:00 JST)
 #### 背景
 - 「架電結果ログのログ一括取得と通話時間一括取得を定時で自動取得してほしい。 毎日昼の12時と17時と21時の3回」 の要望。
