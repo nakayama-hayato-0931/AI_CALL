@@ -405,11 +405,15 @@ const getNextCallTarget = async (req, res, next) => {
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ: industry_category カラムの index 利用 (60万行で高速)
-        // industry_category が NULL の企業 (再分類前データ) も含めることでピックアップ漏れを防ぐ。
-        // 正確な絞り込みには顧客マスタ「業種診断」→「再計算」で全件分類済みにする。
-        modeFilterSQL = `AND (c.industry_category = ? OR c.industry_category IS NULL)`;
-        modeFilterParams = [industryParam];
+        // 大枠カテゴリ:
+        //   - industry_category = ? (分類済み)
+        //   - OR industry テキストにカテゴリ名を含む (分類前データでも業種名が明示的なら取得)
+        // 顧客マスタ画面の業種検索 (adminController.getCustomerMasterList) と
+        // 同じ判定式に揃え、 表示件数とピックアップ対象を一致させる
+        // (旧仕様の `OR industry_category IS NULL` は未分類の他業種を取り込んでしまうため撤回。
+        //  2026-06-18 修正、 ユーザー指摘「農業を選んでも小売・サービス業が混ざる」)。
+        modeFilterSQL = `AND (c.industry_category = ? OR c.industry LIKE CONCAT('%', ?, '%'))`;
+        modeFilterParams = [industryParam, industryParam];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
@@ -690,11 +694,15 @@ const getCallList = async (req, res, next) => {
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ: industry_category カラムの index 利用 (60万行で高速)
-        // industry_category が NULL の企業 (再分類前データ) も含めることでピックアップ漏れを防ぐ。
-        // 正確な絞り込みには顧客マスタ「業種診断」→「再計算」で全件分類済みにする。
-        modeFilterSQL = `AND (c.industry_category = ? OR c.industry_category IS NULL)`;
-        modeFilterParams = [industryParam];
+        // 大枠カテゴリ:
+        //   - industry_category = ? (分類済み)
+        //   - OR industry テキストにカテゴリ名を含む (分類前データでも業種名が明示的なら取得)
+        // 顧客マスタ画面の業種検索 (adminController.getCustomerMasterList) と
+        // 同じ判定式に揃え、 表示件数とピックアップ対象を一致させる
+        // (旧仕様の `OR industry_category IS NULL` は未分類の他業種を取り込んでしまうため撤回。
+        //  2026-06-18 修正、 ユーザー指摘「農業を選んでも小売・サービス業が混ざる」)。
+        modeFilterSQL = `AND (c.industry_category = ? OR c.industry LIKE CONCAT('%', ?, '%'))`;
+        modeFilterParams = [industryParam, industryParam];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;

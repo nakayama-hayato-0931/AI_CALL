@@ -6,6 +6,35 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 業種別ピックアップで他業種が混ざる事象を修正
+#### 背景
+- 「農業に特定技能で架電をしたい。 業種別でピックアップしたが上手く抽出されていない」
+- 「6650件あるはずなのに、 他の小売りやその他サービス業などがピックアップされてしまう」 の指摘。
+- 顧客マスタ画面の「業種=農業」 検索では 6,650 件あるのに、 業種別「農業」 ピックアップだと他業種 (小売・サービス業) が混ざる事象。
+
+#### 原因
+- ピックアップロジック (`companyController.js` の `getNextCallTarget` / `getCallList`) の `modeFilterSQL` が:
+  ```sql
+  AND (c.industry_category = '農業' OR c.industry_category IS NULL)
+  ```
+  になっており、 **`industry_category` が未分類 (NULL) の企業** = 本当は小売・サービス業の企業を「分類前データ取りこぼし防止」 の名目で取り込んでしまっていた。
+- 一方、 顧客マスタ画面 (`adminController.getCustomerMasterList`) の業種検索は:
+  ```sql
+  AND (c.industry LIKE '%農業%' OR c.industry_category = '農業')
+  ```
+  と判定式が異なり、 6,650 件の中に他業種は含まれていなかった (こちらが期待動作)。
+
+#### 修正
+- `companyController.js` 415 行 (getNextCallTarget) と 704 行 (getCallList) の `modeFilterSQL` を顧客マスタの検索ロジックと一致させる:
+  ```sql
+  AND (c.industry_category = ? OR c.industry LIKE CONCAT('%', ?, '%'))
+  ```
+- これで顧客マスタの 6,650 件 (= 「カテゴリ農業 OR industry テキストに『農業』 含む」) と同じセットを対象にピックアップする。
+
+#### 副作用
+- 旧仕様の「未分類 (IS NULL) 全部を含める」 救済は撤回。 未分類かつ industry テキストにも業種名を含まない企業は業種別ピックアップで取れなくなる。
+- 救済が必要な場合は顧客マスタの「業種診断 → 再計算」 で `industry_category` を埋めれば取れるようになる。
+
 ### 2026-06-18: 自動ピックアップ対象を「電話番号がある顧客」 限定に
 #### 背景
 - 「ピックアップ対象は電話番号がある顧客だけになってる？ FAXだけは対象にしないでほしい」 の要望。
