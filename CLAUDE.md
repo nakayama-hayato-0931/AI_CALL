@@ -39,7 +39,7 @@
 - **DBマイグレーションは起動時にコードで実行する方式**。
   `backend/src/server.js` の `runMigrations()` 内で、冪等な `ALTER TABLE`（try/catchで握りつぶし）を大量に実行する。
   `database/migrations/*.sql` は初期スキーマ中心で、**以降のスキーマ差分はこの server.js 側に追記する**のが慣習。スキーマを足すときは同じパターンで追記すること。
-- **架電優先度ロジック＝システムの心臓部**。
+- **架電優先度ロジック＝システムの心臓部**。 → 詳細仕様は [`docs/PICKUP_RULES.md`](docs/PICKUP_RULES.md) を参照 (Tier 構成・全 Tier 共通の絶対条件・モード別フィルタ・「未架電 0 件」 切り分け SQL を網羅)。
   `backend/src/controllers/companyController.js` の `getNextCallTarget`（次の1件）/ `getCallList`（候補リスト）。
   優先順: (1)リコール期限 → (2)ゴールデンタイム（`industry_time_rules` 業種×時間帯）→ (3)未接触 → (4)前回不通NO_ANSWERは2日後。
   **NG は SKIP/PROJECT/RECALL/INTERESTED と同じく永久除外** (2026-06-18 変更、 旧仕様: 3ヶ月後+別オペでの再ピックアップ可)。 業務上 NG 企業へ再架電しないという運用方針。 これに伴い Tier 5 (retry_ng) は実質空クエリ。
