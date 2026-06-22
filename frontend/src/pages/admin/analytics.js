@@ -2236,11 +2236,14 @@ export default function AnalyticsPage() {
                       <th className="border px-2 py-1.5 text-left">案件獲得日</th>
                       <th className="border px-2 py-1.5 text-left">求人番号</th>
                       <th className="border px-2 py-1.5 text-left">企業名</th>
+                      <th className="border px-2 py-1.5 text-left">業種</th>
+                      <th className="border px-2 py-1.5 text-left">都道府県</th>
                       <th className="border px-2 py-1.5 text-left">担当営業</th>
                       <th className="border px-2 py-1.5 text-left bg-amber-50">架電担当</th>
                       <th className="border px-2 py-1.5 text-left">募集開始日</th>
                       <th className="border px-2 py-1.5 text-left">履歴書送付日</th>
                       <th className="border px-2 py-1.5 text-left">面接日</th>
+                      <th className="border px-2 py-1.5 text-center">募集あり</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2257,11 +2260,16 @@ export default function AnalyticsPage() {
                             <span>{r.companyName || '-'}</span>
                           )}
                         </td>
+                        <td className="border px-2 py-1">{r.industry || '-'}</td>
+                        <td className="border px-2 py-1">{r.prefecture || '-'}</td>
                         <td className="border px-2 py-1">{r.salesName || '-'}</td>
                         <td className="border px-2 py-1 bg-amber-50/30">{r.callerName || '-'}</td>
                         <td className="border px-2 py-1">{r.recruitmentStartDate ? new Date(r.recruitmentStartDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1">{r.resumeSentDate ? new Date(r.resumeSentDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
                         <td className="border px-2 py-1">{r.interviewDate ? new Date(r.interviewDate).toLocaleDateString('ja-JP') : <span className="text-gray-300">未入力</span>}</td>
+                        <td className="border px-2 py-1 text-center">
+                          <input type="checkbox" defaultChecked={false} className="cursor-pointer" />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
