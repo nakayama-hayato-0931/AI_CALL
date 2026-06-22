@@ -405,15 +405,19 @@ const getNextCallTarget = async (req, res, next) => {
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ:
-        //   - industry_category = ? (分類済み)
-        //   - OR industry テキストにカテゴリ名を含む (分類前データでも業種名が明示的なら取得)
-        // 顧客マスタ画面の業種検索 (adminController.getCustomerMasterList) と
-        // 同じ判定式に揃え、 表示件数とピックアップ対象を一致させる
-        // (旧仕様の `OR industry_category IS NULL` は未分類の他業種を取り込んでしまうため撤回。
-        //  2026-06-18 修正、 ユーザー指摘「農業を選んでも小売・サービス業が混ざる」)。
-        modeFilterSQL = `AND (c.industry_category = ? OR c.industry LIKE CONCAT('%', ?, '%'))`;
-        modeFilterParams = [industryParam, industryParam];
+        // 大枠カテゴリ: industry_category で厳密一致のみ。
+        // ピックアップは「主業種が農業の企業」 を取得したいので、 副業に農業が
+        // 入っているだけの企業 (例: 主業=建設だが industry テキストに『農業』 を含む) は除外。
+        // 未分類 (industry_category IS NULL) の企業は顧客マスタの『業種診断→再計算』 で
+        // カテゴリを埋めてから取得する運用。
+        // 改訂履歴:
+        //   - 旧: `industry_category = ? OR industry_category IS NULL`
+        //     → 未分類の他業種を取り込み「農業を選んでも小売・サービスが出る」
+        //   - 旧: `industry_category = ? OR industry LIKE '%農業%'`
+        //     → industry テキストに副業として『農業』 を含む建設・飲食企業も拾う
+        //   - 新 (2026-06-18): industry_category で厳密一致。
+        modeFilterSQL = `AND c.industry_category = ?`;
+        modeFilterParams = [industryParam];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
@@ -694,15 +698,19 @@ const getCallList = async (req, res, next) => {
     const CATEGORY_NAMES_LIST = ['飲食','製造','小売','建設','宿泊','清掃','農業','介護','運輸','IT','金融','不動産','美容','サービス'];
     if (mode === 'industry' && industryParam) {
       if (CATEGORY_NAMES_LIST.includes(industryParam)) {
-        // 大枠カテゴリ:
-        //   - industry_category = ? (分類済み)
-        //   - OR industry テキストにカテゴリ名を含む (分類前データでも業種名が明示的なら取得)
-        // 顧客マスタ画面の業種検索 (adminController.getCustomerMasterList) と
-        // 同じ判定式に揃え、 表示件数とピックアップ対象を一致させる
-        // (旧仕様の `OR industry_category IS NULL` は未分類の他業種を取り込んでしまうため撤回。
-        //  2026-06-18 修正、 ユーザー指摘「農業を選んでも小売・サービス業が混ざる」)。
-        modeFilterSQL = `AND (c.industry_category = ? OR c.industry LIKE CONCAT('%', ?, '%'))`;
-        modeFilterParams = [industryParam, industryParam];
+        // 大枠カテゴリ: industry_category で厳密一致のみ。
+        // ピックアップは「主業種が農業の企業」 を取得したいので、 副業に農業が
+        // 入っているだけの企業 (例: 主業=建設だが industry テキストに『農業』 を含む) は除外。
+        // 未分類 (industry_category IS NULL) の企業は顧客マスタの『業種診断→再計算』 で
+        // カテゴリを埋めてから取得する運用。
+        // 改訂履歴:
+        //   - 旧: `industry_category = ? OR industry_category IS NULL`
+        //     → 未分類の他業種を取り込み「農業を選んでも小売・サービスが出る」
+        //   - 旧: `industry_category = ? OR industry LIKE '%農業%'`
+        //     → industry テキストに副業として『農業』 を含む建設・飲食企業も拾う
+        //   - 新 (2026-06-18): industry_category で厳密一致。
+        modeFilterSQL = `AND c.industry_category = ?`;
+        modeFilterParams = [industryParam];
       } else {
         // 自由キーワードは従来の部分一致
         modeFilterSQL = `AND c.industry LIKE CONCAT('%', ?, '%')`;
