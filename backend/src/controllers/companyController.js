@@ -1010,6 +1010,11 @@ const getCallList = async (req, res, next) => {
       [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'golden'
     );
+    // Tier 3 (untouched) は 178 万件レンジを priority_score DESC でソートする必要があり、
+    // インデックスフル活用しても重め (3〜8秒)。 デフォルト 4500ms のタイムアウトに引っかかって
+    // 空配列が返り「未架電 0 件」 と表示される事象が頻発したため、 ここだけ 12000ms に延長。
+    // ユーザーの体感: 一回目は遅め、 2 回目以降は callListCache (60s) で即返。
+    const TIER3_TIMEOUT_MS = 12000;
     const tier3Promise = tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
@@ -1028,7 +1033,8 @@ const getCallList = async (req, res, next) => {
        ORDER BY ${tier3Order}
        LIMIT ?`,
       [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
-      'untouched'
+      'untouched',
+      TIER3_TIMEOUT_MS
     );
     // フォールバック時（last_call_result_code カラム未追加）はティア4/5を完全スキップ。
     // 相関サブクエリで60万行に対し毎行評価され壊滅的に遅くなるため。

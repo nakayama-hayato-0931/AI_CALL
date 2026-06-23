@@ -6,6 +6,34 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: Tier 3 (untouched) のクエリタイムアウトを 4.5s → 12s に延長 (真因)
+#### 真因確定
+- 「自動ピックアップで未架電 0 件のまま、 過去不通 25 件にフォールバック」 問題の根本原因は **tQuery 関数の `MAX_EXECUTION_TIME(4500)` MySQL ヒント** だった (companyController.js:658)。
+- 未架電プール (178 万件レンジ) + ORDER BY priority_score DESC で 4.5 秒以内に完了せず、 catch ブロックで空配列 `[[]]` を返却 → `debug.untouched=0` → 「未架電が枯渇したため過去架電企業を表示中」 メッセージ。
+- DevTools の Response で `debug.untouched=0` を確認、 一方で SQL ベースでは「業種① + 都道府県② で 137 万件」 → SQL タイムアウト由来と確定。
+- 補助証跡: backend log で `[getCallList untouched] skipped: ER_QUERY_INTERRUPTED ...` が出ているはず。
+
+#### 検証経緯 (時系列)
+1. NG/SKIP 永久除外、 電話番号必須、 業種別 industry_category 厳密化、 自動モード goldenIndFilter OR 検索などの修正を順次実施 → どれも改善せず
+2. industry_region_rules 169 件を全削除 → ピックアップ対象 137 万件まで回復するはず → でも改善せず
+3. `idx_companies_pickup_untouched`、 `idx_companies_lastcalled_pri` 追加 → オプティマイザは選ばず
+4. tier3Order の `is_assigned DESC` 除去で filesort 軽減 → でも改善せず
+5. DevTools の Response 確認で `debug.untouched=0` 確認 → backend が本当に 0 を返している
+6. tQuery 実装確認で MAX_EXECUTION_TIME=4500 タイムアウト発見 → 真因
+
+#### 修正
+- Tier 3 (untouched) クエリだけ tQuery のタイムアウトを 12000ms に延長:
+  ```js
+  const TIER3_TIMEOUT_MS = 12000;
+  const tier3Promise = tQuery(..., 'untouched', TIER3_TIMEOUT_MS);
+  ```
+- 他 Tier はデフォルト (4500ms) のまま (件数が少ないので余裕で完了)。
+- 体感: 一回目のロードは長くても 8〜10 秒、 2 回目以降は callListCache (60s) で即返。
+
+#### 残課題 (今回未対応)
+- 178 万件 × ORDER BY filesort 自体は依然として遅い。 抜本対処は SELECT を 2 段階に分ける (① ピックアップ候補 ID を高速取得 → ② priority_score でソート) などのクエリ書き換え。 ただし 12 秒以内に収まるなら今回は容認。
+- 容量警告 (87%) と合わせて、 古い companies の整理 / calls.transcript の圧縮も別途検討。
+
 ### 2026-06-18: Tier 3 (untouched) のクエリを高速化 (filesort 回避)
 #### 背景
 - 業種地域ルール (`industry_region_rules`) 削除後、 Tier 3 (未架電) の対象が
