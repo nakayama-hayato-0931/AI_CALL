@@ -979,7 +979,13 @@ const getCallList = async (req, res, next) => {
     // ORDER BY RAND() は 60万行スキャンになりタイムアウト/502 の原因になっていたため撤回。
     // refresh 時のランダム化はフロントの Fisher-Yates シャッフルに任せる (高速・確実)。
     const tier2Order = 'is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC';
-    const tier3Order = 'is_assigned DESC, c.priority_score DESC, c.created_at ASC';
+    // Tier 3 (untouched) は対象が 178 万件レンジになることがあるため、
+    // is_assigned DESC (= EXISTS サブクエリ結果でソート) を入れると必ず filesort が
+    // 発生して数秒〜タイムアウトになる事象が出ていた (2026-06-18 検証)。
+    // 自分割り当て中の企業は Tier 0 (assigned) で別途先頭固定されているので、
+    // Tier 3 内で is_assigned DESC を重ねる必要は薄い。 priority_score + created_at の
+    // 単純ソートに変更してインデックス活用を狙う。
+    const tier3Order = 'c.priority_score DESC, c.created_at ASC';
     const tier45Order = 'is_assigned DESC, c.last_called_at ASC';
     const tier2Promise = tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,

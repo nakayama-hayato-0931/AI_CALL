@@ -6,6 +6,33 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: Tier 3 (untouched) のクエリを高速化 (filesort 回避)
+#### 背景
+- 業種地域ルール (`industry_region_rules`) 削除後、 Tier 3 (未架電) の対象が
+  約 178 万件レンジに増加。
+- 既存の `tier3Order = 'is_assigned DESC, c.priority_score DESC, c.created_at ASC'` は
+  is_assigned が EXISTS サブクエリ動的計算で必ず filesort になり、 178 万件のソートで
+  クエリが数秒〜タイムアウト → API (pending) のまま応答せず「未架電 0」 とリスト表示。
+
+#### 修正
+- `tier3Order` から `is_assigned DESC` を除去:
+  ```js
+  // Before
+  const tier3Order = 'is_assigned DESC, c.priority_score DESC, c.created_at ASC';
+  // After
+  const tier3Order = 'c.priority_score DESC, c.created_at ASC';
+  ```
+- 自分割り当て中の企業は Tier 0 (assigned) で別途先頭固定されているため、
+  Tier 3 内で is_assigned DESC を重ねる必要が薄い (機能上の損失なし)。
+- priority_score + created_at の単純 ORDER → インデックス活用しやすくなる。
+- Tier 2 (golden) と Tier 4/5 (retry) は対象件数が少ないため変更なし。
+
+#### 関連
+- 同日に `CREATE INDEX idx_companies_pickup_untouched` と
+  `idx_companies_lastcalled_pri` を追加 (Railway MySQL Console)。
+- ただし `last_called_at IS NULL` が 50% を占めるためインデックスが効きにくく、
+  根本対処は本コミットの ORDER BY 簡略化。
+
 ### 2026-06-18: 自動モードの goldenIndFilter を industry_category にも対応 (3,493,770 → 0 件の激減を修正)
 #### 背景
 - 「自動ピックアップで未架電が枯渇してしまう (本当は数百万件あるのに 0 件と出る)」 報告。
