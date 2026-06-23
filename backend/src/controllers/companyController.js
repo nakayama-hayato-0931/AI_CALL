@@ -1010,11 +1010,12 @@ const getCallList = async (req, res, next) => {
       [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'golden'
     );
-    // Tier 3 (untouched) は 178 万件レンジを priority_score DESC でソートする必要があり、
-    // インデックスフル活用しても重め (3〜8秒)。 デフォルト 4500ms のタイムアウトに引っかかって
-    // 空配列が返り「未架電 0 件」 と表示される事象が頻発したため、 ここだけ 12000ms に延長。
-    // ユーザーの体感: 一回目は遅め、 2 回目以降は callListCache (60s) で即返。
-    const TIER3_TIMEOUT_MS = 12000;
+    // Tier 3 (untouched) は 178 万件レンジを priority_score DESC, created_at ASC でソート。
+    // 後者は mixed order (DESC+ASC) なので既存 ASC インデックスでは backward index scan が
+    // 使えず必ず filesort が走り、 12 秒タイムアウトでも完了しない事象が発生 (2026-06-18 検証)。
+    // 緊急復旧として 30 秒に延長。 抜本対処は DESC インデックス追加 or 2 段階クエリ書き換え。
+    // ユーザー体感: 初回は最大 30 秒待ち、 2 回目以降は callListCache (60s) で即返。
+    const TIER3_TIMEOUT_MS = 30000;
     const tier3Promise = tQuery(
       `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
               'untouched' as reason,
