@@ -11,6 +11,7 @@ const fflate = require('fflate');
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { upsertCompanyByPhone, addManualAssignment, MASTER_COLS } = require('../utils/companyUpsert');
 
 /**
  * industry テキストから industry_category を計算するヘルパー。
@@ -502,13 +503,21 @@ const importCompanies = async (req, res, next) => {
       let lastCommittedAt = 0;              // 直近commit時点の累計insertedCount
       const flushInserts = async () => {
         if (pendingInserts.length === 0) return;
-        // multi-row INSERT
+        // multi-row INSERT (+ ON DUPLICATE KEY UPDATE で肉付け)。
+        // - 60 万行クラスの一括取り込み性能を保つため、 multi-row INSERT は維持。
+        // - phone_number に UNIQUE INDEX が無い間は通常 INSERT と同じ挙動 (id 衝突しない)。
+        // - UNIQUE INDEX 追加後は、 衝突行を MASTER_COLS で肉付け UPDATE。
+        // - assignments は元々呼び出し側で別途 INSERT IGNORE されるので肉付け系で十分。
         const COLS = '(company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)';
         const oneTuple = '(?,?,?,?,?,?,?,?,?,?,?)';
         const placeholders = pendingInserts.map(() => oneTuple).join(',');
         const flat = pendingInserts.flatMap(v => v);
+        // 肉付け対象 (上記 COLS のうち imported_by_user_id / is_sales_list 以外)
+        const HYDRATE = ['company_name', 'fax_number', 'industry', 'job_type', 'comment', 'data_source', 'region', 'address'];
+        const setClause = HYDRATE.map(c => `${c} = COALESCE(NULLIF(VALUES(${c}), ''), ${c})`).join(', ');
         const [result] = await conn.query(
-          `INSERT INTO companies ${COLS} VALUES ${placeholders}`,
+          `INSERT INTO companies ${COLS} VALUES ${placeholders}
+           ON DUPLICATE KEY UPDATE ${setClause}, updated_at = CURRENT_TIMESTAMP, id = LAST_INSERT_ID(id)`,
           flat
         );
         // MySQL の multi-row INSERT は insertId に先頭idを返し、以降は連番。
@@ -627,12 +636,7 @@ const importCompanies = async (req, res, next) => {
                 'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
                 [importedByUserId, industry, jobType, comment, dataSource, region, address, existing.id]
               );
-              try {
-                await conn.execute(
-                  'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-                  [existing.id, req.user.id, req.user.id]
-                );
-              } catch (e) { if (e.code !== 'ER_DUP_ENTRY') throw e; }
+              await addManualAssignment(conn, existing.id, req.user.id, req.user.id, req.user.role);
               existing.imported_by_user_id = importedByUserId;
               insertedCount++;
               importedPhones.add(phoneNumber);
@@ -648,7 +652,25 @@ const importCompanies = async (req, res, next) => {
               return;
             }
           }
-          // 管理者/営業の共有リストインポート時 → 重複スキップ
+          // 管理者/営業の共有リストインポート時:
+          // 「重複登録時の肉付け + 追加ユーザー割り当て」 要望に対応し、
+          // 既存行に対し COALESCE 肉付け UPDATE を実施 (空欄項目だけ補完)。
+          // 担当者割り当ては (操作者が operator でない=管理者/マネージャー/営業のため) 行わない。
+          await flushInserts();
+          await conn.execute(
+            `UPDATE companies SET
+               company_name = COALESCE(NULLIF(?, ''), company_name),
+               industry     = COALESCE(NULLIF(?, ''), industry),
+               job_type     = COALESCE(NULLIF(?, ''), job_type),
+               comment      = COALESCE(NULLIF(?, ''), comment),
+               data_source  = COALESCE(NULLIF(?, ''), data_source),
+               region       = COALESCE(NULLIF(?, ''), region),
+               address      = COALESCE(NULLIF(?, ''), address),
+               fax_number   = COALESCE(NULLIF(?, ''), fax_number),
+               updated_at   = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [companyName, industry, jobType, comment, dataSource, region, address, faxNumber, existing.id]
+          );
           duplicateCount++;
           skippedCount++;
           return;
@@ -949,59 +971,44 @@ const manualAddCompany = async (req, res, next) => {
     const derivedRegion = region || extractRegionFromAddress(address);
     const importedByUserId = (req.user.role === 'operator' || req.user.role === 'sales') ? req.user.id : null;
 
-    // 既存企業チェック: オペレーターの自作リスト追加時は「自作リスト優先」で UPDATE
+    // 「重複登録時の肉付け + 追加ユーザー割り当て」 要望:
+    //   電話番号が既に存在する場合は元データを肉付け (空欄項目だけ補完) + 追加ユーザーに割り当て。
+    //   従来の「既に登録済みのため追加できません」 はオペレーターの自作リスト排他のみ残す。
     const [existing] = await pool.execute(
       'SELECT id, imported_by_user_id FROM companies WHERE phone_number = ? AND is_sales_list = ?',
       [phoneNumber, isSalesList]
     );
-    if (existing.length > 0) {
+    if (existing.length > 0 && req.user.role === 'operator' && importedByUserId) {
       const ex = existing[0];
-      if (req.user.role === 'operator' && importedByUserId) {
-        if (ex.imported_by_user_id === null) {
-          // 共有リストにある → 自作リストに移す
-          await pool.execute(
-            `UPDATE companies SET imported_by_user_id = ?,
-              industry = COALESCE(?, industry), job_type = COALESCE(?, job_type),
-              comment = COALESCE(?, comment), data_source = COALESCE(?, data_source),
-              region = COALESCE(?, region), address = COALESCE(?, address),
-              exclusion_flag = 0 WHERE id = ?`,
-            [importedByUserId, industry || null, job_type || null, comment || null,
-             data_source || null, derivedRegion, address || null, ex.id]
-          );
-          try {
-            await pool.execute(
-              'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-              [ex.id, req.user.id, req.user.id]
-            );
-          } catch (e) { if (e.code !== 'ER_DUP_ENTRY') throw e; }
-          logger.info(`手動追加: 共有リストから自作リストへ移動 company=${ex.id}, user=${req.user.id}`);
-          return ApiResponse.success(res, { companyId: ex.id, moved: true }, '共有リストから自作リストに移動しました');
-        } else if (ex.imported_by_user_id === req.user.id) {
-          return ApiResponse.badRequest(res, '既にあなたの自作リストに登録済みです');
-        } else {
-          return ApiResponse.badRequest(res, '他のオペレーターの自作リストに登録済みのため追加できません');
-        }
+      if (ex.imported_by_user_id !== null && ex.imported_by_user_id !== req.user.id) {
+        return ApiResponse.badRequest(res, '他のオペレーターの自作リストに登録済みのため追加できません');
       }
-      return ApiResponse.badRequest(res, '既に架電リストに登録済みです');
-    }
-
-    const [insertResult] = await pool.execute(
-      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyName, phoneNumber, industry || null, job_type || null, comment || null, data_source || null, derivedRegion, address || null, importedByUserId, isSalesList]
-    );
-
-    // オペレーター: 自動割り当て
-    if (req.user.role === 'operator') {
-      try {
+      // 共有リスト or 自分の自作リスト → 自分の自作リストへ肉付け統合
+      if (ex.imported_by_user_id === null) {
         await pool.execute(
-          'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-          [insertResult.insertId, req.user.id, req.user.id]
+          `UPDATE companies SET imported_by_user_id = ?, exclusion_flag = 0 WHERE id = ?`,
+          [importedByUserId, ex.id]
         );
-      } catch (assignErr) {
-        if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
       }
     }
+
+    // upsert (重複時は MASTER_COLS 肉付け、 担当者割り当て追加)
+    const { companyId: insertedId, isNew } = await upsertCompanyByPhone(pool, {
+      phone_number: phoneNumber,
+      company_name: companyName,
+      industry: industry || null,
+      job_type: job_type || null,
+      comment: comment || null,
+      data_source: data_source || null,
+      region: derivedRegion,
+      address: address || null,
+    }, {
+      userId: importedByUserId,
+      role: req.user.role,
+      assignToUserId: req.user.role === 'operator' ? req.user.id : null,
+      isSalesList: !!isSalesList,
+      isSpecial: false,
+    });
 
     // 管理者/マネージャー: 優先オペレーター割当
     const { priority_operator_ids, grace_days } = req.body;
@@ -1013,23 +1020,17 @@ const manualAddCompany = async (req, res, next) => {
 
       await pool.execute(
         'UPDATE companies SET priority_expires_at = ? WHERE id = ?',
-        [expiresStr, insertResult.insertId]
+        [expiresStr, insertedId]
       );
 
       for (const opId of priority_operator_ids) {
-        try {
-          await pool.execute(
-            'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-            [insertResult.insertId, opId, req.user.id]
-          );
-        } catch (e) {
-          if (e.code !== 'ER_DUP_ENTRY') throw e;
-        }
+        await addManualAssignment(pool, insertedId, opId, req.user.id, req.user.role);
       }
     }
 
-    logger.info(`手動企業登録: id=${insertResult.insertId}, user=${req.user.id}`);
-    return ApiResponse.created(res, { companyId: insertResult.insertId }, '架電リストに登録しました');
+    logger.info(`手動企業登録: id=${insertedId}, user=${req.user.id}, isNew=${isNew}`);
+    const msg = isNew ? '架電リストに登録しました' : '既存企業に肉付けして登録しました';
+    return ApiResponse.created(res, { companyId: insertedId, isNew }, msg);
   } catch (err) {
     next(err);
   }
@@ -1191,43 +1192,53 @@ const importSpecialList = async (req, res, next) => {
           continue;
         }
 
-        // 重複チェック（特別リスト内での重複のみ）
-        const [existing] = await conn.execute(
-          'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_special = 1',
+        // 「重複登録時の肉付け + 追加ユーザー割り当て」 要望対応:
+        //   重複チェックは行わず、 upsertCompanyByPhone で既存行があれば肉付け。
+        //   特別リスト内重複は import_batch_id を更新せず、 duplicateCount にカウント。
+        const [dupCheck] = await conn.execute(
+          'SELECT id FROM companies WHERE (phone_number = ? OR company_name = ?) AND is_special = 1 LIMIT 1',
           [phoneNumber, companyName]
         );
-        if (existing.length > 0) {
-          duplicateCount++;
-          skippedCount++;
-          continue;
-        }
+        const isDup = dupCheck.length > 0;
 
-        // NG/既存案件リストは無視してインサート（is_special=1）
-        const [insertResult] = await conn.execute(
-          `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, data_source, region, address, is_special, import_batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-          [companyName, phoneNumber, industry, jobType, comment, dataSource, region, address, batchId]
-        );
+        const { companyId: newCompanyId } = await upsertCompanyByPhone(conn, {
+          phone_number: phoneNumber,
+          company_name: companyName,
+          industry, job_type: jobType, comment,
+          data_source: dataSource, region, address,
+        }, {
+          userId: req.user.id,
+          role: req.user.role,
+          isSpecial: true,
+          isSalesList: false,
+        });
+
+        // 新規 INSERT 時のみ import_batch_id を紐づけ (既存行は触らない)
+        if (!isDup && batchId) {
+          try {
+            await conn.execute(
+              'UPDATE companies SET import_batch_id = ? WHERE id = ? AND import_batch_id IS NULL',
+              [batchId, newCompanyId]
+            );
+          } catch (_e) {}
+        }
 
         // 管理者/マネージャー: 優先オペレーター割り当て + 猶予期間設定
         if (priorityOperatorIds.length > 0 && graceDays > 0) {
           await conn.execute(
             'UPDATE companies SET priority_expires_at = DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL ? DAY) WHERE id = ?',
-            [graceDays, insertResult.insertId]
+            [graceDays, newCompanyId]
           );
           for (const opId of priorityOperatorIds) {
-            try {
-              await conn.execute(
-                'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-                [insertResult.insertId, opId, req.user.id]
-              );
-            } catch (assignErr) {
-              if (assignErr.code !== 'ER_DUP_ENTRY') throw assignErr;
-            }
+            await addManualAssignment(conn, newCompanyId, opId, req.user.id, req.user.role);
           }
         }
 
-        insertedCount++;
+        if (isDup) {
+          duplicateCount++;
+        } else {
+          insertedCount++;
+        }
       }
 
       // バッチの実際のインサート数を更新
@@ -1294,50 +1305,34 @@ const manualAddSpecial = async (req, res, next) => {
       return ApiResponse.badRequest(res, '有効な電話番号を入力してください');
     }
 
-    // 特別リスト内での重複チェック（誰に割り当てられているか返す）
-    const [existing] = await pool.execute(
-      `SELECT c.id, c.company_name, u.name as assigned_to
-       FROM companies c
-       LEFT JOIN company_assignments ca ON ca.company_id = c.id
-       LEFT JOIN users u ON u.id = ca.user_id
-       WHERE (c.phone_number = ? OR c.company_name = ?) AND c.is_special = 1
-       LIMIT 1`,
-      [phoneNumber, companyName]
-    );
-    if (existing.length > 0) {
-      const assignedTo = existing[0].assigned_to;
-      const msg = assignedTo
-        ? `既に${assignedTo}の特別リストに登録済みです`
-        : '既に特別リストに登録済みです';
-      return ApiResponse.badRequest(res, msg);
-    }
-
     const derivedRegion = region || extractRegionFromAddress(address);
 
-    const [insertResult] = await pool.execute(
-      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address, is_special)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-      [companyName, phoneNumber, industry || null, job_type || null, comment || null, derivedRegion, address || null]
-    );
-
-    const companyId = insertResult.insertId;
-
-    // オペレーターの場合: 自分に自動割り当て
-    // 管理者の場合: priority_operator_id が指定されていれば割り当て
+    // 「重複登録時の肉付け + 追加ユーザー割り当て」 要望:
+    //   重複でも上書き肉付け + 追加ユーザーを company_assignments に追加。
+    //   オペレーターの場合は自分、 管理者の場合は priority_operator_id (指定時) を割当先に。
     const assignUserId = (req.user.role === 'operator')
       ? req.user.id
       : (priority_operator_id || null);
 
-    if (assignUserId) {
-      await pool.execute(
-        'INSERT INTO company_assignments (company_id, user_id, assigned_by) VALUES (?, ?, ?)',
-        [companyId, assignUserId, req.user.id]
-      );
-      logger.info(`特別リスト割り当て: company=${companyId}, operator=${assignUserId}, by=${req.user.id}`);
-    }
+    const { companyId, isNew } = await upsertCompanyByPhone(pool, {
+      phone_number: phoneNumber,
+      company_name: companyName,
+      industry: industry || null,
+      job_type: job_type || null,
+      comment: comment || null,
+      region: derivedRegion,
+      address: address || null,
+    }, {
+      userId: req.user.id,
+      role: req.user.role,
+      assignToUserId: assignUserId,
+      isSpecial: true,
+      isSalesList: false,
+    });
 
-    logger.info(`特別リスト手動登録: id=${companyId}, user=${req.user.id}`);
-    return ApiResponse.created(res, { companyId }, '特別リストに登録しました');
+    logger.info(`特別リスト手動登録: id=${companyId}, user=${req.user.id}, isNew=${isNew}`);
+    const msg = isNew ? '特別リストに登録しました' : '既存の特別リストに肉付けして登録しました';
+    return ApiResponse.created(res, { companyId, isNew }, msg);
   } catch (err) {
     next(err);
   }

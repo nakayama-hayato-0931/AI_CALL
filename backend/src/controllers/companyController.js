@@ -5,6 +5,7 @@
 const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { upsertCompanyByPhone } = require('../utils/companyUpsert');
 
 // ロックタイムアウト（分）
 const LOCK_TIMEOUT_MINUTES = 60;
@@ -226,16 +227,28 @@ const createCompany = async (req, res, next) => {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
     }
 
-    const [result] = await pool.execute(
-      `INSERT INTO companies (company_name, phone_number, industry, job_type, comment, region, address)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [company_name, phone_number, industry || null, job_type || null, comment || null, region || null, address || null]
-    );
+    // 「重複登録時の肉付け + 追加ユーザー割り当て」 要望:
+    //   電話番号一致の既存企業があれば肉付け UPDATE。 操作者を company_assignments に追加。
+    const { companyId, isNew } = await upsertCompanyByPhone(pool, {
+      phone_number,
+      company_name,
+      industry: industry || null,
+      job_type: job_type || null,
+      comment: comment || null,
+      region: region || null,
+      address: address || null,
+    }, {
+      userId: req.user && req.user.id,
+      role: req.user && req.user.role,
+      isSalesList: false,
+      isSpecial: false,
+    });
 
-    logger.info(`企業作成: ${company_name} (ID: ${result.insertId})`);
+    logger.info(`企業作成: ${company_name} (ID: ${companyId}, isNew=${isNew})`);
     // Phase 2: fax-crm DB にシャドー書き込み (fire-and-forget)
-    try { require('../services/faxCrmDbWriter').shadowUpsertById(result.insertId); } catch (_e) {}
-    return ApiResponse.created(res, { id: result.insertId }, '企業を作成しました');
+    try { require('../services/faxCrmDbWriter').shadowUpsertById(companyId); } catch (_e) {}
+    const msg = isNew ? '企業を作成しました' : '既存企業に肉付けして登録しました';
+    return ApiResponse.created(res, { id: companyId, isNew }, msg);
   } catch (err) {
     next(err);
   }

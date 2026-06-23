@@ -6,6 +6,35 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 重複登録時の肉付け + 追加ユーザー割り当て (companies upsert ヘルパー化)
+#### 背景・要望
+- 「架電リスト、 特別リストに重複番号を登録しようとした場合は元のデータに肉付けする形 (既に情報が入っている項目は上書き) で元データを修正して追加したユーザーに割り当ててほしい」 (ユーザー要望)。
+- 従来は SELECT 先行重複判定で「既に登録済みのため追加できません」 とスキップしていたため、 追加ユーザーへの担当者割り当てもできず、 新情報の補完もされなかった。
+
+#### 修正
+- 新規ヘルパー `backend/src/utils/companyUpsert.js` を追加:
+  - `upsertCompanyByPhone(conn, fields, ctx)`: INSERT ... ON DUPLICATE KEY UPDATE を companies に発行。 衝突時は MASTER_COLS (company_name / industry / job_type / comment / data_source / region / address / fax_number / prefecture / city / postal_code / url / employee_count / representative / note / source_file / external_faxcrm_id / industry_category) を `COALESCE(NULLIF(VALUES(col),''), col)` で肉付け (空欄項目だけ補完、 値ありは上書き)。
+  - `addManualAssignment(conn, companyId, userId, byUserId, role)`: company_assignments に `is_auto=0` (手動割り当て) で INSERT IGNORE。 sales ロールはスキップ。
+- 既存 INSERT 6 箇所を upsert 化:
+  - `csvController.js` 一括 INSERT (bulk import): multi-row INSERT に `ON DUPLICATE KEY UPDATE` を付与。 multi-row 性能を維持しつつ phone_number UNIQUE 追加後は肉付け発動。
+  - `csvController.js` インポート時の重複分岐: 共有リストインポート (管理者/営業) も既存行に肉付け UPDATE するように変更 (従来は単純スキップ)。
+  - `csvController.js` `manualAddCompany`: 重複時の「既に登録済みのため追加できません」 を廃止し、 upsert + 操作者割り当てに変更 (オペレーターの自作リスト排他のみ残す)。
+  - `csvController.js` `importSpecialList`: 特別リスト内重複でも肉付け + 担当者割り当てを実施。 import_batch_id は新規行のみ紐づけ。
+  - `csvController.js` `manualAddSpecial`: 特別リスト重複時のエラー return を廃止し、 upsert + 割り当て追加に変更。
+  - `companyController.js` `createCompany`: phone_number 衝突時は肉付け + 操作者割り当て。
+
+#### 緊急停止策・UNIQUE INDEX 未追加環境の挙動
+- 現状 `companies.phone_number` に UNIQUE INDEX は未追加 (Phase 2 で `ADD UNIQUE KEY uk_companies_phone (phone_number)` 予定)。
+- UNIQUE INDEX が無い間は `ON DUPLICATE KEY UPDATE` は AUTO_INCREMENT な id 衝突時のみ発動 → 通常 INSERT と同じ挙動になり、 旧挙動を維持。
+- UNIQUE INDEX 追加後にロジックが発動し、 重複番号の登録が肉付け + 担当者割り当てとして処理される。
+- = UNIQUE INDEX 追加が「機能オン/オフのスイッチ」 になり、 問題があれば INDEX を DROP すれば即座にロールバック可能。
+
+#### 影響範囲
+- `backend/src/utils/companyUpsert.js` (新規)
+- `backend/src/controllers/csvController.js` (require 追加 + 5 箇所修正)
+- `backend/src/controllers/companyController.js` (require 追加 + createCompany 修正)
+- fax-crm 同期 (faxCrmDbWriter.js) は本変更の対象外 (未修正)。
+
 ### 2026-06-18: Tier 3 (untouched) のクエリタイムアウトを 4.5s → 12s に延長 (真因)
 #### 真因確定
 - 「自動ピックアップで未架電 0 件のまま、 過去不通 25 件にフォールバック」 問題の根本原因は **tQuery 関数の `MAX_EXECUTION_TIME(4500)` MySQL ヒント** だった (companyController.js:658)。
