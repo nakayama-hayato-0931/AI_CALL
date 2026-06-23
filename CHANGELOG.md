@@ -6,6 +6,33 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-18: 自動モードの goldenIndFilter を industry_category にも対応 (3,493,770 → 0 件の激減を修正)
+#### 背景
+- 「自動ピックアップで未架電が枯渇してしまう (本当は数百万件あるのに 0 件と出る)」 報告。
+- 切り分け SQL で原因確定: 自動モードの絶対条件「ゴールデン業種限定」 (`c.industry IN (SELECT industry_name FROM industry_time_rules)`) が完全一致照合で、 該当が **69 件まで激減** していた。
+  - companies.industry: 「飲食店、 居酒屋、 焼肉店」 のような複合テキスト
+  - industry_time_rules.industry_name: 「飲食」 のような短い名前
+  - = 完全一致しないため大半除外。
+
+#### 修正 (修正案 B、 ユーザー選択)
+- `companyController.js` 461 行 `goldenIndFilter` を完全一致から **OR 検索** に変更:
+  ```sql
+  AND (
+    c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)
+    OR c.industry_category IN (SELECT DISTINCT industry_name FROM industry_time_rules)
+  )
+  ```
+- これで `industry_time_rules` に「飲食」 が登録されていれば、 `industry_category='飲食'` の全企業 (587,724 件) も対象になる。
+- 完全一致パスは後方互換性のため残置 (既存設定で動いている細かい業種名指定も影響なし)。
+
+#### 影響範囲
+- 影響対象: `getNextCallTarget` (1 件取得) のみ。
+- `getCallList` (リスト取得) は別ロジックで `goldenIndFilter` の意味が異なる (auto_pickup_industries 設定の「無効化カテゴリ」 除外型) ため、 本修正対象外。
+- ただし getCallList でも `industryRegionFilterSQL` (`industry_region_rules` テーブル定義のルールに合致しない企業を全除外) が厳しい場合、 引き続き Tier 3 (未架電) が 0 件になる可能性。 industry_region_rules の登録状況確認用の SQL は別途案内。
+
+#### 前提整備
+- 本修正は 2026-06-18 の業種カテゴリ再計算 (companies.industry_category を全件 UPDATE で埋めた) と一緒に効く。 industry_category が NULL のままだと OR 条件の右辺が空振り。
+
 ### 2026-06-18: 業種別ピックアップを industry_category 厳密一致に変更
 #### 背景
 - 「農業に特定技能で架電をしたい。 業種別でピックアップしたが上手く抽出されていない」

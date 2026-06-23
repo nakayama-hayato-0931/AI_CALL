@@ -458,8 +458,18 @@ const getNextCallTarget = async (req, res, next) => {
       : (isSalesRole ? assignmentPassthruSalesSQL : assignmentFilterSQL);
     // autoモードのみ: ゴールデンタイム未設定業種を除外
     // 営業ロールは industry_time_rules に登録された業種に限定しない
+    // 2026-06-18 修正 (案 B): 旧仕様 `c.industry IN (...)` の完全一致では
+    // companies.industry が「飲食店、 居酒屋、 焼肉店」 のような複合テキストの場合に
+    // industry_time_rules.industry_name (例「飲食」) と一致せず、 ピックアップ対象が
+    // 3,493,770 → 69 件まで激減していた。
+    // industry_category (再計算済みカテゴリ) も照合する OR 条件に変更し、
+    // industry_time_rules に「飲食」 が登録されていれば industry_category='飲食' の
+    // 全企業も対象に取れるようにする。 完全一致パスは後方互換性のため残す。
     const goldenIndFilter = (mode === 'auto' && !isSalesRole)
-      ? `AND c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)`
+      ? `AND (
+           c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)
+           OR c.industry_category IN (SELECT DISTINCT industry_name FROM industry_time_rules)
+         )`
       : '';
 
     // 特別リストモード: is_special=1の企業のみ
