@@ -6,6 +6,47 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-24: 特別リスト再設計 (per-user sort_order + D&D 並び替え + 独立ページ)
+#### 背景・要望
+- 従来の特別リストは call.js のタブ内に同居しており、 800 件規模の管理に向かなかった。
+- 「ユーザーごとに架電したい順に並び替えたい」 「D&D で並び順を編集したい」 「管理者は他オペレーターの並び順も触りたい」 (ユーザー要望)。
+
+#### 仕様
+- `company_assignments.sort_order INT NOT NULL DEFAULT 0` を追加 (ユーザー単位の連番)。
+- 削除時に詰めない (空き番号許容、 並び順だけ保持)。
+- 独立ページ `/special-list` を新設、 1 ページ 100 件のページネーション + 1 ページ内 D&D 並び替え。
+- `call.js` の特別リストタブはクイックビュー (上位 20 件) に縮小、 「全体を見る」 リンクで `/special-list` に誘導。
+- admin/manager/consultant は `?user_id=` でユーザーを切り替えて他人の sort_order も操作可能。
+- operator/sales は強制的に自分の user_id 固定。
+
+#### 変更
+- DB migration (`backend/src/server.js` runMigrations): `company_assignments.sort_order` 追加 + 既存行を `(assigned_at, id)` 昇順で初期採番 + `idx_assignments_user_sort` インデックス。
+- 新規 API (`backend/src/controllers/specialListController.js`):
+  - `GET /api/companies/special-list?user_id=&page=1&limit=100` — sort_order 昇順、 最新架電結果 (last_called_at / last_result / last_memo) JOIN、 ページネーション。
+  - `PUT /api/companies/special-list/reorder` — `{ user_id?, items: [{ company_id, sort_order }] }` を一括 UPDATE (トランザクション)。
+  - `GET /api/companies/special-list/users` — admin/manager/consultant 向け、 ユーザー候補 + 割当件数。
+- backend 修正:
+  - `backend/src/utils/companyUpsert.js` `addManualAssignment`: 新規 INSERT 時に user_id 単位で `MAX(sort_order)+1` を採番 (`ON DUPLICATE KEY UPDATE id=id` で既存行は触らない)。
+  - `backend/src/controllers/companyController.js` `getNextCallTarget`/`getCallList` の `mode=special` クエリを `company_assignments JOIN` に置換、 `ORDER BY ca.sort_order ASC` に変更。 タブ表示は LIMIT 20 (SPECIAL_QUICK_VIEW_SIZE)。
+- frontend:
+  - 新規ページ `frontend/src/pages/special-list.js` (@dnd-kit/sortable + 業種/地域/結果フィルタ + ページネーション)。
+  - `frontend/src/pages/call.js` 特別タブに「全体を見る」 リンク追加。
+  - `frontend/src/components/common/Layout.jsx` operator/intern/sales/admin/manager/consultant 全ロールのサイドメニューに「特別リスト」 を追加。
+- 新規依存: `@dnd-kit/core` `@dnd-kit/sortable` `@dnd-kit/utilities`。
+
+#### 影響範囲
+- `backend/src/server.js` (runMigrations sort_order 追加 + 初期採番)
+- `backend/src/controllers/specialListController.js` (新規)
+- `backend/src/controllers/companyController.js` (special mode 修正)
+- `backend/src/utils/companyUpsert.js` (`addManualAssignment` sort_order 採番化)
+- `backend/src/routes/companies.js` (新規 3 ルート登録)
+- `frontend/src/pages/special-list.js` (新規)
+- `frontend/src/pages/call.js` (タブのクイックビュー化 + リンク)
+- `frontend/src/components/common/Layout.jsx` (サイドメニュー)
+- `frontend/package.json` (@dnd-kit/* 追加)
+
+---
+
 ### 2026-06-18: 重複登録時の肉付け + 追加ユーザー割り当て (companies upsert ヘルパー化)
 #### 背景・要望
 - 「架電リスト、 特別リストに重複番号を登録しようとした場合は元のデータに肉付けする形 (既に情報が入っている項目は上書き) で元データを修正して追加したユーザーに割り当ててほしい」 (ユーザー要望)。

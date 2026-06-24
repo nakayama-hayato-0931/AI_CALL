@@ -485,22 +485,28 @@ const getNextCallTarget = async (req, res, next) => {
          )`
       : '';
 
-    // 特別リストモード: is_special=1の企業のみ
+    // 特別リストモード: is_special=1の企業のみ + 自分の company_assignments.sort_order 順
+    // 2026-06-24 特別リスト再設計:
+    //   company_assignments JOIN で「自分に割り当てられた企業」 を sort_order 昇順で取得。
+    //   未架電 (result_code IS NULL) のみピックアップ対象とする。
     if (isSpecialList) {
       const [specialRows] = await pool.query(
         `SELECT c.*,
+                ca.sort_order,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
-         FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
+         FROM company_assignments ca
+         JOIN companies c ON c.id = ca.company_id
+         WHERE ca.user_id = ?
+           AND c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
            )
            ${lockFilterSQL}
-         ORDER BY c.id DESC
+         ORDER BY ca.sort_order ASC, ca.id ASC
          LIMIT 1`,
-        [userId]
+        [userId, userId]
       );
       if (specialRows.length > 0) {
         return ApiResponse.success(res, { target: specialRows[0], reason: 'special' });
@@ -682,6 +688,8 @@ const getCallList = async (req, res, next) => {
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 8);
     const LIST_SIZE = 25;
+    // 2026-06-24 特別リスト再設計: タブはクイックビュー (上位 20 件)、 全件は /special-list で
+    const SPECIAL_QUICK_VIEW_SIZE = 20;
 
     // 架電種別（営業 or オペレーター）
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
@@ -851,32 +859,31 @@ const getCallList = async (req, res, next) => {
       return `AND c.id NOT IN (${ids.map(() => '?').join(',')})`;
     };
 
-    // 特別リストモード: is_special=1の企業のみ
-    // オペレーター: 自分に割り当てられた企業 or 未割り当ての企業
-    // 管理者: 全て表示
-    // 一度でも架電結果が入力された企業は除外、表示順は直近追加順
+    // 特別リストモード: is_special=1の企業のみ + 自分の company_assignments.sort_order 順
+    // 2026-06-24 特別リスト再設計:
+    //   call.js の特別リストタブは「クイックビュー」 として上位 LIST_SIZE 件 (= 20 件) のみ表示。
+    //   全件閲覧/編集は /special-list ページで行う (admin/manager/consultant は他人の並び順も操作可)。
+    //   並び順は company_assignments.sort_order 昇順 (D&D で編集可能)。
+    //   一度でも架電結果が入力された企業は除外。
     if (isSpecialList) {
-      const isManager = req.user.role === 'admin' || req.user.role === 'manager';
-      const specialAssignFilter = isManager
-        ? ''
-        : `AND (c.id IN (SELECT ca.company_id FROM company_assignments ca WHERE ca.user_id = ${Number(userId)})
-           OR c.id NOT IN (SELECT ca.company_id FROM company_assignments ca))`;
       const [specialRows] = await pool.query(
         `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
+                ca.sort_order,
                 'special' as reason,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
-         FROM companies c
-         WHERE c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
+         FROM company_assignments ca
+         JOIN companies c ON c.id = ca.company_id
+         WHERE ca.user_id = ?
+           AND c.exclusion_flag = 0 AND c.is_special = 1 ${salesListFilter} ${hasPhoneSQL}
            AND NOT EXISTS (
              SELECT 1 FROM calls cl
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
            )
            ${lockFilterSQL}
-           ${specialAssignFilter}
-         ORDER BY c.id DESC
+         ORDER BY ca.sort_order ASC, ca.id ASC
          LIMIT ?`,
-        [userId, LIST_SIZE]
+        [userId, userId, SPECIAL_QUICK_VIEW_SIZE]
       );
       const payload = { targets: specialRows };
       if (!req.query.exclude) callListCache.set(cacheKey, { at: Date.now(), payload });

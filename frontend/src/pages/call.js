@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Layout from '../components/common/Layout';
 import ProjectModal from '../components/ProjectModal';
 import useAuth from '../hooks/useAuth';
@@ -1007,6 +1008,13 @@ export default function CallPage() {
                 <div className="mt-2">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2">
                     <p className="text-[10px] text-red-600 font-bold">失注やバラシになった案件に再架電する場合のみ使用可</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-2 flex items-center justify-between">
+                    <span className="text-[10px] text-blue-700">クイックビュー (上位20件)</span>
+                    <Link
+                      href="/special-list"
+                      className="text-[10px] text-blue-700 hover:text-blue-900 font-bold underline"
+                    >全体を見る</Link>
                   </div>
                   <button
                     onClick={() => setShowSpecialAdd(!showSpecialAdd)}

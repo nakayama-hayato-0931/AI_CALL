@@ -57,19 +57,29 @@ const MASTER_COLS = [
  * company_assignments に手動割り当てを追加する。
  * - operator / 管理者 / マネージャー どのロールでも、 ctx.assignToUserId か ctx.userId を割り当てる。
  * - sales (営業) ロールはそもそも company_assignments を持たない運用のためスキップ。
- * - INSERT IGNORE で UNIQUE KEY (company_id, user_id) 衝突は黙殺。
+ * - ON DUPLICATE KEY UPDATE: 重複時は何もしない (sort_order を上書きしない)。
+ * - 新規 INSERT 時は user_id 単位で MAX(sort_order)+1 を採番。
+ *   特別リストの並び順機能 (sort_order) で「追加順」 をデフォルトの並び順として保持する。
  */
 async function addManualAssignment(conn, companyId, userId, byUserId, role) {
   if (!companyId || !userId) return;
   if (role === 'sales') return;
   try {
+    // user_id ごとの次の sort_order を採番 (新規 INSERT 用)
+    const [maxRows] = await conn.query(
+      'SELECT COALESCE(MAX(sort_order), 0) AS max_so FROM company_assignments WHERE user_id = ?',
+      [userId]
+    );
+    const nextSortOrder = (maxRows[0]?.max_so || 0) + 1;
+    // 既存行があれば触らない (sort_order を上書きしない、 詰めない)。
+    // 新規 INSERT 時のみ sort_order = MAX+1。
     await conn.query(
-      `INSERT IGNORE INTO company_assignments (company_id, user_id, assigned_by, is_auto)
-       VALUES (?, ?, ?, 0)`,
-      [companyId, userId, byUserId || userId]
+      `INSERT INTO company_assignments (company_id, user_id, assigned_by, is_auto, sort_order)
+       VALUES (?, ?, ?, 0, ?)
+       ON DUPLICATE KEY UPDATE id = id`,
+      [companyId, userId, byUserId || userId, nextSortOrder]
     );
   } catch (e) {
-    // ER_DUP_ENTRY は INSERT IGNORE で握りつぶされるが、 他エラーは握りつぶさず投げる
     throw e;
   }
 }

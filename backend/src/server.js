@@ -1083,6 +1083,43 @@ const runMigrations = async () => {
       }
     }
   } catch (e) { logger.warn('[Migration] past_cpa_seed v2:', e.message); }
+
+  // 特別リスト並び順機能: company_assignments.sort_order を追加。
+  //   - ユーザーごとに 1〜N で連番採番 (重複可、 デフォルト 0)
+  //   - 新規 INSERT 時は MAX(sort_order)+1 を csvController で採番
+  //   - 削除時は詰めない (空き番号許容)
+  //   - 800 件想定で 1 ページ 100 件のページネーション + D&D 並び替えに使う
+  try {
+    const [r] = await pool.query("SHOW COLUMNS FROM company_assignments LIKE 'sort_order'");
+    if (r.length === 0) {
+      await pool.execute('ALTER TABLE company_assignments ADD COLUMN sort_order INT NOT NULL DEFAULT 0');
+      logger.info('[Migration] company_assignments.sort_order カラム追加完了');
+      // 既存行への初期採番: user_id ごとに assigned_at, id 昇順で 1..N
+      try {
+        const [users] = await pool.query('SELECT DISTINCT user_id FROM company_assignments');
+        let total = 0;
+        for (const u of users) {
+          const [rows] = await pool.query(
+            'SELECT id FROM company_assignments WHERE user_id = ? ORDER BY assigned_at ASC, id ASC',
+            [u.user_id]
+          );
+          for (let i = 0; i < rows.length; i++) {
+            await pool.execute(
+              'UPDATE company_assignments SET sort_order = ? WHERE id = ?',
+              [i + 1, rows[i].id]
+            );
+            total++;
+          }
+        }
+        logger.info(`[Migration] company_assignments.sort_order 初期採番完了: ${total}行`);
+      } catch (err) {
+        logger.warn(`[Migration] sort_order 初期採番 skipped: ${err.message}`);
+      }
+    }
+  } catch (e) {
+    logger.warn(`[Migration] sort_order add: ${e.message}`);
+  }
+  try { await pool.execute('CREATE INDEX idx_assignments_user_sort ON company_assignments(user_id, sort_order)'); } catch (e) {}
 };
 // 起動シーケンス:
 //   1. criticalPreflight() を await（新カラム追加など、ないとリクエスト処理が500になる項目）

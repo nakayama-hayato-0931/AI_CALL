@@ -124,6 +124,7 @@ const getNavSections = (role, adminView) => {
           ...(!isSalesView ? [{ href: '/admin/customer-master', label: '顧客マスタ', icon: 'users' }] : []),
           { href: '/admin/companies', label: '架電リスト管理', icon: 'list' },
           { href: '/csv-import', label: 'リストインポート', icon: 'csv' },
+          { href: '/special-list', label: '特別リスト', icon: 'list' },
           { href: '/admin/special-list-progress', label: '特別リスト進捗', icon: 'status' },
           ...(!isSalesView ? [{ href: '/admin/scripts', label: 'スクリプト管理', icon: 'script' }] : []),
           ...(!isSalesView ? [{ href: '/admin/specific-skill', label: '特定技能管理', icon: 'performance' }] : []),
@@ -142,6 +143,7 @@ const getNavSections = (role, adminView) => {
           { href: '/', label: 'ダッシュボード', icon: 'dashboard' },
           { href: '/call', label: '架電画面', icon: 'call' },
           { href: '/recalls', label: 'リコール管理', icon: 'recall' },
+          { href: '/special-list', label: '特別リスト', icon: 'list' },
         ],
       },
       {
@@ -166,6 +168,7 @@ const getNavSections = (role, adminView) => {
         { href: '/call', label: '架電画面', icon: 'call' },
         { href: '/recalls', label: 'リコール管理', icon: 'recall' },
         { href: '/projects', label: '案件管理', icon: 'project' },
+        { href: '/special-list', label: '特別リスト', icon: 'list' },
       ],
     },
     {

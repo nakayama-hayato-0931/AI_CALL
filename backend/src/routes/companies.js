@@ -25,10 +25,22 @@ const {
   updateCompanyAction,
   deleteCompanyAction,
 } = require('../controllers/companyController');
+const {
+  getSpecialList,
+  reorderSpecialList,
+  getSpecialListUsers,
+} = require('../controllers/specialListController');
 const { authenticate } = require('../middlewares/auth');
 
 // すべて認証必須
 router.use(authenticate);
+
+// GET /api/companies/special-list - 特別リスト (sort_order 順、 ページネーション)
+router.get('/special-list', getSpecialList);
+// GET /api/companies/special-list/users - admin/manager/consultant 向け ユーザー一覧
+router.get('/special-list/users', getSpecialListUsers);
+// PUT /api/companies/special-list/reorder - D&D 並び替え結果の一括反映
+router.put('/special-list/reorder', reorderSpecialList);
 
 // GET /api/companies/call-list - 架電候補リスト
 router.get('/call-list', getCallList);
