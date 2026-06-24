@@ -6,6 +6,35 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-24: 特別リスト統計表示 (リスト総数 / 優先度別 / 架電済み / 完了率)
+#### 背景・要望
+- 「特別リストについて、 リスト総数、 優先度別リスト数、 架電済み件数 (優先度別)、 完了率 (優先度別) を表示してほしい」 (ユーザー要望)。
+- 特別リスト 800 件規模で「今どの優先度がどこまで消化できているか」 を一目で把握したい。
+
+#### 仕様
+- 「架電済み」 = `calls` テーブルに該当 `company_id` で `result_code IS NOT NULL` のレコードが 1 件以上ある。
+- 完了率 = 架電済み件数 / 総数 × 100 (小数 1 桁)。
+- 統計対象は GET /special-list で取得しているユーザーのリスト (= admin/manager/consultant が他人を選択していればそのユーザー、 それ以外は自分)。
+- フィルタ (業種/地域/結果) の影響は受けない、 全ページ通しの集計。
+- 表示は /special-list ページ上部のカード横並び 5 枠 (全体 + A/B/C/D)、 各カードに progress bar 付き。
+
+#### 変更
+- backend `backend/src/controllers/specialListController.js`:
+  - GET /special-list レスポンスに `stats` を追加。 既存の `items / total / page / limit / totalPages / user_id` は維持 (互換性)。
+  - 構造: `{ total, called, completion_rate, by_priority: { A: {total, called, completion_rate}, B, C, D } }`。
+  - SQL: `company_assignments ca JOIN companies c ON c.id=ca.company_id WHERE ca.user_id=? AND c.is_special=1 AND c.exclusion_flag=0 GROUP BY COALESCE(ca.priority,'C')` で priority 別に集計、 EXISTS サブクエリで calls.result_code を判定。 全体合計はサーバ側で合算。
+- frontend `frontend/src/pages/special-list.js`:
+  - 上部に `StatCard` 5 枚 (全体 + A/B/C/D) を `grid grid-cols-2 md:grid-cols-5` で配置。
+  - 各カード: 「優先度ラベル / 架電済 N / 総数 N / 完了率 N.N%」 + プログレスバー (priority と同系色)。
+  - admin の他人選択時も `loadList` 経由で stats が連動更新。
+
+#### 影響範囲
+- `backend/src/controllers/specialListController.js`
+- `frontend/src/pages/special-list.js`
+- `CHANGELOG.md`
+
+---
+
 ### 2026-06-24: 特別リスト優先度 (A/B/C/D)
 #### 背景・要望
 - 「特別リストのインポート時に優先度を設定できるようにしたい。 A→B→C→D の順で並び替えができるようにしてほしい」 (ユーザー要望)。

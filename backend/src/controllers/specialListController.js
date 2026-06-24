@@ -50,6 +50,50 @@ const getSpecialList = async (req, res, next) => {
     );
     const total = countRows[0]?.cnt || 0;
 
+    // 統計: 優先度別 (A/B/C/D) のリスト数・架電済み件数。
+    // 「架電済み」 = calls テーブルに result_code IS NOT NULL のレコードが該当 company_id に 1 件以上存在。
+    // company_assignments は priority NULL の可能性があるので COALESCE(ca.priority, 'C') で 'C' 扱い (フロント既存と整合)。
+    const [statRows] = await pool.query(
+      `SELECT
+          COALESCE(ca.priority, 'C') AS priority,
+          COUNT(DISTINCT ca.company_id) AS total,
+          SUM(CASE WHEN EXISTS (
+            SELECT 1 FROM calls cl WHERE cl.company_id = ca.company_id AND cl.result_code IS NOT NULL
+          ) THEN 1 ELSE 0 END) AS called
+       FROM company_assignments ca
+       JOIN companies c ON c.id = ca.company_id
+       WHERE ca.user_id = ? AND c.is_special = 1 AND c.exclusion_flag = 0
+       GROUP BY COALESCE(ca.priority, 'C')`,
+      [reqUserId]
+    );
+    // by_priority の枠を A/B/C/D で固定し、 SQL 結果を流し込む。 取得できなかった枠はゼロ。
+    const byPriority = { A: { total: 0, called: 0, completion_rate: 0 },
+                         B: { total: 0, called: 0, completion_rate: 0 },
+                         C: { total: 0, called: 0, completion_rate: 0 },
+                         D: { total: 0, called: 0, completion_rate: 0 } };
+    let totalAll = 0;
+    let calledAll = 0;
+    for (const r of statRows) {
+      const pr = ['A', 'B', 'C', 'D'].includes(r.priority) ? r.priority : 'C';
+      const t = Number(r.total) || 0;
+      const cl = Number(r.called) || 0;
+      byPriority[pr].total += t;
+      byPriority[pr].called += cl;
+      totalAll += t;
+      calledAll += cl;
+    }
+    for (const pr of ['A', 'B', 'C', 'D']) {
+      const t = byPriority[pr].total;
+      const cl = byPriority[pr].called;
+      byPriority[pr].completion_rate = t > 0 ? Math.round((cl / t) * 1000) / 10 : 0;
+    }
+    const stats = {
+      total: totalAll,
+      called: calledAll,
+      completion_rate: totalAll > 0 ? Math.round((calledAll / totalAll) * 1000) / 10 : 0,
+      by_priority: byPriority,
+    };
+
     // 本体取得: 各企業の最新架電結果 (last_called_at, last_result, last_memo) を JOIN
     // 並び順は priority ASC ('A' < 'B' < 'C' < 'D')、 同じ priority 内では sort_order ASC。
     const [items] = await pool.query(
@@ -86,6 +130,7 @@ const getSpecialList = async (req, res, next) => {
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
       user_id: reqUserId,
+      stats,
     });
   } catch (err) {
     logger.error(`[getSpecialList] ${err.code || ''} ${err.message}`);

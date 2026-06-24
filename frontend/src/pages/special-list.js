@@ -59,7 +59,39 @@ const PRIORITY_BADGE = {
   C: 'bg-blue-100 text-blue-700 border-blue-200',
   D: 'bg-gray-100 text-gray-600 border-gray-200',
 };
+// 統計カード用の色 (priority と同系統だが、 カード全体の枠+背景+プログレスバー色も合わせる)。
+const PRIORITY_CARD = {
+  A: { border: 'border-red-200', bg: 'bg-red-50', label: 'text-red-700', bar: 'bg-red-500' },
+  B: { border: 'border-amber-200', bg: 'bg-amber-50', label: 'text-amber-800', bar: 'bg-amber-500' },
+  C: { border: 'border-blue-200', bg: 'bg-blue-50', label: 'text-blue-700', bar: 'bg-blue-500' },
+  D: { border: 'border-gray-200', bg: 'bg-gray-50', label: 'text-gray-700', bar: 'bg-gray-500' },
+};
 const PRIORITIES = ['A', 'B', 'C', 'D'];
+
+/** 統計カード 1 枠。 全体 (label='全体') と A/B/C/D 共通で使う。 */
+function StatCard({ label, total, called, completionRate, tone }) {
+  // tone: 'total' (全体) | 'A' | 'B' | 'C' | 'D'
+  const palette = tone === 'total'
+    ? { border: 'border-slate-300', bg: 'bg-white', label: 'text-slate-700', bar: 'bg-slate-700' }
+    : PRIORITY_CARD[tone] || PRIORITY_CARD.C;
+  const rate = Number.isFinite(completionRate) ? completionRate : 0;
+  const barWidth = Math.min(100, Math.max(0, rate));
+  return (
+    <div className={`border ${palette.border} ${palette.bg} rounded-lg p-3`}>
+      <div className={`text-[11px] font-semibold ${palette.label} mb-1`}>{label}</div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-lg font-bold text-gray-900">{called}</span>
+        <span className="text-xs text-gray-500">/ {total}</span>
+      </div>
+      <div className="mt-1.5 flex items-center gap-2">
+        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className={`h-full ${palette.bar} transition-all`} style={{ width: `${barWidth}%` }} />
+        </div>
+        <span className="text-[11px] font-mono text-gray-700 w-12 text-right">{rate.toFixed(1)}%</span>
+      </div>
+    </div>
+  );
+}
 
 const fmtDateTime = (s) => {
   if (!s) return '-';
@@ -169,6 +201,8 @@ export default function SpecialListPage() {
   const [industryFilter, setIndustryFilter] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
+  // 統計 (バックエンド集計、 全ページ通しの値。 フィルタ無関係)
+  const [stats, setStats] = useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -202,6 +236,7 @@ export default function SpecialListPage() {
         setItems(data.data.items || []);
         setTotal(data.data.total || 0);
         setTotalPages(data.data.totalPages || 1);
+        setStats(data.data.stats || null);
       }
     } catch (err) {
       toast.error('特別リストの取得に失敗しました');
@@ -347,6 +382,32 @@ export default function SpecialListPage() {
             合計 <span className="font-semibold text-gray-900">{total}</span> 件
           </div>
         </div>
+
+        {/* 統計カード (全体 + A/B/C/D)。 stats は全ページ通しの集計でフィルタ無関係。 */}
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <StatCard
+              label="全体"
+              tone="total"
+              total={stats.total || 0}
+              called={stats.called || 0}
+              completionRate={stats.completion_rate || 0}
+            />
+            {PRIORITIES.map((p) => {
+              const s = stats.by_priority?.[p] || { total: 0, called: 0, completion_rate: 0 };
+              return (
+                <StatCard
+                  key={p}
+                  label={`優先度 ${p}`}
+                  tone={p}
+                  total={s.total || 0}
+                  called={s.called || 0}
+                  completionRate={s.completion_rate || 0}
+                />
+              );
+            })}
+          </div>
+        )}
 
         {/* フィルタ + ユーザー選択 */}
         <div className="card p-4">
