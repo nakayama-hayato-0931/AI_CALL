@@ -72,6 +72,9 @@ export default function CallListPage() {
   const [selectedOperators, setSelectedOperators] = useState([]);
   const [graceDays, setGraceDays] = useState(5);
 
+  // 特別リスト優先度 (A/B/C/D)、 デフォルト C。 CSV 全体に 1 つの値、 後から行ごとに変更可能。
+  const [specialPriority, setSpecialPriority] = useState('C');
+
   useEffect(() => {
     if (isManager) {
       api.get('/api/calls/operators').then(({ data }) => setOperators(data.data || [])).catch(() => {});
@@ -238,6 +241,10 @@ export default function CallListPage() {
           formData.append('priority_operator_ids', JSON.stringify(selectedOperators));
           formData.append('grace_days', String(graceDays));
         }
+        if (importTab === 'special') {
+          // 特別リスト優先度 (CSV 全体に 1 つ)
+          formData.append('priority', specialPriority);
+        }
         if (savedUser.role === 'sales') {
           formData.append('is_sales_list', '1');
         }
@@ -314,6 +321,11 @@ export default function CallListPage() {
         formData.append('grace_days', String(graceDays));
       }
 
+      // 特別リスト優先度 (CSV 全体に 1 つ、 デフォルト 'C')
+      if (importTab === 'special') {
+        formData.append('priority', specialPriority);
+      }
+
       // 営業ユーザーは自動的に営業リストとしてインポート
       const savedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       if (savedUser.role === 'sales') {
@@ -379,6 +391,10 @@ export default function CallListPage() {
         if (selectedOperators.length > 0) {
           payload.priority_operator_ids = selectedOperators;
           payload.grace_days = graceDays;
+        }
+        // 特別リストの優先度 (A/B/C/D)
+        if (importTab === 'special') {
+          payload.priority = specialPriority;
         }
         // 営業ユーザーは自動的に営業リストとして登録
         const savedUser2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
@@ -532,6 +548,46 @@ export default function CallListPage() {
               </div>
             </div>
           </div>
+
+          {/* 特別リスト優先度 (A/B/C/D)。 CSV 全体に 1 つ、 後から各行ごとに変更可能。 */}
+          {importTab === 'special' && (
+            <div className="card p-4">
+              <p className="text-xs font-medium text-gray-700 mb-2">優先度 (A→B→C→D の順で並び替え、 デフォルト C)</p>
+              <div className="flex items-center gap-2">
+                {['A', 'B', 'C', 'D'].map((p) => {
+                  const styles = {
+                    A: 'bg-red-50 text-red-700 border-red-200',
+                    B: 'bg-amber-50 text-amber-700 border-amber-200',
+                    C: 'bg-blue-50 text-blue-700 border-blue-200',
+                    D: 'bg-gray-50 text-gray-600 border-gray-200',
+                  };
+                  const selStyles = {
+                    A: 'bg-red-600 text-white border-red-600',
+                    B: 'bg-amber-500 text-white border-amber-500',
+                    C: 'bg-blue-600 text-white border-blue-600',
+                    D: 'bg-gray-600 text-white border-gray-600',
+                  };
+                  const isSel = specialPriority === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setSpecialPriority(p)}
+                      className={`px-4 py-1.5 rounded-md text-sm font-bold border transition-all ${isSel ? selStyles[p] : styles[p]}`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+                <span className="ml-3 text-[11px] text-gray-500">
+                  選択中: <span className="font-bold text-gray-700">{specialPriority}</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">
+                インポートする CSV 全体に同じ優先度が付きます。 個別の優先度変更は特別リストページから可能です。
+              </p>
+            </div>
+          )}
 
           {/* 優先オペレーター設定（管理者/マネージャー・架電リストのみ） */}
           {isManager && (importTab === 'calllist' || importTab === 'special') && (

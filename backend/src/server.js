@@ -1120,6 +1120,23 @@ const runMigrations = async () => {
     logger.warn(`[Migration] sort_order add: ${e.message}`);
   }
   try { await pool.execute('CREATE INDEX idx_assignments_user_sort ON company_assignments(user_id, sort_order)'); } catch (e) {}
+
+  // 特別リスト優先度機能: company_assignments.priority CHAR(1) DEFAULT 'C' を追加。
+  //   - 値域 'A' (最優先) / 'B' / 'C' (デフォルト) / 'D' (最後)
+  //   - インポート時は CSV 全体に 1 つ (= バッチ単位)、 後から各行ごとに変更可能。
+  //   - 並び順は ORDER BY priority ASC, sort_order ASC (= A グループ内で D&D 順)。
+  //   - D&D で別 priority グループに移動 → 自動的にその priority に変更。
+  //   - 既存行は DEFAULT 'C' で初期化。
+  try {
+    const [r] = await pool.query("SHOW COLUMNS FROM company_assignments LIKE 'priority'");
+    if (r.length === 0) {
+      await pool.execute("ALTER TABLE company_assignments ADD COLUMN priority CHAR(1) NOT NULL DEFAULT 'C'");
+      logger.info('[Migration] company_assignments.priority カラム追加完了 (DEFAULT C)');
+    }
+  } catch (e) {
+    logger.warn(`[Migration] priority add: ${e.message}`);
+  }
+  try { await pool.execute('CREATE INDEX idx_assignments_user_priority_sort ON company_assignments(user_id, priority, sort_order)'); } catch (e) {}
 };
 // 起動シーケンス:
 //   1. criticalPreflight() を await（新カラム追加など、ないとリクエスト処理が500になる項目）

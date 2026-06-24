@@ -6,6 +6,45 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-24: 特別リスト優先度 (A/B/C/D)
+#### 背景・要望
+- 「特別リストのインポート時に優先度を設定できるようにしたい。 A→B→C→D の順で並び替えができるようにしてほしい」 (ユーザー要望)。
+- 800 件規模の特別リストの中で「今日絶対架電する」「今週中」「優先度低」 を分けたいケースが増えた。
+
+#### 仕様
+- `company_assignments.priority CHAR(1) NOT NULL DEFAULT 'C'` を追加 (A/B/C/D)。
+- インポート時は CSV 全体に 1 つの優先度を付与 (= バッチ単位)、 デフォルト C。
+- 後から特別リストページで各行ごとに優先度を変更可能 (ドロップダウン)。
+- 並び順: `ORDER BY priority ASC, sort_order ASC` (A グループ内は D&D 順)。
+- D&D で別の priority グループに移動すると自動的にその priority に変更される。
+
+#### 変更
+- DB migration (`backend/src/server.js` runMigrations): `company_assignments.priority` 追加 (DEFAULT 'C') + `idx_assignments_user_priority_sort` 複合インデックス。 既存行は DEFAULT 'C' で初期化。
+- backend:
+  - `backend/src/utils/companyUpsert.js` `addManualAssignment` / `upsertCompanyByPhone` に `priority` 引数追加 (省略時 'C')。
+  - `backend/src/controllers/csvController.js` `importSpecialList` / `manualAddSpecial` で `req.body.priority` (A/B/C/D) を受け取り `upsertCompanyByPhone` に伝搬。
+  - `backend/src/controllers/specialListController.js`:
+    - `GET /special-list` レスポンスに `priority` を含め、 `ORDER BY ca.priority ASC, ca.sort_order ASC, ca.id ASC` に変更。
+    - `PUT /reorder` の各 item に `priority` (任意) を受け取り、 sort_order と一緒に UPDATE。
+  - `backend/src/controllers/companyController.js` `getNextCallTarget` / `getCallList` の `mode='special'` クエリも `ORDER BY ca.priority ASC, ca.sort_order ASC` に変更。
+- frontend:
+  - `frontend/src/pages/csv-import.js` 特別リストタブに優先度ドロップダウン (A/B/C/D、 デフォルト C) を追加、 ファイル / 手動どちらの送信にも `priority` を含める。
+  - `frontend/src/pages/special-list.js` 各行に優先度バッジ (A=赤、 B=黄、 C=青、 D=灰) + ドロップダウンで個別変更、 D&D 移動時はドロップ先の priority を継承、 並べ替え保存 API 呼出に priority を含める。
+  - `frontend/src/pages/call.js` 特別リストタブのクイックビューにも priority バッジを表示。
+
+#### 影響範囲
+- `backend/src/server.js` (priority migration)
+- `backend/src/utils/companyUpsert.js`
+- `backend/src/controllers/csvController.js` (importSpecialList / manualAddSpecial)
+- `backend/src/controllers/specialListController.js`
+- `backend/src/controllers/companyController.js` (mode=special ORDER BY)
+- `frontend/src/pages/csv-import.js` (優先度ドロップダウン)
+- `frontend/src/pages/special-list.js` (バッジ + ドロップダウン + D&D グループ移動)
+- `frontend/src/pages/call.js` (クイックビュー priority バッジ)
+- `CHANGELOG.md`
+
+---
+
 ### 2026-06-24: 特別リスト再設計 (per-user sort_order + D&D 並び替え + 独立ページ)
 #### 背景・要望
 - 従来の特別リストは call.js のタブ内に同居しており、 800 件規模の管理に向かなかった。

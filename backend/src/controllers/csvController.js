@@ -1145,6 +1145,10 @@ const importSpecialList = async (req, res, next) => {
       graceDays = parseInt(req.body.grace_days) || 0;
     }
 
+    // 特別リスト優先度 (A/B/C/D)。 CSV 全体に 1 つ、 デフォルト 'C'。
+    const rawPriority = (req.body.priority || 'C').toString().toUpperCase();
+    const importPriority = ['A', 'B', 'C', 'D'].includes(rawPriority) ? rawPriority : 'C';
+
     let insertedCount = 0;
     let skippedCount = 0;
     let duplicateCount = 0;
@@ -1211,6 +1215,7 @@ const importSpecialList = async (req, res, next) => {
           role: req.user.role,
           isSpecial: true,
           isSalesList: false,
+          priority: importPriority,
         });
 
         // 新規 INSERT 時のみ import_batch_id を紐づけ (既存行は触らない)
@@ -1230,7 +1235,7 @@ const importSpecialList = async (req, res, next) => {
             [graceDays, newCompanyId]
           );
           for (const opId of priorityOperatorIds) {
-            await addManualAssignment(conn, newCompanyId, opId, req.user.id, req.user.role);
+            await addManualAssignment(conn, newCompanyId, opId, req.user.id, req.user.role, importPriority);
           }
         }
 
@@ -1283,6 +1288,9 @@ const importSpecialList = async (req, res, next) => {
 const manualAddSpecial = async (req, res, next) => {
   try {
     const { company_name, phone_number, industry, job_type, comment, address, region, priority_operator_id } = req.body;
+    // 特別リスト優先度 (A/B/C/D)、 デフォルト 'C'
+    const rawPriority = (req.body.priority || 'C').toString().toUpperCase();
+    const manualPriority = ['A', 'B', 'C', 'D'].includes(rawPriority) ? rawPriority : 'C';
 
     if (!company_name || !phone_number) {
       return ApiResponse.badRequest(res, '企業名と電話番号は必須です');
@@ -1328,9 +1336,10 @@ const manualAddSpecial = async (req, res, next) => {
       assignToUserId: assignUserId,
       isSpecial: true,
       isSalesList: false,
+      priority: manualPriority,
     });
 
-    logger.info(`特別リスト手動登録: id=${companyId}, user=${req.user.id}, isNew=${isNew}`);
+    logger.info(`特別リスト手動登録: id=${companyId}, user=${req.user.id}, isNew=${isNew}, priority=${manualPriority}`);
     const msg = isNew ? '特別リストに登録しました' : '既存の特別リストに肉付けして登録しました';
     return ApiResponse.created(res, { companyId, isNew }, msg);
   } catch (err) {

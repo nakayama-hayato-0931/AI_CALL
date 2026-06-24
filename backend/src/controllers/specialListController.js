@@ -51,11 +51,13 @@ const getSpecialList = async (req, res, next) => {
     const total = countRows[0]?.cnt || 0;
 
     // 本体取得: 各企業の最新架電結果 (last_called_at, last_result, last_memo) を JOIN
+    // 並び順は priority ASC ('A' < 'B' < 'C' < 'D')、 同じ priority 内では sort_order ASC。
     const [items] = await pool.query(
       `SELECT
           c.id AS company_id,
           ca.id AS assignment_id,
           ca.sort_order,
+          ca.priority,
           ca.user_id,
           c.company_name,
           c.phone_number,
@@ -72,7 +74,7 @@ const getSpecialList = async (req, res, next) => {
        FROM company_assignments ca
        JOIN companies c ON c.id = ca.company_id
        WHERE ca.user_id = ? AND c.is_special = 1 AND c.exclusion_flag = 0
-       ORDER BY ca.sort_order ASC, ca.id ASC
+       ORDER BY ca.priority ASC, ca.sort_order ASC, ca.id ASC
        LIMIT ? OFFSET ?`,
       [reqUserId, limit, offset]
     );
@@ -119,6 +121,7 @@ const reorderSpecialList = async (req, res, next) => {
     }
 
     // 入力バリデーション
+    // priority は A/B/C/D 任意 (省略可、 省略時は既存値維持)。
     const normalized = [];
     for (const it of items) {
       const cid = parseInt(it.company_id, 10);
@@ -129,7 +132,15 @@ const reorderSpecialList = async (req, res, next) => {
       if (isNaN(so)) {
         return ApiResponse.badRequest(res, 'items[].sort_order が不正です');
       }
-      normalized.push({ company_id: cid, sort_order: so });
+      let pr = null;
+      if (it.priority !== undefined && it.priority !== null && it.priority !== '') {
+        const up = String(it.priority).toUpperCase();
+        if (!['A', 'B', 'C', 'D'].includes(up)) {
+          return ApiResponse.badRequest(res, 'items[].priority は A/B/C/D で指定してください');
+        }
+        pr = up;
+      }
+      normalized.push({ company_id: cid, sort_order: so, priority: pr });
     }
 
     const conn = await pool.getConnection();
@@ -137,11 +148,19 @@ const reorderSpecialList = async (req, res, next) => {
       await conn.beginTransaction();
       let updated = 0;
       for (const it of normalized) {
-        const [r] = await conn.execute(
-          'UPDATE company_assignments SET sort_order = ? WHERE user_id = ? AND company_id = ?',
-          [it.sort_order, targetUserId, it.company_id]
-        );
-        updated += r.affectedRows || 0;
+        if (it.priority !== null) {
+          const [r] = await conn.execute(
+            'UPDATE company_assignments SET sort_order = ?, priority = ? WHERE user_id = ? AND company_id = ?',
+            [it.sort_order, it.priority, targetUserId, it.company_id]
+          );
+          updated += r.affectedRows || 0;
+        } else {
+          const [r] = await conn.execute(
+            'UPDATE company_assignments SET sort_order = ? WHERE user_id = ? AND company_id = ?',
+            [it.sort_order, targetUserId, it.company_id]
+          );
+          updated += r.affectedRows || 0;
+        }
       }
       await conn.commit();
       logger.info(`[reorderSpecialList] user=${targetUserId} updated=${updated}/${normalized.length} by=${req.user.id}`);

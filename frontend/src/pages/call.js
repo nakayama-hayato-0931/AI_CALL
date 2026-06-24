@@ -1114,9 +1114,20 @@ export default function CallPage() {
                         <p className="text-sm font-medium text-gray-900 truncate">{target.company_name}</p>
                         <p className="text-[11px] text-gray-400 mt-0.5">{target.phone_number}</p>
                       </div>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${reasonColors[target.reason] || 'bg-gray-100 text-gray-600'}`}>
-                        {reasonLabels[target.reason] || ''}
-                      </span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {/* 特別リスト優先度バッジ (A=赤、 B=黄、 C=青、 D=灰) */}
+                        {target.priority && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            target.priority === 'A' ? 'bg-red-100 text-red-700' :
+                            target.priority === 'B' ? 'bg-amber-100 text-amber-800' :
+                            target.priority === 'C' ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`} title={`優先度 ${target.priority}`}>{target.priority}</span>
+                        )}
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${reasonColors[target.reason] || 'bg-gray-100 text-gray-600'}`}>
+                          {reasonLabels[target.reason] || ''}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       {target.industry ? (

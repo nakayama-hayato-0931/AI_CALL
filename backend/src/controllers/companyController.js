@@ -493,6 +493,7 @@ const getNextCallTarget = async (req, res, next) => {
       const [specialRows] = await pool.query(
         `SELECT c.*,
                 ca.sort_order,
+                ca.priority,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
          FROM company_assignments ca
@@ -504,7 +505,7 @@ const getNextCallTarget = async (req, res, next) => {
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
            )
            ${lockFilterSQL}
-         ORDER BY ca.sort_order ASC, ca.id ASC
+         ORDER BY ca.priority ASC, ca.sort_order ASC, ca.id ASC
          LIMIT 1`,
         [userId, userId]
       );
@@ -869,6 +870,7 @@ const getCallList = async (req, res, next) => {
       const [specialRows] = await pool.query(
         `SELECT c.id, c.company_name, c.phone_number, c.industry, c.industry_category, c.job_type, c.comment, c.data_source, c.address, c.region,
                 ca.sort_order,
+                ca.priority,
                 'special' as reason,
                 (SELECT cl.memo FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_memo,
                 (SELECT cl.result_code FROM calls cl WHERE cl.company_id = c.id ORDER BY cl.call_started_at DESC LIMIT 1) as last_result
@@ -881,7 +883,7 @@ const getCallList = async (req, res, next) => {
              WHERE cl.company_id = c.id AND cl.result_code IS NOT NULL
            )
            ${lockFilterSQL}
-         ORDER BY ca.sort_order ASC, ca.id ASC
+         ORDER BY ca.priority ASC, ca.sort_order ASC, ca.id ASC
          LIMIT ?`,
         [userId, userId, SPECIAL_QUICK_VIEW_SIZE]
       );

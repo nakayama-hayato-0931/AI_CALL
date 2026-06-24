@@ -52,6 +52,15 @@ const RESULT_BADGE = {
   SKIP: 'bg-slate-100 text-slate-700',
 };
 
+// 優先度バッジのスタイル (A=赤、 B=黄、 C=青、 D=灰)。
+const PRIORITY_BADGE = {
+  A: 'bg-red-100 text-red-700 border-red-200',
+  B: 'bg-amber-100 text-amber-800 border-amber-200',
+  C: 'bg-blue-100 text-blue-700 border-blue-200',
+  D: 'bg-gray-100 text-gray-600 border-gray-200',
+};
+const PRIORITIES = ['A', 'B', 'C', 'D'];
+
 const fmtDateTime = (s) => {
   if (!s) return '-';
   const d = new Date(s);
@@ -68,7 +77,7 @@ const GripIcon = () => (
   </svg>
 );
 
-function SortableRow({ row, onClick, displayIndex }) {
+function SortableRow({ row, onClick, displayIndex, onChangePriority }) {
   const {
     attributes,
     listeners,
@@ -85,11 +94,14 @@ function SortableRow({ row, onClick, displayIndex }) {
     zIndex: isDragging ? 10 : 'auto',
   };
 
+  const priority = row.priority || 'C';
+  const badgeStyle = PRIORITY_BADGE[priority] || PRIORITY_BADGE.C;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid grid-cols-[40px_48px_2fr_1.4fr_1.2fr_1.2fr_1.4fr_1.6fr] gap-2 items-center px-2 py-2 border-b border-gray-100 bg-white hover:bg-gray-50 transition-colors ${isDragging ? 'shadow-lg ring-1 ring-blue-200' : ''}`}
+      className={`grid grid-cols-[40px_48px_64px_2fr_1.4fr_1.2fr_1.2fr_1.4fr_1.6fr] gap-2 items-center px-2 py-2 border-b border-gray-100 bg-white hover:bg-gray-50 transition-colors ${isDragging ? 'shadow-lg ring-1 ring-blue-200' : ''}`}
     >
       <button
         {...attributes}
@@ -101,6 +113,20 @@ function SortableRow({ row, onClick, displayIndex }) {
         <GripIcon />
       </button>
       <div className="text-xs text-gray-400 font-mono text-right pr-1">{displayIndex}</div>
+      <div>
+        {/* 優先度バッジ兼 セレクト。 クリックでドロップダウン → 行単位で priority を変更。 */}
+        <select
+          value={priority}
+          onChange={(e) => onChangePriority && onChangePriority(row.company_id, e.target.value)}
+          className={`text-xs font-bold rounded border px-1.5 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300 ${badgeStyle}`}
+          title="優先度を変更"
+          aria-label="優先度"
+        >
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+      </div>
       <div className="min-w-0 cursor-pointer" onClick={onClick}>
         <div className="text-sm font-medium text-gray-900 truncate">{row.company_name || '-'}</div>
         {row.region && <div className="text-[10px] text-gray-400 truncate">{row.region}</div>}
@@ -188,7 +214,7 @@ export default function SpecialListPage() {
     loadList();
   }, [loadList]);
 
-  // 並び替え後 → PUT /reorder
+  // 並び替え後 → PUT /reorder。 priority も含めて送る (D&D 移動で priority が変わる可能性があるため)。
   const persistOrder = useCallback(async (orderedItems) => {
     if (!targetUserId || orderedItems.length === 0) return;
     setSaving(true);
@@ -200,6 +226,7 @@ export default function SpecialListPage() {
         items: orderedItems.map((it, idx) => ({
           company_id: it.company_id,
           sort_order: baseSortOrder + idx,
+          priority: it.priority || 'C',
         })),
       };
       await api.put('/api/companies/special-list/reorder', payload);
@@ -213,6 +240,7 @@ export default function SpecialListPage() {
     }
   }, [targetUserId, page, loadList]);
 
+  // D&D 移動で別の priority グループに入った場合、 ドロップ先の priority を引き継ぐ。
   const handleDragEnd = useCallback((event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -220,11 +248,46 @@ export default function SpecialListPage() {
       const oldIndex = prev.findIndex((it) => it.company_id === active.id);
       const newIndex = prev.findIndex((it) => it.company_id === over.id);
       if (oldIndex < 0 || newIndex < 0) return prev;
-      const next = arrayMove(prev, oldIndex, newIndex);
-      // sort_order をフロント側でも振り直して表示と同期
+      // ドロップ先 (over) の priority を取得して、 移動アイテムにも適用する。
+      const targetPriority = prev[newIndex]?.priority || 'C';
+      const moved = { ...prev[oldIndex], priority: targetPriority };
+      const without = prev.filter((_, i) => i !== oldIndex);
+      // newIndex は oldIndex 削除前のインデックスなので、 削除後は newIndex を補正する必要あり
+      const adjustedIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
+      const next = [
+        ...without.slice(0, adjustedIndex),
+        moved,
+        ...without.slice(adjustedIndex),
+      ];
+      // priority -> sort_order の順で整合性を保ち、 sort_order をフロント側で振り直す
+      // (実際の並び順は priority ASC, sort_order ASC で決まるため、 単純連番でよい)
       const baseSortOrder = (page - 1) * PAGE_SIZE + 1;
       const reindexed = next.map((it, idx) => ({ ...it, sort_order: baseSortOrder + idx }));
       // 永続化は次の tick で
+      persistOrder(reindexed);
+      return reindexed;
+    });
+  }, [page, persistOrder]);
+
+  // 行単位の priority 変更 (ドロップダウンで A/B/C/D を選択)。
+  const handleChangePriority = useCallback((companyId, newPriority) => {
+    if (!PRIORITIES.includes(newPriority)) return;
+    setItems((prev) => {
+      const idx = prev.findIndex((it) => it.company_id === companyId);
+      if (idx < 0) return prev;
+      if (prev[idx].priority === newPriority) return prev;
+      // priority だけ更新し、 priority + sort_order でソートし直す
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], priority: newPriority };
+      // priority 昇順 → sort_order 昇順 で並び替え
+      updated.sort((a, b) => {
+        const ap = a.priority || 'C';
+        const bp = b.priority || 'C';
+        if (ap !== bp) return ap < bp ? -1 : 1;
+        return (a.sort_order || 0) - (b.sort_order || 0);
+      });
+      const baseSortOrder = (page - 1) * PAGE_SIZE + 1;
+      const reindexed = updated.map((it, i) => ({ ...it, sort_order: baseSortOrder + i }));
       persistOrder(reindexed);
       return reindexed;
     });
@@ -275,7 +338,8 @@ export default function SpecialListPage() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">特別リスト</h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              ドラッグ&ドロップで並び順を変更できます (1 ページ {PAGE_SIZE} 件、 ページをまたいだ並び替えは不可)
+              ドラッグ&ドロップで並び順を変更できます (1 ページ {PAGE_SIZE} 件、 ページをまたいだ並び替えは不可)。
+              優先度は A→B→C→D の順、 別グループに移動すると優先度が自動更新されます。
             </p>
           </div>
           <div className="text-xs text-gray-500">
@@ -355,9 +419,10 @@ export default function SpecialListPage() {
         {/* リスト本体 */}
         <div className="card overflow-hidden">
           {/* ヘッダ */}
-          <div className="grid grid-cols-[40px_48px_2fr_1.4fr_1.2fr_1.2fr_1.4fr_1.6fr] gap-2 items-center px-2 py-2 border-b border-gray-200 bg-gray-50 text-[11px] font-semibold text-gray-600">
+          <div className="grid grid-cols-[40px_48px_64px_2fr_1.4fr_1.2fr_1.2fr_1.4fr_1.6fr] gap-2 items-center px-2 py-2 border-b border-gray-200 bg-gray-50 text-[11px] font-semibold text-gray-600">
             <div></div>
             <div className="text-right pr-1">#</div>
+            <div>優先度</div>
             <div>企業名</div>
             <div>電話番号</div>
             <div>業種</div>
@@ -384,6 +449,7 @@ export default function SpecialListPage() {
                       row={row}
                       displayIndex={displayIndex}
                       onClick={() => handleRowClick(row)}
+                      onChangePriority={handleChangePriority}
                     />
                   );
                 })}

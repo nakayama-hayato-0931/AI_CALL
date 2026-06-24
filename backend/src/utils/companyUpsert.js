@@ -57,13 +57,19 @@ const MASTER_COLS = [
  * company_assignments に手動割り当てを追加する。
  * - operator / 管理者 / マネージャー どのロールでも、 ctx.assignToUserId か ctx.userId を割り当てる。
  * - sales (営業) ロールはそもそも company_assignments を持たない運用のためスキップ。
- * - ON DUPLICATE KEY UPDATE: 重複時は何もしない (sort_order を上書きしない)。
+ * - ON DUPLICATE KEY UPDATE: 重複時は何もしない (sort_order / priority を上書きしない)。
  * - 新規 INSERT 時は user_id 単位で MAX(sort_order)+1 を採番。
  *   特別リストの並び順機能 (sort_order) で「追加順」 をデフォルトの並び順として保持する。
+ * - priority: 特別リストの優先度 (A/B/C/D)。 省略時は 'C' (デフォルト)。
+ *   インポート時にバッチ単位の優先度を渡したい場合に指定する。
  */
-async function addManualAssignment(conn, companyId, userId, byUserId, role) {
+async function addManualAssignment(conn, companyId, userId, byUserId, role, priority) {
   if (!companyId || !userId) return;
   if (role === 'sales') return;
+  // priority バリデーション (A/B/C/D 以外は 'C' に正規化)
+  const pr = (priority && ['A', 'B', 'C', 'D'].includes(String(priority).toUpperCase()))
+    ? String(priority).toUpperCase()
+    : 'C';
   try {
     // user_id ごとの次の sort_order を採番 (新規 INSERT 用)
     const [maxRows] = await conn.query(
@@ -71,13 +77,13 @@ async function addManualAssignment(conn, companyId, userId, byUserId, role) {
       [userId]
     );
     const nextSortOrder = (maxRows[0]?.max_so || 0) + 1;
-    // 既存行があれば触らない (sort_order を上書きしない、 詰めない)。
-    // 新規 INSERT 時のみ sort_order = MAX+1。
+    // 既存行があれば触らない (sort_order / priority を上書きしない、 詰めない)。
+    // 新規 INSERT 時のみ sort_order = MAX+1、 priority = 指定値 or 'C'。
     await conn.query(
-      `INSERT INTO company_assignments (company_id, user_id, assigned_by, is_auto, sort_order)
-       VALUES (?, ?, ?, 0, ?)
+      `INSERT INTO company_assignments (company_id, user_id, assigned_by, is_auto, sort_order, priority)
+       VALUES (?, ?, ?, 0, ?, ?)
        ON DUPLICATE KEY UPDATE id = id`,
-      [companyId, userId, byUserId || userId, nextSortOrder]
+      [companyId, userId, byUserId || userId, nextSortOrder, pr]
     );
   } catch (e) {
     throw e;
@@ -148,7 +154,8 @@ async function upsertCompanyByPhone(conn, fields, ctx) {
   }
   const { id: companyId, isNew } = await upsertRow(conn, fields, ctx || {});
   const assignTo = (ctx && ctx.assignToUserId) || (ctx && ctx.userId) || null;
-  await addManualAssignment(conn, companyId, assignTo, ctx && ctx.userId, ctx && ctx.role);
+  // ctx.priority (A/B/C/D) は特別リスト用。 省略時は addManualAssignment 側で 'C' 補完。
+  await addManualAssignment(conn, companyId, assignTo, ctx && ctx.userId, ctx && ctx.role, ctx && ctx.priority);
   return { companyId, isNew };
 }
 
