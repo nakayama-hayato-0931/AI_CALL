@@ -580,14 +580,21 @@ const bulkAssignSpecial = async (req, res, next) => {
       // フィルタ条件で対象を抽出
       const whereParts = ['exclusion_flag = 0'];
       const fParams = [];
-      if (filter.region) {
-        const short = String(filter.region).replace(/(都|道|府|県)$/, '');
-        whereParts.push(`(
-          region IN (?, ?)
-          OR region LIKE CONCAT(?, '%')
-          OR address LIKE CONCAT(?, '%')
-        )`);
-        fParams.push(filter.region, short || filter.region, short || filter.region, filter.region);
+      // 複数都道府県対応 (regions=CSV) + 後方互換 (region=単一)
+      let regList = [];
+      if (filter.regions) {
+        regList = String(filter.regions).split(',').map(s => s.trim()).filter(Boolean);
+      } else if (filter.region) {
+        regList = [String(filter.region).trim()].filter(Boolean);
+      }
+      if (regList.length > 0) {
+        const orParts = [];
+        for (const r of regList) {
+          const short = r.replace(/(都|道|府|県)$/, '') || r;
+          orParts.push(`(region IN (?, ?) OR region LIKE CONCAT(?, '%') OR address LIKE CONCAT(?, '%'))`);
+          fParams.push(r, short, short, r);
+        }
+        whereParts.push(`(${orParts.join(' OR ')})`);
       }
       if (filter.industry_category) {
         whereParts.push('industry_category = ?');
@@ -2008,16 +2015,24 @@ async function getCustomerMasterList(req, res, next) {
       const s = `%${industry}%`;
       params.push(s, industry);
     }
-    // 地域(都道府県)フィルタ — 性能優先で 3 パターンのみ
-    const { region } = req.query;
-    if (region) {
-      const short = String(region).replace(/(都|道|府|県)$/, '');
-      where += ` AND (
-        c.region IN (?, ?)
-        OR c.region LIKE CONCAT(?, '%')
-        OR c.address LIKE CONCAT(?, '%')
-      )`;
-      params.push(region, short || region, short || region, region);
+    // 地域(都道府県)フィルタ — 複数選択対応 (regions=CSV) + 後方互換 (region=単一)
+    // 各県について region IN (full, short) OR address LIKE (full%, short%) を OR で連結
+    const regionsParam = req.query.regions;
+    const regionParam = req.query.region;
+    let regionList = [];
+    if (regionsParam) {
+      regionList = String(regionsParam).split(',').map(s => s.trim()).filter(Boolean);
+    } else if (regionParam) {
+      regionList = [String(regionParam).trim()].filter(Boolean);
+    }
+    if (regionList.length > 0) {
+      const orParts = [];
+      for (const r of regionList) {
+        const short = r.replace(/(都|道|府|県)$/, '') || r;
+        orParts.push(`(c.region IN (?, ?) OR c.region LIKE CONCAT(?, '%') OR c.address LIKE CONCAT(?, '%'))`);
+        params.push(r, short, short, r);
+      }
+      where += ` AND (${orParts.join(' OR ')})`;
     }
     // 結果/担当/期間のいずれかが指定された場合は、その条件に一致する架電が
     // 1件以上ある企業のみに絞り込む

@@ -6,6 +6,32 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-25: 顧客マスタ 都道府県フィルタを複数選択 (地方グルーピング popover) に変更
+#### 背景・要望
+- ユーザー要望: 「顧客マスタの都道府県フィルタを複数選択できるようにしてほしい (地域別グルーピング + 県名チェック)」。
+- 既存は単一選択の `<select>` (全国 / 1 県のみ) で、 「関東 7 県」 や 「東京+大阪+愛知」 のような複数県横断の絞り込みが不可能だった。
+#### 仕様
+- 新規共通コンポーネント `frontend/src/components/common/PrefectureMultiSelect.jsx`:
+  - props: `{ value: string[], onChange: (string[]) => void, label?: string }`
+  - 47 都道府県を 8 地方 (北海道/東北/関東/中部/近畿/中国/四国/九州) でグルーピング
+  - 地方名クリック: 配下県を全選択/全解除 (indeterminate 表示)
+  - 県名クリック: 個別 toggle
+  - ヘッダ表示: 0 件 or 47 件 → 「都道府県 (すべて)」、 1〜46 件 → 「都道府県 (N件選択)」
+  - popover (ドロップダウン展開) で、 外側クリック or 「閉じる」 ボタンで閉じる
+  - REGION_GROUPS / ALL_PREFECTURES 定数を export (他画面流用用)
+- `frontend/src/pages/admin/customer-master.js`:
+  - state を `filters.region: string` → `filters.regions: string[]` に変更
+  - 既存の単一選択 `<select>` を `<PrefectureMultiSelect>` に置き換え (省スペースのため popover 採用)
+  - API 送信時、 1〜46 件選択時のみ `regions=東京都,埼玉県,千葉県` 形式で送信。 0 件 or 47 件は全国扱いでクエリ未送信
+  - 「絞り込み結果を特別リスト化して割り当て」 のフィルタ判定と `bulk-assign-special` ペイロードも `regions` (CSV) に追従
+#### backend 変更 (後方互換あり)
+- `backend/src/controllers/adminController.js`:
+  - `getCustomerMasterList`: `regions` (CSV) を受け付け、 各県について `region IN (full, short) OR region LIKE 'short%' OR address LIKE 'full%'` を OR で連結。 単一 `region` パラメータも引き続き受け付け (後方互換)
+  - `bulkAssignSpecial` (`POST /api/admin/companies/bulk-assign-special`): 同様に `filter.regions` (CSV) を受け付け、 単一 `filter.region` も維持
+#### 検証
+- `node --check backend/src/controllers/adminController.js` OK
+- `cd frontend && npm run build` OK (`/admin/customer-master` ルート 11.7 kB)
+
 ### 2026-06-25: CSV/XLSX インポート 電話番号セル抽出強化 (メール混入 / 複数行 / 国際表記対応)
 #### 背景・要望
 - 「電話番号欄の同じセルに 2 行で入っていたり、 メールアドレスが入っていたりするので電話番号だけを抽出して保存できるようにしてほしい」 (ユーザー要望)。

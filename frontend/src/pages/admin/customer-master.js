@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/common/Layout';
+import PrefectureMultiSelect, { ALL_PREFECTURES } from '../../components/common/PrefectureMultiSelect';
 import useAuth from '../../hooks/useAuth';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
@@ -74,18 +75,8 @@ export default function CustomerMasterPage() {
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
-    search: '', result: '', ng_reason: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '',
+    search: '', result: '', ng_reason: '', user_id: '', industry: '', regions: [], date_from: '', date_to: '', show_excluded: '',
   });
-  const ALL_PREFECTURES_CM = [
-    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
-    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
-    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
-    '岐阜県', '静岡県', '愛知県', '三重県',
-    '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
-    '鳥取県', '島根県', '岡山県', '広島県', '山口県',
-    '徳島県', '香川県', '愛媛県', '高知県',
-    '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
-  ];
   // 特別リスト一括割当用
   const [bulkAssignOp, setBulkAssignOp] = useState('');
   const [bulkAssignBusy, setBulkAssignBusy] = useState(false);
@@ -142,7 +133,16 @@ export default function CustomerMasterPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
+      Object.entries(filters).forEach(([k, v]) => {
+        if (k === 'regions') {
+          // regions: string[] → CSV。 0 件 or 47 件はサーバ送信不要 (= 全国扱い)
+          if (Array.isArray(v) && v.length > 0 && v.length < ALL_PREFECTURES.length) {
+            params.append('regions', v.join(','));
+          }
+        } else if (v) {
+          params.append(k, v);
+        }
+      });
       params.append('page', String(page));
       params.append('limit', String(pageSize));
       const { data } = await api.get(`/api/admin/customer-master?${params}`);
@@ -320,7 +320,7 @@ export default function CustomerMasterPage() {
   const updateFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const clearAll = () => {
     setSearchInput('');
-    setFilters({ search: '', result: '', ng_reason: '', user_id: '', industry: '', region: '', date_from: '', date_to: '', show_excluded: '' });
+    setFilters({ search: '', result: '', ng_reason: '', user_id: '', industry: '', regions: [], date_from: '', date_to: '', show_excluded: '' });
   };
 
   return (
@@ -549,13 +549,11 @@ export default function CustomerMasterPage() {
 
             <div>
               <label className="block text-[11px] text-gray-500 mb-0.5">都道府県</label>
-              <select value={filters.region || ''} onChange={e => updateFilter('region', e.target.value)}
-                className="border rounded px-2 py-1 text-sm w-28">
-                <option value="">全国</option>
-                {ALL_PREFECTURES_CM.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+              <PrefectureMultiSelect
+                value={filters.regions || []}
+                onChange={(next) => updateFilter('regions', next)}
+                label="都道府県"
+              />
             </div>
 
             <div>
@@ -585,7 +583,7 @@ export default function CustomerMasterPage() {
               </span>
             </div>
             {/* 絞り込み結果を特別リスト化して割り当て (フィルタが効いているときだけ表示) */}
-            {(filters.region || filters.industry || filters.search) && total > 0 && operators.length > 0 && (
+            {((filters.regions && filters.regions.length > 0 && filters.regions.length < ALL_PREFECTURES.length) || filters.industry || filters.search) && total > 0 && operators.length > 0 && (
               <div className="px-3 py-2 bg-purple-50 border-b border-purple-200 flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-purple-800 font-bold">絞り込み {total.toLocaleString()}件 →</span>
                 <select className="border rounded px-2 py-0.5 text-xs" value={bulkAssignOp}
@@ -603,10 +601,13 @@ export default function CustomerMasterPage() {
                     if (!window.confirm(`現在の絞り込み (${total.toLocaleString()}件) を ${opName} の特別リストに割り当てます。よろしいですか?`)) return;
                     setBulkAssignBusy(true);
                     try {
+                      const regionsCsv = (Array.isArray(filters.regions) && filters.regions.length > 0 && filters.regions.length < ALL_PREFECTURES.length)
+                        ? filters.regions.join(',')
+                        : undefined;
                       const { data } = await api.post('/api/admin/companies/bulk-assign-special', {
                         user_id: Number(bulkAssignOp),
                         filter: {
-                          region: filters.region || undefined,
+                          regions: regionsCsv,
                           industry_category: filters.industry || undefined,
                           search: filters.search || undefined,
                           limit: 10000,
