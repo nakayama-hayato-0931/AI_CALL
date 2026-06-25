@@ -6,6 +6,32 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-25: CSV/XLSX インポート 電話番号セル「primary 以外を全テキスト保存」 に再設計
+#### 背景・要望
+- ユーザー要望: 「インポート時に電話番号欄のセルに複数行情報がある場合は、 一番上の電話番号のみ保存して、 それ以外の情報は全てコメントに保存しておく運用でお願いします。 また、 一番上にメールアドレスがある場合 (一番上に電話番号が無い場合) は 2 行目以降に電話番号があればそれで保存してほしい」。
+- 旧仕様 (78e9b39) は `extractPhoneInfo` が `{ primary, extras }` を返し、 extras = 「2 件目以降の電話番号」 のみを comment に追記していた。 メール / 担当者名 / メモ全文等の **非電話テキストは捨てて** いたため、 ユーザー要望を満たしていなかった。
+#### 仕様
+- `extractPhoneInfo(raw)` の戻り値を `{ primary, remainder }` に変更:
+  - **primary**: セルを `[\r\n]+` で行分割し、 上から各行内 token を走査。 行内で最初に見つかった電話番号 token を採用し、 以降の行で primary は再選定しない (= 「一番上の電話番号」)。 1 行目がメールのみなら 2 行目以降から探す。
+  - **remainder**: primary 以外の全テキスト (primary 行の残り tokens + 他行の原文) を `' / '` で連結。 メール / 担当者名 / 他電話番号 / メモ全文 すべて保持。
+- 新ヘルパー `appendRemainderToComment(baseComment, remainder, label='電話番号セル')`:
+  - `<label>追記: <remainder>` の形式で baseComment 末尾に `' / '` 区切りで追記。
+  - 同じ追記行が既にあれば二重追記しない。
+  - FAX セルからは `label='FAXセル'` で別ラベル付け。
+- `normalizePhoneNumber(raw)` は `extractPhoneInfo(raw).primary` を返す薄いラッパとして維持 (後方互換)。
+#### 適用箇所
+- `importCompanies` / `importSpecialList` (phone_number + fax_number)
+- `manualAddCompany` / `manualAddSpecial` (phone_number)
+- 旧 `appendExtrasToComment` および `phoneInfo.extras` / `faxInfo.extras` への参照は全廃。
+#### 検証
+- `node --check backend/src/controllers/csvController.js` OK
+- 手動 5 ケース (`node -e`) で primary / remainder が期待値通り:
+  - `"03-1234-5678\n090-1234-5678 abc@example.com\n担当: 山田太郎"` → primary=`0312345678`, remainder=`090-1234-5678 abc@example.com / 担当: 山田太郎`
+  - `"abc@example.com\n090-1234-5678"` → primary=`09012345678`, remainder=`abc@example.com`
+  - `"abc@example.com\n担当者のみ"` → primary=`null`, remainder=`abc@example.com / 担当者のみ`
+  - `"03-1234-5678"` → primary=`0312345678`, remainder=`null`
+  - `"0436607753 / 08010652552 / xyz@x.com"` → primary=`0436607753`, remainder=`08010652552 xyz@x.com`
+
 ### 2026-06-25: 顧客マスタ 都道府県フィルタを複数選択 (地方グルーピング popover) に変更
 #### 背景・要望
 - ユーザー要望: 「顧客マスタの都道府県フィルタを複数選択できるようにしてほしい (地域別グルーピング + 県名チェック)」。

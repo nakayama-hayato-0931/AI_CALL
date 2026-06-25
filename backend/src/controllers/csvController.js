@@ -387,43 +387,139 @@ const extractPhoneNumbers = (phone) => {
 };
 
 /**
- * 電話番号セルから "1 件目 (primary) + 残り (extras)" を返す。
- * primary は phone_number カラムに、 extras は comment に
- *   「追加電話番号: 090-1234-5678, ...」 として追記するための整形を呼び出し側で行う。
- *
- * @param {string|number} phone - 電話番号フィールドの生値
- * @returns {{ primary: string|null, extras: string[] }}
+ * 1 トークンを電話番号として正規化できれば数字のみ文字列を返す。
+ * 失敗時は null。
+ * - メール (@含む) / URL を除外
+ * - 数字以外を除去
+ * - +81xxx / 81xxx (12-13 桁) は先頭を '0' に置換
+ * - 10 桁または 11 桁 + 先頭 '0' のみ採用
  */
-const extractPhoneInfo = (phone) => {
-  const arr = extractPhoneNumbers(phone);
-  if (arr.length === 0) return { primary: null, extras: [] };
-  return { primary: arr[0], extras: arr.slice(1) };
+const tryNormalizePhoneToken = (token) => {
+  if (!token) return null;
+  if (token.includes('@')) return null;
+  if (/https?:\/\//i.test(token)) return null;
+  let digits = token.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  if (digits.length >= 12 && digits.length <= 13 && digits.startsWith('81')) {
+    digits = '0' + digits.slice(2);
+  }
+  if (digits.length < 10 || digits.length > 11) return null;
+  if (!digits.startsWith('0')) return null;
+  return digits;
+};
+
+/**
+ * 電話番号セルから "primary (上から最初に見つかった 1 件) + remainder (それ以外全テキスト)" を返す。
+ *
+ * 新仕様 (2026-06-25):
+ *   ユーザー要望: 「インポート時に電話番号欄のセルに複数行情報がある場合は、
+ *   一番上の電話番号のみ保存して、 それ以外の情報は全てコメントに保存しておく運用」
+ *   「一番上にメールアドレスがある場合 (一番上に電話番号が無い場合) は
+ *    2 行目以降に電話番号があればそれで保存」。
+ *
+ * アルゴリズム:
+ *   1. NFKC 正規化 + Unicode ダッシュ統一
+ *   2. 行を [\r\n]+ で分割 (trim)
+ *   3. 各行を区切り文字 ( 、 , ; ； 空白 タブ / \ ( ) で token 分割
+ *   4. 行を上から走査:
+ *      - 行内に電話番号 token があれば最初の 1 個を primary に採用、
+ *        残りの tokens (および他行) を remainder に。 primary 確定後は
+ *        以降の行で primary は再選定しない。
+ *      - 行内に電話番号が無ければ primary 未確定のまま次行へ。 当該行の
+ *        テキスト全体 (改行を ' / ' に置換した形) を remainder に積む。
+ *
+ * @param {string|number} raw - 電話番号フィールドの生値
+ * @returns {{ primary: string|null, remainder: string|null }}
+ */
+const extractPhoneInfo = (raw) => {
+  if (raw === null || raw === undefined) return { primary: null, remainder: null };
+  const str = String(raw);
+  if (!str.trim()) return { primary: null, remainder: null };
+
+  // NFKC + ダッシュ統一
+  let text = str.normalize('NFKC');
+  text = text.replace(/[ー－−–—‐‑⁃₋―]/g, '-');
+
+  const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
+
+  let primary = null;
+  const remainderParts = [];
+
+  for (const line of lines) {
+    // 行内 token 分割: カンマ / 全角カンマ / 読点 / セミコロン / スラッシュ / カッコ / 空白 / タブ / バックスラッシュ
+    // 注: ハイフン・ドットは番号内部に出るので区切りに含めない。
+    const tokens = line.split(/[,、，;；/\\()「」\s\t]+/).filter(Boolean);
+
+    if (primary === null) {
+      // この行で primary 候補を探す
+      const remainderTokens = [];
+      let primaryFoundInLine = false;
+      for (const token of tokens) {
+        if (!primaryFoundInLine) {
+          const normalized = tryNormalizePhoneToken(token);
+          if (normalized) {
+            primary = normalized;
+            primaryFoundInLine = true;
+            continue;
+          }
+        }
+        remainderTokens.push(token);
+      }
+      if (primaryFoundInLine) {
+        // primary 行から primary token を除いた残り tokens を remainder へ
+        if (remainderTokens.length > 0) {
+          remainderParts.push(remainderTokens.join(' '));
+        }
+      } else {
+        // primary が見つからなかった行 → 行全体を remainder へ (原文を保つ)
+        remainderParts.push(line);
+      }
+    } else {
+      // primary 確定済み → 行全体をそのまま remainder へ
+      remainderParts.push(line);
+    }
+  }
+
+  // remainder を ' / ' で連結。 空なら null。
+  const remainder = remainderParts
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .join(' / ');
+
+  return {
+    primary: primary,
+    remainder: remainder.length > 0 ? remainder : null,
+  };
 };
 
 /**
  * 後方互換: 単一電話番号を返す（架電リストインポート用）
- * 最初に見つかった電話番号を返す。見つからなければ空文字。
+ * extractPhoneInfo.primary を返すラッパ。 見つからなければ空文字。
  */
 const normalizePhoneNumber = (phone) => {
-  const phones = extractPhoneNumbers(phone);
-  return phones.length > 0 ? phones[0] : '';
+  const { primary } = extractPhoneInfo(phone);
+  return primary || '';
 };
 
 /**
- * extras (2 件目以降の番号) を既存 comment 末尾に追記する整形ヘルパー。
- * extras が空なら baseComment をそのまま返す (null 含む)。
- * 既に同じ「追加電話番号:」 行が baseComment に含まれていれば二重追記しない。
+ * 電話番号セルの remainder (primary 以外の全情報) を既存 comment 末尾に追記する整形ヘルパー。
+ * remainder が空なら baseComment をそのまま返す (null 含む)。
+ * 既に同じ追記行が baseComment に含まれていれば二重追記しない。
+ *
+ * 形式: `<label>追記: <remainder>` を ' / ' 区切りで baseComment 末尾に付ける。
  *
  * @param {string|null} baseComment - 既存コメント (null/空 可)
- * @param {string[]} extras - 追加電話番号配列 (extractPhoneNumbers の 2 件目以降)
+ * @param {string|null} remainder - extractPhoneInfo の remainder
+ * @param {string} [label='電話番号セル'] - 追記ラベル (FAX セル等を区別するため)
  * @returns {string|null}
  */
-const appendExtrasToComment = (baseComment, extras) => {
-  if (!extras || extras.length === 0) return baseComment || null;
-  const extrasLine = `追加電話番号: ${extras.join(', ')}`;
+const appendRemainderToComment = (baseComment, remainder, label = '電話番号セル') => {
+  const r = (remainder || '').trim();
+  if (!r) return baseComment || null;
+  const line = `${label}追記: ${r}`;
   const base = (baseComment || '').trim();
-  if (base.includes(extrasLine)) return base || null;
-  return base ? `${base} / ${extrasLine}` : extrasLine;
+  if (base.includes(line)) return base || null;
+  return base ? `${base} / ${line}` : line;
 };
 
 /**
@@ -657,8 +753,8 @@ const importCompanies = async (req, res, next) => {
         const lineNum = totalRows + 1; // ヘッダー分
 
         const companyName = normalizeCompanyName((row.company_name || '').trim());
-        // 電話番号セルから 1 件目 (primary) と残り (extras) を抽出。
-        // メール混入・複数行・スラッシュ区切り・括弧注記等を吸収する。
+        // 電話番号セルから primary (上から最初の電話番号) と remainder (それ以外全テキスト) を抽出。
+        // メール混入・複数行・スラッシュ区切り・括弧注記・担当者名等をすべて remainder で保持する。
         const phoneInfo = extractPhoneInfo(row.phone_number);
         const phoneNumber = phoneInfo.primary;
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
@@ -667,18 +763,16 @@ const importCompanies = async (req, res, next) => {
         const baseComment = (row.comment || '').trim();
         const urlField = (row.url || '').trim();
         let comment = [baseComment, urlField ? `URL: ${urlField}` : ''].filter(Boolean).join(' / ') || null;
-        // extras (2 件目以降) があれば comment 末尾に追記
-        comment = appendExtrasToComment(comment, phoneInfo.extras);
+        // 電話番号セルの remainder (primary 以外の全情報) を comment 末尾に追記
+        comment = appendRemainderToComment(comment, phoneInfo.remainder, '電話番号セル');
         const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
         // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
-        // FAX セルも電話番号と同様にメール混入・複数行を排除して抽出。
+        // FAX セルも電話番号と同様にメール混入・複数行を排除して抽出、 remainder は comment へ。
         const faxInfo = extractPhoneInfo(row.fax_number);
         const faxNumber = faxInfo.primary;
-        if (faxInfo.extras.length > 0) {
-          comment = appendExtrasToComment(comment, faxInfo.extras.map(n => `FAX:${n}`));
-        }
+        comment = appendRemainderToComment(comment, faxInfo.remainder, 'FAXセル');
         if (faxNumber) faxCount++;
 
         if (!companyName || !phoneNumber) {
@@ -1019,9 +1113,9 @@ const manualAddCompany = async (req, res, next) => {
       return ApiResponse.badRequest(res, '有効な電話番号を入力してください');
     }
 
-    // 既存 comment に extras (2 件目以降) を追記して保存する
+    // 既存 comment に電話番号セルの remainder (primary 以外の全情報) を追記して保存する
     let normalizedComment = comment || null;
-    normalizedComment = appendExtrasToComment(normalizedComment, phoneInfo.extras);
+    normalizedComment = appendRemainderToComment(normalizedComment, phoneInfo.remainder, '電話番号セル');
 
     // 除外リストチェック
     const [excluded] = await pool.execute(
@@ -1262,7 +1356,7 @@ const importSpecialList = async (req, res, next) => {
         const lineNum = i + 2;
 
         const companyName = normalizeCompanyName((row.company_name || '').trim());
-        // 電話番号セルから 1 件目 + 残りを抽出 (メール混入・複数行対応)
+        // 電話番号セルから primary + remainder を抽出 (メール混入・複数行・担当者名等を保存)
         const phoneInfo = extractPhoneInfo(row.phone_number);
         const phoneNumber = phoneInfo.primary;
         const industry = (row.industry || '').trim().replace(/,\s*$/, '') || null;
@@ -1271,16 +1365,14 @@ const importSpecialList = async (req, res, next) => {
         const baseComment = (row.comment || '').trim();
         const urlField = (row.url || '').trim();
         let comment = [baseComment, urlField ? `URL: ${urlField}` : ''].filter(Boolean).join(' / ') || null;
-        comment = appendExtrasToComment(comment, phoneInfo.extras);
+        comment = appendRemainderToComment(comment, phoneInfo.remainder, '電話番号セル');
         const dataSource = (row.data_source || '').trim() || null;
         const address = (row.address || '').trim() || null;
         const region = (row.region || '').trim() || extractRegionFromAddress(address) || null;
         // 新フォーマット用 FAX番号（取得できれば INSERT 時に保存）
         const faxInfo = extractPhoneInfo(row.fax_number);
         const faxNumber = faxInfo.primary;
-        if (faxInfo.extras.length > 0) {
-          comment = appendExtrasToComment(comment, faxInfo.extras.map(n => `FAX:${n}`));
-        }
+        comment = appendRemainderToComment(comment, faxInfo.remainder, 'FAXセル');
         if (faxNumber) faxCount++;
 
         if (!companyName || !phoneNumber) {
@@ -1409,7 +1501,7 @@ const manualAddSpecial = async (req, res, next) => {
     }
 
     let normalizedComment = comment || null;
-    normalizedComment = appendExtrasToComment(normalizedComment, phoneInfo.extras);
+    normalizedComment = appendRemainderToComment(normalizedComment, phoneInfo.remainder, '電話番号セル');
 
     const derivedRegion = region || extractRegionFromAddress(address);
 
