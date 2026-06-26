@@ -6,6 +6,20 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-25: CPA / 案件質の個人/チーム集計から営業の見込案件を除外
+#### 背景
+- ユーザー報告: CPA / 案件質分析の業種別内訳モーダルに営業 (松居 秀人等) が取得した案件が混入していた。
+- 過去ルール (commit 236e7e1): CPA は role='operator' のみ対象、 営業は別ダッシュボードという整理。
+- `getCpaAll` / `getQualityAll` / `getQualityIndustryDetail` は既に `is_legacy=0 AND is_prospect=0` で除外済だったが、 個人/チーム集計の `getCpaMetrics` / `getQualityMetrics` だけフィルタが抜けており、 営業が登録した見込案件 (is_prospect=1) や移行前データ (is_legacy=1) が混入する状態だった。
+#### 修正
+- `backend/src/controllers/analyticsController.js`:
+  - `getCpaMetrics`: projects 母数 / statusRows / finRows JOIN の 3 箇所の WHERE に `AND p.is_legacy = 0 AND p.is_prospect = 0` を追加。
+  - `getQualityMetrics`: メイン集計クエリの WHERE に同条件を追加。
+- 他の *All 系と数値が完全一致するようになる。
+#### 検証
+- `node --check backend/src/controllers/analyticsController.js` OK
+- grep で `getCpaMetrics` / `getQualityMetrics` の各クエリに `is_legacy = 0 AND p.is_prospect = 0` が含まれることを確認 (4 箇所)。
+
 ### 2026-06-25: CSV/XLSX インポート 電話番号セル「primary 以外を全テキスト保存」 に再設計
 #### 背景・要望
 - ユーザー要望: 「インポート時に電話番号欄のセルに複数行情報がある場合は、 一番上の電話番号のみ保存して、 それ以外の情報は全てコメントに保存しておく運用でお願いします。 また、 一番上にメールアドレスがある場合 (一番上に電話番号が無い場合) は 2 行目以降に電話番号があればそれで保存してほしい」。

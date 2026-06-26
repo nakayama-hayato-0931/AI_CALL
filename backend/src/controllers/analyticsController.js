@@ -264,7 +264,9 @@ const getCpaMetrics = async (req, res, next) => {
     const [projCountRows] = await pool.query(
       `SELECT COUNT(*) as project_count
        FROM projects p
-       WHERE DATE(p.created_at) BETWEEN ? AND ? ${projUserCond}`,
+       WHERE DATE(p.created_at) BETWEEN ? AND ?
+         AND p.is_legacy = 0 AND p.is_prospect = 0
+         ${projUserCond}`,
       projParams
     );
     const projectCount = Number(projCountRows[0].project_count) || 0;
@@ -277,7 +279,9 @@ const getCpaMetrics = async (req, res, next) => {
          CAST(SUM(CASE WHEN p.status = 'FUGOKAKU' THEN 1 ELSE 0 END) AS SIGNED) as fugokaku_count,
          CAST(SUM(CASE WHEN p.status IN ('BARASHI','LOST') THEN 1 ELSE 0 END) AS SIGNED) as barashi_lost_count
        FROM projects p
-       WHERE DATE(p.created_at) BETWEEN ? AND ? ${projUserCond}`,
+       WHERE DATE(p.created_at) BETWEEN ? AND ?
+         AND p.is_legacy = 0 AND p.is_prospect = 0
+         ${projUserCond}`,
       projParams
     );
     const interviewCount = Number(statusRows[0].interview_count) || 0;
@@ -293,6 +297,7 @@ const getCpaMetrics = async (req, res, next) => {
        FROM project_hires ph
        JOIN projects p ON ph.project_id = p.id
        WHERE DATE(p.created_at) BETWEEN ? AND ?
+         AND p.is_legacy = 0 AND p.is_prospect = 0
          AND ph.is_cancelled = 0
          ${projUserCond}`,
       projParams
@@ -373,7 +378,9 @@ const getQualityMetrics = async (req, res, next) => {
          CAST(SUM(CASE WHEN p.document_screening IN ('not_required', 'なし') THEN 1 ELSE 0 END) AS SIGNED) as no_screening,
          CAST(SUM(CASE WHEN p.status = 'SHORUI_OCHI' THEN 1 ELSE 0 END) AS SIGNED) as screening_failed
        FROM projects p
-       WHERE DATE(p.created_at) BETWEEN ? AND ? ${userCond}`,
+       WHERE DATE(p.created_at) BETWEEN ? AND ?
+         AND p.is_legacy = 0 AND p.is_prospect = 0
+         ${userCond}`,
       params
     );
 
