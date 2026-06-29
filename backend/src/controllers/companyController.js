@@ -469,21 +469,37 @@ const getNextCallTarget = async (req, res, next) => {
     const asFilter = (isMyList || isSpecialList)
       ? ''
       : (isSalesRole ? assignmentPassthruSalesSQL : assignmentFilterSQL);
-    // autoモードのみ: ゴールデンタイム未設定業種を除外
-    // 営業ロールは industry_time_rules に登録された業種に限定しない
-    // 2026-06-18 修正 (案 B): 旧仕様 `c.industry IN (...)` の完全一致では
-    // companies.industry が「飲食店、 居酒屋、 焼肉店」 のような複合テキストの場合に
-    // industry_time_rules.industry_name (例「飲食」) と一致せず、 ピックアップ対象が
-    // 3,493,770 → 69 件まで激減していた。
-    // industry_category (再計算済みカテゴリ) も照合する OR 条件に変更し、
-    // industry_time_rules に「飲食」 が登録されていれば industry_category='飲食' の
-    // 全企業も対象に取れるようにする。 完全一致パスは後方互換性のため残す。
-    const goldenIndFilter = (mode === 'auto' && !isSalesRole)
-      ? `AND (
-           c.industry IN (SELECT DISTINCT industry_name FROM industry_time_rules)
-           OR c.industry_category IN (SELECT DISTINCT industry_name FROM industry_time_rules)
-         )`
-      : '';
+    // 2026-06-25 自動ピックアップ厳格化:
+    //   - 旧 goldenIndFilter は industry_time_rules メンバーシップで OR フィルタしていたが、
+    //     設定 UI (auto_pickup_industries) の OFF 業種を排除する仕様と二重管理だった。
+    //   - getCallList と同じく auto_pickup_industries の OFF カテゴリ除外 +
+    //     industry_time_rules の現在時刻 EXISTS で厳格適用する。
+    //   - 業種診断未済 (industry_category IS NULL) は EXISTS で false → 自動除外。
+    let autoIndustryFilter = '';
+    const autoIndustryParams = [];
+    let autoTimeRuleFilter = '';
+    if (mode === 'auto' && !isSalesRole) {
+      try {
+        const [rows] = await pool.execute(
+          "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_industries'"
+        );
+        if (rows.length > 0) {
+          const map = JSON.parse(rows[0].setting_value || '{}');
+          const disabledCats = Object.entries(map).filter(([k, v]) => v === false).map(([k]) => k);
+          if (disabledCats.length > 0) {
+            const placeholders = disabledCats.map(() => '?').join(',');
+            autoIndustryFilter = `AND c.industry_category IS NOT NULL AND c.industry_category NOT IN (${placeholders})`;
+            autoIndustryParams.push(...disabledCats);
+          }
+        }
+      } catch (e) { /* ignore */ }
+      autoTimeRuleFilter = `AND EXISTS (
+         SELECT 1 FROM industry_time_rules itr2
+         WHERE itr2.industry_name = c.industry_category
+           AND ? BETWEEN itr2.start_time AND itr2.end_time
+       )`;
+    }
+    // 旧 goldenIndFilter は廃止 (autoIndustryFilter + autoTimeRuleFilter に分離)
 
     // 特別リストモード: is_special=1の企業のみ + 自分の company_assignments.sort_order 順
     // 2026-06-24 特別リスト再設計:
@@ -572,11 +588,11 @@ const getNextCallTarget = async (req, res, next) => {
          ${lrFilter}
          ${asFilter}
          ${irFilter}
-         ${goldenIndFilter}
+         ${autoIndustryFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, itr.priority_weight DESC, c.priority_score DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, currentTime, userId, ...modeFilterParams]
+      [userId, currentTime, userId, ...autoIndustryParams, ...modeFilterParams]
     );
     if (goldenRows.length > 0) {
       return ApiResponse.success(res, { target: goldenRows[0], reason: 'golden_time' });
@@ -592,11 +608,12 @@ const getNextCallTarget = async (req, res, next) => {
          ${lrFilter}
          ${asFilter}
          ${irFilter}
-         ${goldenIndFilter}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.priority_score DESC, c.created_at ASC
        LIMIT 1`,
-      [userId, userId, ...modeFilterParams]
+      [userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...modeFilterParams]
     );
     if (untouchedRows.length > 0) {
       return ApiResponse.success(res, { target: untouchedRows[0], reason: 'untouched' });
@@ -615,11 +632,12 @@ const getNextCallTarget = async (req, res, next) => {
          AND c.last_called_at < DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR), INTERVAL 2 DAY)
          ${asFilter}
          ${irFilter}
-         ${goldenIndFilter}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, userId, ...modeFilterParams]
+      [userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...modeFilterParams]
     );
     if (noAnswerRows.length > 0) {
       return ApiResponse.success(res, { target: noAnswerRows[0], reason: 'retry_no_answer' });
@@ -639,11 +657,12 @@ const getNextCallTarget = async (req, res, next) => {
          ${lastUserNotEqualSQL()}
          ${asFilter}
          ${irFilter}
-         ${goldenIndFilter}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${modeFilterSQL}
        ORDER BY is_assigned DESC, c.last_called_at ASC
        LIMIT 1`,
-      [userId, userId, userId, ...modeFilterParams]
+      [userId, userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...modeFilterParams]
     );
     if (ngRetryRows.length > 0) {
       return ApiResponse.success(res, { target: ngRetryRows[0], reason: 'retry_ng' });
@@ -781,11 +800,22 @@ const getCallList = async (req, res, next) => {
     const asFilter = (isMyList || isSpecialList)
       ? ''
       : (isSalesRole ? assignmentPassthruSalesSQL : assignmentFilterSQL);
-    // autoモードのみ: 自動対象から外された業種（管理者チェック外し業種）を除外
-    // ※ 旧「ゴールデンタイム未設定業種除外」は STRICT equality でAUTOが全除外される問題があったため削除
-    //   ゴールデンタイム優先はTier2でJOIN industry_time_rulesにより実現
-    let goldenIndFilter = '';
-    const goldenIndParams = [];
+    // autoモードのみ: 自動ピックアップ業種・時間帯フィルタを **全 Tier に直接 AND** 適用。
+    // 2026-06-25 修正:
+    //   - 旧仕様では goldenIndFilter (OFF 業種除外) は assignBypassWrap の OR 構造内に
+    //     入っていたため、 割り当てがあればフィルタが bypass されて OFF 業種・時間外が出る
+    //     事象が発生していた。
+    //   - 旧仕様では時間帯フィルタは Tier 2 (golden) でのみ JOIN industry_time_rules で
+    //     効いており、 Tier 3-5 (untouched / retry) は時間外でもピックアップされていた。
+    //   修正方針 (案 A + 案 B):
+    //     A) auto_pickup_industries の OFF カテゴリ除外を assignBypassWrap から外し、
+    //        各 Tier の WHERE 句に直接 AND で適用。 industry_category NULL は除外 (安全側)。
+    //     B) 新規 autoTimeRuleFilter (= EXISTS industry_time_rules WHERE
+    //        CURRENT_TIME BETWEEN start_time AND end_time) を Tier 3-5 にも追加。
+    //   業種別 / 自作 / 特別 モードは旧挙動維持 (バイパス)。
+    let autoIndustryFilter = '';
+    const autoIndustryParams = [];
+    let autoTimeRuleFilter = '';
     // 営業ロールは自動ピックアップ業種フィルタもバイパス (全業種から拾える状態に)
     if (mode === 'auto' && !isSalesRole) {
       try {
@@ -796,13 +826,25 @@ const getCallList = async (req, res, next) => {
           const map = JSON.parse(rows[0].setting_value || '{}');
           const disabledCats = Object.entries(map).filter(([k, v]) => v === false).map(([k]) => k);
           if (disabledCats.length > 0) {
+            // 設定意図 = 「ON にした業種のみ出す」 → 未分類 (NULL) は除外 (安全側)
             const placeholders = disabledCats.map(() => '?').join(',');
-            goldenIndFilter = `AND (c.industry_category IS NULL OR c.industry_category NOT IN (${placeholders}))`;
-            goldenIndParams.push(...disabledCats);
+            autoIndustryFilter = `AND c.industry_category IS NOT NULL AND c.industry_category NOT IN (${placeholders})`;
+            autoIndustryParams.push(...disabledCats);
           }
         }
       } catch (e) { /* ignore */ }
+      // 時間帯フィルタ: industry_time_rules に登録された業種の時間帯に現在時刻が
+      // 含まれる場合のみピックアップ対象。 Tier 2 (golden) は既に JOIN で適用済のため
+      // 重複防止のため省略可だが、 二重適用しても結果は変わらないので統一適用。
+      // 業種診断未済 (industry_category IS NULL) は EXISTS で false → 除外される。
+      autoTimeRuleFilter = `AND EXISTS (
+         SELECT 1 FROM industry_time_rules itr2
+         WHERE itr2.industry_name = c.industry_category
+           AND ? BETWEEN itr2.start_time AND itr2.end_time
+       )`;
     }
+    // 旧 goldenIndFilter / goldenIndParams は廃止
+    // (autoIndustryFilter + autoTimeRuleFilter に分離して全 Tier 直接 AND 適用)
 
     // 自動ピックアップ対象都道府県（auto / industry モードに適用）
     // 「true 設定された都道府県」のみピックアップ許可（positive list）
@@ -993,10 +1035,13 @@ const getCallList = async (req, res, next) => {
     //   - ②自動ピックアップ対象都道府県 (prefectureFilter)
     //   - 業種別モードの業種絞り込み (modeFilterSQL) — 「建設選んでもローソンが出る」事象の修正
     // これらは SQL 本体側で別途 AND 適用する。
+    // 2026-06-25: goldenIndFilter (= auto_pickup_industries の OFF 業種除外) は
+    // assignBypassWrap から外し、 各 Tier の WHERE 句に直接 AND で適用する。
+    // 「割り当てがあれば自動 ON 業種フィルタを bypass」 する旧 OR 構造はバグの温床。
     const assignBypassWrap = `
        AND (
          EXISTS (SELECT 1 FROM company_assignments ca2 WHERE ca2.company_id = c.id AND ca2.user_id = ? AND ca2.is_auto = 0)
-         OR (1=1 ${irFilter} ${goldenIndFilter})
+         OR (1=1 ${irFilter})
        )`;
     // ORDER BY RAND() は 60万行スキャンになりタイムアウト/502 の原因になっていたため撤回。
     // refresh 時のランダム化はフロントの Fisher-Yates シャッフルに任せる (高速・確実)。
@@ -1024,12 +1069,13 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${autoIndustryFilter}
          ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier2Order}
        LIMIT ?`,
-      [userId, currentTime, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      [userId, currentTime, userId, userId, userId, userId, ...autoIndustryParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'golden'
     );
     // Tier 3 (untouched) は 178 万件レンジを priority_score DESC, created_at ASC でソート。
@@ -1050,12 +1096,14 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier3Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      [userId, userId, userId, userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'untouched',
       TIER3_TIMEOUT_MS
     );
@@ -1077,12 +1125,14 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      [userId, userId, userId, userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'retry_no_answer'
     ) : Promise.resolve([[]]);
     const tier5Promise = useFast ? tQuery(
@@ -1100,12 +1150,14 @@ const getCallList = async (req, res, next) => {
          ${recentCallFilterSQL}
          ${asFilter}
          ${assignBypassWrap}
+         ${autoIndustryFilter}
+         ${autoTimeRuleFilter}
          ${prefectureFilter}
          ${modeFilterSQL}
          ${notInClause(excludeIds)}
        ORDER BY ${tier45Order}
        LIMIT ?`,
-      [userId, userId, userId, userId, userId, userId, ...goldenIndParams, ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
+      [userId, userId, userId, userId, userId, userId, ...autoIndustryParams, ...(autoTimeRuleFilter ? [currentTime] : []), ...prefectureParams, ...modeFilterParams, ...excludeIds, LIST_SIZE],
       'retry_ng'
     ) : Promise.resolve([[]]);
 
@@ -1171,7 +1223,8 @@ const getCallList = async (req, res, next) => {
       isSalesRole,
       asFilterBypassed: !asFilter,
       irFilterBypassed: !irFilter,
-      goldenIndFilterBypassed: !goldenIndFilter,
+      autoIndustryFilterApplied: !!autoIndustryFilter,
+      autoTimeRuleFilterApplied: !!autoTimeRuleFilter,
       prefectureFilterApplied: !!prefectureFilter,
     } };
     // refresh のときはキャッシュ保存もしない (毎回ランダム結果を返したい)

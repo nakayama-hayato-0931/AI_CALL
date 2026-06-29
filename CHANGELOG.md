@@ -6,6 +6,29 @@
 
 ## 2026年6月 〜 直近
 
+### 2026-06-25: 自動ピックアップに業種 OFF 除外と時間帯フィルタを全 Tier 統一適用
+#### 背景
+- ユーザー報告: 「自動ピックアップが設定どおりにピックアップされない。 設定していない時間と業種が出てきてしまっている」。
+- 原因: Tier 2 (golden) のみ JOIN industry_time_rules で時間帯絞りが効いていたが、 Tier 3 (untouched) / Tier 4 (retry_no_answer) / Tier 5 (retry_ng) は時間帯フィルタが抜けていた。
+- 加えて `assignBypassWrap` の OR 構造 (`AND (assignment 有り OR (1=1 ${irFilter} ${goldenIndFilter}))`) により、 自分に割り当てがある企業は OFF 業種フィルタが bypass されていた。
+#### 修正 (`backend/src/controllers/companyController.js`)
+- `goldenIndFilter` (= `system_settings.auto_pickup_industries` の OFF カテゴリ除外) を **`autoIndustryFilter`** に改称し、 `assignBypassWrap` から外して **全 Tier 2-5 の WHERE 句に直接 AND 適用**。 これで割り当て有無に関わらず OFF 業種は確実に除外される。
+- 新規 **`autoTimeRuleFilter`** (`EXISTS industry_time_rules WHERE industry_name = c.industry_category AND CURRENT_TIME BETWEEN start_time AND end_time`) を Tier 3 / Tier 4 / Tier 5 に追加。 Tier 2 は既存 JOIN で実質適用済のため二重防止のため省略。
+- `getNextCallTarget` と `getCallList` の両方を同じ規約で統一。 `getNextCallTarget` 側にあった旧式の `industry_time_rules` メンバーシップ OR フィルタ (industry テキスト一致) は撤去し、 設定 UI 由来の同じフィルタに揃える。
+- 業種診断未済 (`industry_category IS NULL`) は EXISTS で false 評価 = 自動除外 (ユーザー設定意図に従い「ON にした業種のみ」)。
+- mode='industry' / 'mylist' / 'special' / role='sales' は旧挙動維持 (バイパス)。
+#### 設計判断 (ユーザー確定)
+- Q1 Tier 3 (untouched) も時間帯絞り込む: Yes
+- Q2 業種は `industry_category` 単位で判定: Yes
+- Q3 `address LIKE` フォールバックは継続 (region 空欄企業対応): Yes
+- Q4 NG 永久除外は現状維持: Yes
+#### 検証
+- `node --check backend/src/controllers/companyController.js` OK
+- 期待動作:
+  - 「飲食」 OFF 設定 → 飲食企業がピックアップされない (全 Tier)。
+  - 深夜帯 (industry_time_rules の全業種時間外) → 自動モードは 0 件。
+  - 業種別/自作/特別モードは旧挙動維持。
+
 ### 2026-06-25: CPA / 案件質の個人/チーム集計から営業の見込案件を除外
 #### 背景
 - ユーザー報告: CPA / 案件質分析の業種別内訳モーダルに営業 (松居 秀人等) が取得した案件が混入していた。
