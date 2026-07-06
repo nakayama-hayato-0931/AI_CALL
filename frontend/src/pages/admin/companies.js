@@ -148,6 +148,10 @@ export default function AdminCompanies() {
   // ①② は明示保存方式: 編集すると dirty=true、「保存」で確定。
   const [industriesDirty, setIndustriesDirty] = useState(false);
   const [prefsDirty, setPrefsDirty] = useState(false);
+  // ③ データ元マップ: { データ元名: true/false }。DBに存在するデータ元のみ動的取得。
+  const [autoPickupDataSources, setAutoPickupDataSources] = useState({});
+  const [availableDataSources, setAvailableDataSources] = useState([]);
+  const [dataSourcesDirty, setDataSourcesDirty] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
   const [dbStats, setDbStats] = useState(null);
 
@@ -207,6 +211,20 @@ export default function AdminCompanies() {
         setPrefsDirty(false);
       }
     }).catch(() => {});
+    // ③ データ元マップ + 利用可能なデータ元一覧
+    api.get('/api/admin/auto-pickup-data-sources').then(res => {
+      if (res.data.success) {
+        const map = res.data.data.data_sources || {};
+        const available = res.data.data.available_data_sources || [];
+        const merged = available.reduce((acc, ds) => ({
+          ...acc,
+          [ds]: map[ds] !== undefined ? map[ds] : true,
+        }), {});
+        setAvailableDataSources(available);
+        setAutoPickupDataSources(merged);
+        setDataSourcesDirty(false);
+      }
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -237,6 +255,19 @@ export default function AdminCompanies() {
     } catch (err) {
       setPrefsDirty(true);
       toast.error('自動対象都道府県の保存に失敗しました');
+    }
+  };
+
+  // ③ データ元を保存（楽観的更新）
+  const saveAutoPickupDataSources = async () => {
+    const snapshot = autoPickupDataSources;
+    setDataSourcesDirty(false);
+    try {
+      await api.put('/api/admin/auto-pickup-data-sources', { data_sources: snapshot });
+      toast.success('自動ピックアップ対象 データ元を保存しました');
+    } catch (err) {
+      setDataSourcesDirty(true);
+      toast.error('自動対象データ元の保存に失敗しました');
     }
   };
 
@@ -1591,6 +1622,48 @@ export default function AdminCompanies() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* 自動ピックアップ対象 データ元 */}
+          <div className="card overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">自動ピックアップ対象 データ元</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  チェックを外したデータ元の企業は自動モードでピックアップされません（未設定のデータ元は引き続き対象）。
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => { const m = {}; availableDataSources.forEach(d => { m[d] = true; }); setAutoPickupDataSources(m); setDataSourcesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+                <button onClick={() => { const m = {}; availableDataSources.forEach(d => { m[d] = false; }); setAutoPickupDataSources(m); setDataSourcesDirty(true); }} className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">全解除</button>
+                {dataSourcesDirty && <span className="text-[11px] text-amber-600 ml-1">未保存</span>}
+                <button onClick={saveAutoPickupDataSources} disabled={!dataSourcesDirty}
+                  className="text-[11px] px-3 py-1 rounded font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                  保存
+                </button>
+              </div>
+            </div>
+            <div className="p-4 flex flex-wrap gap-2">
+              {availableDataSources.length === 0 && (
+                <span className="text-[11px] text-gray-400">登録されているデータ元がありません。</span>
+              )}
+              {availableDataSources.map(ds => (
+                <label key={ds} className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                  autoPickupDataSources[ds] ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={!!autoPickupDataSources[ds]}
+                    onChange={e => {
+                      setAutoPickupDataSources({ ...autoPickupDataSources, [ds]: e.target.checked });
+                      setDataSourcesDirty(true);
+                    }}
+                    className="w-3.5 h-3.5 accent-purple-600 cursor-pointer"
+                  />
+                  {ds}
+                </label>
+              ))}
             </div>
           </div>
 
