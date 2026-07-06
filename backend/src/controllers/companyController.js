@@ -501,8 +501,8 @@ const getNextCallTarget = async (req, res, next) => {
           const dsMap = JSON.parse(dsRows[0].setting_value || '{}');
           const disabledSources = Object.entries(dsMap).filter(([k, v]) => v === false).map(([k]) => k);
           if (disabledSources.length > 0) {
-            const dsPlaceholders = disabledSources.map(() => '?').join(',');
-            autoIndustryFilter += ' AND (c.data_source IS NULL OR c.data_source NOT IN (' + dsPlaceholders + '))';
+            const dsCond = disabledSources.map(() => "FIND_IN_SET(REPLACE(?, ' ', ''), REPLACE(c.data_source, ' ', ''))").join(' OR ');
+            autoIndustryFilter += ' AND (c.data_source IS NULL OR NOT (' + dsCond + '))';
             autoIndustryParams.push(...disabledSources);
           }
         }
@@ -855,8 +855,8 @@ const getCallList = async (req, res, next) => {
           const dsMap = JSON.parse(dsRows[0].setting_value || '{}');
           const disabledSources = Object.entries(dsMap).filter(([k, v]) => v === false).map(([k]) => k);
           if (disabledSources.length > 0) {
-            const dsPlaceholders = disabledSources.map(() => '?').join(',');
-            autoIndustryFilter += ' AND (c.data_source IS NULL OR c.data_source NOT IN (' + dsPlaceholders + '))';
+            const dsCond = disabledSources.map(() => "FIND_IN_SET(REPLACE(?, ' ', ''), REPLACE(c.data_source, ' ', ''))").join(' OR ');
+            autoIndustryFilter += ' AND (c.data_source IS NULL OR NOT (' + dsCond + '))';
             autoIndustryParams.push(...disabledSources);
           }
         }
