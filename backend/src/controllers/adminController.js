@@ -3000,9 +3000,19 @@ async function getAutoPickupDataSources(req, res, next) {
       try { map = JSON.parse(rows[0].setting_value); } catch (e) {}
     }
     const [sourceRows] = await pool.execute(
-      "SELECT DISTINCT data_source FROM companies WHERE data_source IS NOT NULL AND data_source <> '' ORDER BY data_source"
+      "SELECT DISTINCT data_source FROM companies WHERE data_source IS NOT NULL AND data_source <> ''"
     );
-    const availableSources = sourceRows.map(r => r.data_source);
+    // data_source は「Googleマップ,iタウンページ,ハローワーク」のように複数の取得元が
+    // カンマ区切りで1つの文字列にまとめて保存されているため、個別の値に分解して一意化する
+    const sourceSet = new Set();
+    sourceRows.forEach(r => {
+      String(r.data_source)
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+        .forEach(s => sourceSet.add(s));
+    });
+    const availableSources = Array.from(sourceSet).sort((a, b) => a.localeCompare(b, 'ja'));
     return ApiResponse.success(res, { data_sources: map, available_data_sources: availableSources });
   } catch (err) {
     return ApiResponse.error(res, err.message, 500);
