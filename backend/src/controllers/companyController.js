@@ -493,6 +493,20 @@ const getNextCallTarget = async (req, res, next) => {
           }
         }
       } catch (e) { /* ignore */ }
+      try {
+        const [dsRows] = await pool.execute(
+          "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_data_sources'"
+        );
+        if (dsRows.length > 0) {
+          const dsMap = JSON.parse(dsRows[0].setting_value || '{}');
+          const disabledSources = Object.entries(dsMap).filter(([k, v]) => v === false).map(([k]) => k);
+          if (disabledSources.length > 0) {
+            const dsPlaceholders = disabledSources.map(() => '?').join(',');
+            autoIndustryFilter += ' AND (c.data_source IS NULL OR c.data_source NOT IN (' + dsPlaceholders + '))';
+            autoIndustryParams.push(...disabledSources);
+          }
+        }
+      } catch (e) { /* ignore */ }
       autoTimeRuleFilter = `AND EXISTS (
          SELECT 1 FROM industry_time_rules itr2
          WHERE itr2.industry_name = c.industry_category
@@ -830,6 +844,20 @@ const getCallList = async (req, res, next) => {
             const placeholders = disabledCats.map(() => '?').join(',');
             autoIndustryFilter = `AND c.industry_category IS NOT NULL AND c.industry_category NOT IN (${placeholders})`;
             autoIndustryParams.push(...disabledCats);
+          }
+        }
+      } catch (e) { /* ignore */ }
+      try {
+        const [dsRows] = await pool.execute(
+          "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_data_sources'"
+        );
+        if (dsRows.length > 0) {
+          const dsMap = JSON.parse(dsRows[0].setting_value || '{}');
+          const disabledSources = Object.entries(dsMap).filter(([k, v]) => v === false).map(([k]) => k);
+          if (disabledSources.length > 0) {
+            const dsPlaceholders = disabledSources.map(() => '?').join(',');
+            autoIndustryFilter += ' AND (c.data_source IS NULL OR c.data_source NOT IN (' + dsPlaceholders + '))';
+            autoIndustryParams.push(...disabledSources);
           }
         }
       } catch (e) { /* ignore */ }

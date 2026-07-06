@@ -1642,6 +1642,8 @@ module.exports = {
   getAutoPickupIndustries,
   setAutoPickupIndustries,
   getAutoPickupPrefectures,
+  getAutoPickupDataSources,
+  setAutoPickupDataSources,
   setAutoPickupPrefectures,
   getIncentiveData,
   getAllRecalls,
@@ -2979,6 +2981,50 @@ async function setAutoPickupIndustries(req, res, next) {
     );
     logger.info(`自動ピックアップ業種更新: ${JSON.stringify(industries)}`);
     return ApiResponse.success(res, { industries });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * GET /api/admin/auto-pickup-data-sources
+ * 自動ピックアップ対象データ元マップ（system_settings）+ 現在DBに存在するデータ元一覧を返す
+ */
+async function getAutoPickupDataSources(req, res, next) {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'auto_pickup_data_sources'"
+    );
+    let map = {};
+    if (rows.length > 0) {
+      try { map = JSON.parse(rows[0].setting_value); } catch (e) {}
+    }
+    const [sourceRows] = await pool.execute(
+      "SELECT DISTINCT data_source FROM companies WHERE data_source IS NOT NULL AND data_source <> '' ORDER BY data_source"
+    );
+    const availableSources = sourceRows.map(r => r.data_source);
+    return ApiResponse.success(res, { data_sources: map, available_data_sources: availableSources });
+  } catch (err) {
+    return ApiResponse.error(res, err.message, 500);
+  }
+}
+
+/**
+ * PUT /api/admin/auto-pickup-data-sources
+ * body: { data_sources: { iタウンページ: false, 手動登録: true, ... } }
+ */
+async function setAutoPickupDataSources(req, res, next) {
+  try {
+    const { data_sources } = req.body || {};
+    if (!data_sources || typeof data_sources !== 'object') {
+      return ApiResponse.badRequest(res, 'data_sources オブジェクトが必要です');
+    }
+    await pool.execute(
+      `INSERT INTO system_settings (setting_key, setting_value) VALUES ('auto_pickup_data_sources', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [JSON.stringify(data_sources)]
+    );
+    return ApiResponse.success(res, { data_sources });
   } catch (err) {
     return ApiResponse.error(res, err.message, 500);
   }
