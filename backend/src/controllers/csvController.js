@@ -636,7 +636,7 @@ const importCompanies = async (req, res, next) => {
       // 事前にDB全phone_number + company_nameをロード（重複チェック高速化）
       // 会社名重複もチェックすることで「電話番号は違うが同じ会社」(本社/支店/番号変更等) も検出。
       logger.info('Pre-loading phone/name sets...');
-      const [existingPhones] = await conn.query('SELECT id, phone_number, company_name, is_sales_list, imported_by_user_id FROM companies WHERE phone_number IS NOT NULL OR company_name IS NOT NULL');
+      const [existingPhones] = await conn.query('SELECT id, phone_number, company_name, is_sales_list, imported_by_user_id, exclusion_flag, exclusion_reason FROM companies WHERE phone_number IS NOT NULL OR company_name IS NOT NULL');
       // phone_number → {id, is_sales_list, imported_by_user_id} のマップ
       const dbPhoneMap = new Map();
       const dbNameMap = new Map();
@@ -831,6 +831,8 @@ const importCompanies = async (req, res, next) => {
           // 既存行に対し COALESCE 肉付け UPDATE を実施 (空欄項目だけ補完)。
           // 担当者割り当ては (操作者が operator でない=管理者/マネージャー/営業のため) 行わない。
           await flushInserts();
+          // 全件削除機能(deleteAllCompanies)で除外されたものだけを再インポートで復活させる(個別NG登録は対象外)
+          const reviveExclusion = existing.exclusion_flag === 1 && existing.exclusion_reason === '全件削除';
           await conn.execute(
             `UPDATE companies SET
                company_name = COALESCE(NULLIF(?, ''), company_name),
@@ -841,7 +843,7 @@ const importCompanies = async (req, res, next) => {
                region       = COALESCE(NULLIF(?, ''), region),
                address      = COALESCE(NULLIF(?, ''), address),
                fax_number   = COALESCE(NULLIF(?, ''), fax_number),
-               updated_at   = CURRENT_TIMESTAMP
+               updated_at   = CURRENT_TIMESTAMP${reviveExclusion ? ', exclusion_flag = 0, exclusion_reason = NULL' : ''}
              WHERE id = ?`,
             [companyName, industry, jobType, comment, dataSource, region, address, faxNumber, existing.id]
           );
