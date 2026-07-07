@@ -1086,7 +1086,52 @@ export default function AdminCompanies() {
             </div>
           )}
 
-          {/* アクション履歴モーダル */}
+          {restoreAllModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !restoreAllBusy && setRestoreAllModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-blue-700 mb-2">除外解除（全件削除分）</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              「全リストを削除」機能で除外された企業のうち、全件削除機能によって除外されたものだけを一括で復活させます。個別にNG登録された企業は対象外です。
+              実行するには下の欄に「{RESTORE_ALL_CONFIRM_PHRASE}」と入力してください。
+            </p>
+            <input
+              type="text"
+              className="input mb-4"
+              value={restoreAllConfirmText}
+              onChange={e => setRestoreAllConfirmText(e.target.value)}
+              placeholder={RESTORE_ALL_CONFIRM_PHRASE}
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setRestoreAllModalOpen(false)} className="btn-secondary !py-2 px-5">キャンセル</button>
+              <button
+                onClick={async () => {
+                  setRestoreAllBusy(true);
+                  try {
+                    const { data } = await api.post('/api/admin/companies/restore-all', { confirm: restoreAllConfirmText });
+                    if (data.success) {
+                      toast.success(data.message || '復元しました', { duration: 5000 });
+                      setRestoreAllModalOpen(false);
+                      setPage(1);
+                      fetchCompanies();
+                    } else {
+                      toast.error(data.message || '復元に失敗しました');
+                    }
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || '復元に失敗しました');
+                  } finally {
+                    setRestoreAllBusy(false);
+                  }
+                }}
+                disabled={restoreAllConfirmText !== RESTORE_ALL_CONFIRM_PHRASE || restoreAllBusy}
+                className="px-5 py-2 rounded-md text-sm font-bold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50"
+              >
+                {restoreAllBusy ? '実行中...' : '除外を解除する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* アクション履歴モーダル */}
           {actionsModal && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setActionsModal(null)}>
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] mx-4 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
