@@ -62,6 +62,10 @@ export default function AdminCompanies() {
     '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
   ];
   const [selectedIds, setSelectedIds] = useState([]); // 一括削除用の選択ID
+    const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false); // 全件削除確認モーダル
+    const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+    const [deleteAllBusy, setDeleteAllBusy] = useState(false);
+    const DELETE_ALL_CONFIRM_PHRASE = '全件削除';
   const [assignModal, setAssignModal] = useState(null);
   // アクション履歴モーダル
   const [actionsModal, setActionsModal] = useState(null); // { company, actions, loading }
@@ -808,7 +812,13 @@ export default function AdminCompanies() {
           )}
 
           {pagination.total !== undefined && (
-            <p className="text-sm text-gray-500 mb-3">全 {pagination.total.toLocaleString()} 件</p>
+            <div className="flex items-center justify-between mb-3">
+                          <p className="text-sm text-gray-500">全 {pagination.total.toLocaleString()} 件</p>
+                         <button
+                           onClick={() => { setDeleteAllConfirmText(''); setDeleteAllModalOpen(true); }}
+                           className="text-xs px-3 py-1.5 rounded bg-red-700 text-white font-bold hover:bg-red-800"
+                                       >全リストを削除</button>
+                             </div>
           )}
 
           {/* 業種別件数バッジ */}
@@ -1018,6 +1028,52 @@ export default function AdminCompanies() {
                   <button onClick={handleAssign} disabled={!selectedOp} className="btn-primary !py-2 px-5 disabled:opacity-50">割り当て</button>
                 </div>
               </div>
+
+{deleteAllModalOpen && (
+              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !deleteAllBusy && setDeleteAllModalOpen(false)}>
+                <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-base font-bold text-red-700 mb-2">全リストを削除</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    現在登録されている企業(架電リスト)を全件削除します。この操作は取り消せません。
+                    実行するには下の欄に「{DELETE_ALL_CONFIRM_PHRASE}」と入力してください。
+                      </p>
+                                      <input
+                                        type="text"
+                                                            className="input mb-4"
+                                                                                value={deleteAllConfirmText}
+                                                                                                    onChange={e => setDeleteAllConfirmText(e.target.value)}
+                                                                                                                        placeholder={DELETE_ALL_CONFIRM_PHRASE}
+                                                                                                                      />
+                                                                                                                      <div className="flex gap-3 justify-end">
+                                                                                                                        <button onClick={() => setDeleteAllModalOpen(false)} className="btn-secondary !py-2 px-5">キャンセル</button>
+                                                                                                                        <button
+                                                                                                                          onClick={async () => {
+                                                                                                                                                  setDeleteAllBusy(true);
+                                                                                                                                                  try {
+                                                                                                                                                                            const { data } = await api.post('/api/admin/companies/delete-all', { confirm: deleteAllConfirmText });
+                                                                                                                                                                            if (data.success) {
+                                                                                                                                                                                                        toast.success(data.message || '削除しました', { duration: 5000 });
+                                                                                                                                                                                                        setDeleteAllModalOpen(false);
+                                                                                                                                                                                                        setPage(1);
+                                                                                                                                                                                                        fetchCompanies();
+                                                                                                                                                                              } else {
+                                                                                                                                                                                                        toast.error(data.message || '削除に失敗しました');
+                                                                                                                                                                              }
+                                                                                                                                                    } catch (err) {
+                                                                                                                                                                            toast.error(err.response?.data?.message || '削除に失敗しました');
+                                                                                                                                                    } finally {
+                                                                                                                                                                            setDeleteAllBusy(false);
+                                                                                                                                                    }
+                                                                                                                            }}
+                                                                                                                                                disabled={deleteAllConfirmText !== DELETE_ALL_CONFIRM_PHRASE || deleteAllBusy}
+                    className="px-5 py-2 rounded-md text-sm font-bold text-white bg-red-700 hover:bg-red-800 disabled:opacity-50"
+                                        >
+                    {deleteAllBusy ? '実行中...' : '完全に削除する'}
+</button>
+  </div>
+  </div>
+  </div>
+            )}
             </div>
           )}
 

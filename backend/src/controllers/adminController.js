@@ -1639,6 +1639,7 @@ module.exports = {
   getDatabaseStats,
   getCompaniesIndustryStats,
   bulkDeleteCompanies,
+    deleteAllCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
   getAutoPickupPrefectures,
@@ -3116,6 +3117,49 @@ async function bulkDeleteCompanies(req, res, next) {
     logger.error(`[bulkDeleteCompanies] ${err.message}`);
     return ApiResponse.error(res, err.message, 500);
   }
+}
+
+/**
+ * POST /api/admin/companies/delete-all
+  * body: { confirm: '全件削除', filter?: { industry_category, region, search }, physical?: false }
+   * 現在登録されている企業(架電リスト)を一括で除外する。物理削除ではなくexclusion_flag=1のフラグ除外がデフォルト。
+    * confirm文字列が完全一致しない場合は実行しない安全策あり。filterを指定すると絞り込んだ範囲のみ対象にできる。
+     */
+async function deleteAllCompanies(req, res, next) {
+    try {
+          const { confirm, filter, physical } = req.body || {};
+          if (confirm !== '全件削除') {
+                  return ApiResponse.badRequest(res, '確認文字列が一致しません。confirmに「全件削除」を指定してください');
+          }
+          let whereClauses = ['1=1'];
+          let params = [];
+          if (filter && typeof filter === 'object') {
+                  if (filter.industry_category) {
+                            whereClauses.push('industry_category = ?');
+                            params.push(filter.industry_category);
+                  }
+                  if (filter.region) {
+                            whereClauses.push('region = ?');
+                            params.push(filter.region);
+                  }
+                  if (filter.search) {
+                            whereClauses.push('(company_name LIKE ? OR phone_number LIKE ?)');
+                            params.push(`%${filter.search}%`, `%${filter.search}%`);
+                  }
+          }
+          if (physical === true) {
+                  const [r] = await pool.query(`DELETE FROM companies WHERE ${whereClauses.join(' AND ')}`, params);
+                  logger.warn(`[deleteAllCompanies] 物理削除 ${r.affectedRows}件 by user=${req.user.id}`);
+                  return ApiResponse.success(res, { affected: r.affectedRows }, `${r.affectedRows}件を物理削除しました`);
+          } else {
+                  const [r] = await pool.query(`UPDATE companies SET exclusion_flag = 1 WHERE exclusion_flag = 0 AND ${whereClauses.join(' AND ')}`, params);
+                  logger.warn(`[deleteAllCompanies] ${r.affectedRows}件を除外 by user=${req.user.id}`);
+                  return ApiResponse.success(res, { affected: r.affectedRows }, `${r.affectedRows}件を除外しました`);
+          }
+    } catch (err) {
+          logger.error(`[deleteAllCompanies] ${err.message}`);
+          return ApiResponse.error(res, err.message, 500);
+    }
 }
 
 /**
