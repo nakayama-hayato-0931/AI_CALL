@@ -17,6 +17,7 @@ const {
   getDatabaseStats,
   getCompaniesIndustryStats,
   bulkDeleteCompanies,
+    deleteAllCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
   getAutoPickupPrefectures,
@@ -92,6 +93,7 @@ router.post('/restore-mylist-exclusions', requireEditor, restoreMylistExclusions
 router.get('/database-stats', requireManager, getDatabaseStats);
 router.get('/companies/industry-stats', requireManager, getCompaniesIndustryStats);
 router.post('/companies/bulk-delete', requireEditor, bulkDeleteCompanies);
+router.post('/companies/delete-all', requireAdmin, deleteAllCompanies);
 router.get('/auto-pickup-industries', requireManager, getAutoPickupIndustries);
 router.put('/auto-pickup-industries', requireEditor, setAutoPickupIndustries);
 router.get('/auto-pickup-prefectures', requireManager, getAutoPickupPrefectures);
