@@ -67,6 +67,10 @@ export default function AdminCompanies() {
     const [deleteAllBusy, setDeleteAllBusy] = useState(false);
     const DELETE_ALL_CONFIRM_PHRASE = '全件削除';
   const [assignModal, setAssignModal] = useState(null);
+  const [restoreAllModalOpen, setRestoreAllModalOpen] = useState(false);
+  const [restoreAllConfirmText, setRestoreAllConfirmText] = useState('');
+  const [restoreAllBusy, setRestoreAllBusy] = useState(false);
+  const RESTORE_ALL_CONFIRM_PHRASE = '除外解除';
   // アクション履歴モーダル
   const [actionsModal, setActionsModal] = useState(null); // { company, actions, loading }
   const [newAction, setNewAction] = useState({ action_date: '', action_type: '架電', result: '', memo: '' });
