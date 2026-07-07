@@ -96,6 +96,13 @@ export default function AnalyticsPage() {
   // 案件詳細モーダル (内訳テーブル内の企業名クリックで開く)
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState({}); // { ym: true } で展開
+  const [qualityTargets, setQualityTargets] = useState({}); // 案件質向上 月別目標(%) 手入力(localStorage保存)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('quality_monthly_targets');
+      if (saved) setQualityTargets(JSON.parse(saved));
+    } catch (e) { /* ignore */ }
+  }, []);
 
   const [loading, setLoading] = useState(true);
 
@@ -881,6 +888,27 @@ export default function AnalyticsPage() {
     setExpandedMonths(prev => ({ ...prev, [ym]: !prev[ym] }));
   };
 
+  // 案件質向上: 月別目標(%)を手入力で更新し、localStorageに保存
+  const updateQualityTarget = (ym, colKey, value) => {
+    setQualityTargets(prev => {
+      const next = { ...prev, [ym]: { ...(prev[ym] || {}), [colKey]: value } };
+      try { localStorage.setItem('quality_monthly_targets', JSON.stringify(next)); } catch (e) { /* ignore */ }
+      return next;
+    });
+  };
+
+  // 実績(%)と目標(%)の差分を計算（マイナス=未達→青↓、プラス=超過→赤↑）
+  const getQualityDiff = (ym, colKey, actualPct) => {
+    if (actualPct === undefined || actualPct === null) return null;
+    const monthTargets = qualityTargets[ym];
+    if (!monthTargets) return null;
+    const raw = monthTargets[colKey];
+    if (raw === undefined || raw === null || raw === '') return null;
+    const target = Number(raw);
+    if (isNaN(target)) return null;
+    return Math.round((Number(actualPct) - target) * 10) / 10;
+  };
+
   const renderCompareTable = () => {
     const cols = tab === 'cpa' ? cpaColumns : qualColumns;
     const title = tab === 'cpa' ? 'CPA指標 - 期間比較' : '案件質向上 - 期間比較';
@@ -969,7 +997,30 @@ export default function AnalyticsPage() {
                         );
                       })}
                     </tr>
-                    {/* 案件質の場合: 割合の行 */}
+                    {/* 案件質の場合: 目標の行（月のみ・手入力可） */}
+{tab === 'quality' && row.isMonth && (
+  <tr className={"border-b border-gray-100 " + pctRowBg}>
+    <td className={"py-1.5 px-4 sticky left-0 z-10 text-gray-400 text-xs " + pctRowBg}>
+      <span className="pl-4">目標</span>
+    </td>
+    {cols.map(col => (
+      <td key={col.key} className="py-1.5 px-4 text-right text-xs">
+        {col.pctKey ? (
+          <input
+            type="number"
+            inputMode="decimal"
+            value={qualityTargets[row.ym]?.[col.key] ?? ''}
+            onChange={(e) => updateQualityTarget(row.ym, col.key, e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="-"
+            className="w-14 text-right text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          />
+        ) : '-'}
+      </td>
+    ))}
+  </tr>
+)}
+{/* 案件質の場合: 割合の行 */}
                     {tab === 'quality' && (
                       <tr className={`border-b border-gray-100 ${pctRowBg}`}>
                         <td className={`py-2 px-4 sticky left-0 z-10 ${pctRowBg} text-gray-400 text-xs`}>
@@ -977,7 +1028,16 @@ export default function AnalyticsPage() {
                         </td>
                         {cols.map(col => (
                           <td key={col.key} className={`py-2 px-4 text-right text-xs ${row.isMonth ? 'text-purple-600 font-semibold' : 'text-gray-500'}`}>
-                            {col.pctKey ? fmtPct(r[col.pctKey]) : '-'}
+                            {col.pctKey ? (
+            <React.Fragment>
+              {fmtPct(r[col.pctKey])}
+              {getQualityDiff(row.ym, col.key, r[col.pctKey]) !== null && (
+                <span className={getQualityDiff(row.ym, col.key, r[col.pctKey]) < 0 ? 'ml-1 font-semibold text-blue-500' : (getQualityDiff(row.ym, col.key, r[col.pctKey]) > 0 ? 'ml-1 font-semibold text-red-500' : 'ml-1 font-semibold text-gray-400')}>
+                  ({getQualityDiff(row.ym, col.key, r[col.pctKey]) > 0 ? '+' : ''}{getQualityDiff(row.ym, col.key, r[col.pctKey])}%{getQualityDiff(row.ym, col.key, r[col.pctKey]) < 0 ? '↓' : (getQualityDiff(row.ym, col.key, r[col.pctKey]) > 0 ? '↑' : '')})
+                </span>
+              )}
+            </React.Fragment>
+          ) : '-'}
                           </td>
                         ))}
                       </tr>
