@@ -822,6 +822,11 @@ export default function AdminCompanies() {
                            onClick={() => { setDeleteAllConfirmText(''); setDeleteAllModalOpen(true); }}
                            className="text-xs px-3 py-1.5 rounded bg-red-700 text-white font-bold hover:bg-red-800"
                                        >全リストを削除</button>
+
+                             <button
+                             onClick={() => { setRestoreAllConfirmText(''); setRestoreAllModalOpen(true); }}
+                               className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white font-bold hover:bg-blue-700 mr-2"
+                                 >除外解除（全件削除分）</button>
                              </div>
           )}
 
