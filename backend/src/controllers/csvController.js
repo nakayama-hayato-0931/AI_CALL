@@ -618,6 +618,8 @@ const importCompanies = async (req, res, next) => {
     }
 
     let totalRows = 0;
+    let sharedClaimCount = 0; // 自作リストインポートで共有プールから専用化した件数（誤操作検知用）
+    const SHARED_CLAIM_LIMIT = 2000; // これを超えたら誤操作の可能性が高いため中断しロールバックする
     let insertedCount = 0;
     let skippedCount = 0;
     let duplicateCount = 0;
@@ -841,6 +843,10 @@ const importCompanies = async (req, res, next) => {
           if (req.user.role === 'operator' && importedByUserId) {
             if (existing.imported_by_user_id === null) {
               // 共有リストにある → 自作リストに移す（直前に pendingInserts を flush して整合性確保）
+              sharedClaimCount++;
+              if (sharedClaimCount > SHARED_CLAIM_LIMIT) {
+                throw new Error("自作リストのインポートで共有の架電対象企業を2000件を超えて専用リスト化しようとしたため、誤操作の可能性が高いと判断し処理を中断しました（このインポートは反映されていません）。本当に大量の企業を自作リストに登録したい場合は管理者にご連絡ください。");
+              }
               await flushInserts();
               await conn.execute(
                 'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
