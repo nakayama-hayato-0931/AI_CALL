@@ -393,7 +393,7 @@ const getNextCallTarget = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 8);
+    const currentTime = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(11, 19); // JSTに強制変換 (サーバローカルタイムゾーン依存のバグ修正)
 
     // 架電種別（営業 or オペレーター）
     const callType = req.query.call_type || (req.user.role === 'sales' ? 'sales' : 'operator');
@@ -720,7 +720,7 @@ const getCallList = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 8);
+    const currentTime = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(11, 19); // JSTに強制変換 (サーバローカルタイムゾーン依存のバグ修正)
     const LIST_SIZE = 25;
     // 2026-06-24 特別リスト再設計: タブはクイックビュー (上位 20 件)、 全件は /special-list で
     const SPECIAL_QUICK_VIEW_SIZE = 20;
