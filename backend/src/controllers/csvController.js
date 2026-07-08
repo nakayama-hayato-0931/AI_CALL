@@ -833,6 +833,7 @@ const importCompanies = async (req, res, next) => {
           await flushInserts();
           // 全件削除機能(deleteAllCompanies)で除外されたものだけを再インポートで復活させる(個別NG登録は対象外)
           const reviveExclusion = existing.exclusion_flag === 1 && existing.exclusion_reason === '全件削除';
+          try {
           await conn.execute(
             `UPDATE companies SET
                company_name = COALESCE(NULLIF(?, ''), company_name),
@@ -847,6 +848,13 @@ const importCompanies = async (req, res, next) => {
              WHERE id = ?`,
             [companyName, industry, jobType, comment, dataSource, region, address, faxNumber, existing.id]
           );
+          } catch (updateErr) {
+            // FAX番号が他社と重複(uk_companies_fax)する場合など、更新失敗時もプロセス全体を落とさずスキップして継続する
+            errors.push({ line: lineNum, message: `既存企業の更新に失敗したためスキップ: ${companyName} (${phoneNumber}) - ${updateErr.message}` });
+            duplicateCount++;
+            skippedCount++;
+            return;
+          }
           duplicateCount++;
           skippedCount++;
           return;
