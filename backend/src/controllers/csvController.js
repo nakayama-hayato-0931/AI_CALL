@@ -1169,6 +1169,10 @@ const importExclusionList = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/csv/exclusion-stats
+ * NG / 既存案件リストの件数と最終更新日を返す
+ */
 const getExclusionStats = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(`
