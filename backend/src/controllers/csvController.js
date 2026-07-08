@@ -683,7 +683,7 @@ const importCompanies = async (req, res, next) => {
         const setClause = HYDRATE.map(c => `${c} = COALESCE(NULLIF(VALUES(${c}), ''), ${c})`).join(', ');
         const [result] = await conn.query(
           `INSERT INTO companies ${COLS} VALUES ${placeholders}
-           ON DUPLICATE KEY UPDATE ${setClause}, updated_at = CURRENT_TIMESTAMP, id = LAST_INSERT_ID(id)`,
+           ON DUPLICATE KEY UPDATE ${setClause}, updated_at = CURRENT_TIMESTAMP`,
           flat
         );
         // MySQL の multi-row INSERT は insertId に先頭idを返し、以降は連番。
