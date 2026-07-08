@@ -688,12 +688,48 @@ const importCompanies = async (req, res, next) => {
         );
         // MySQL の multi-row INSERT は insertId に先頭idを返し、以降は連番。
         const firstId = result.insertId;
+        // 実際に確定した company_id を電話番号/FAX番号から引き直す。
+        // multi-row INSERT が ON DUPLICATE KEY UPDATE で既存行を更新した場合、
+        // insertId は「新規追加された行の先頭ID」であり、重複行が混在するチャンクでは
+        // firstId+k という連番の前提が実在する企業と対応しないため。
+        const lookupPhones = pendingInserts.map(v => v[1]).filter(Boolean);
+        const lookupFaxes = pendingInserts.map(v => v[2]).filter(Boolean);
+        const idMap = new Map(); // 'p:'+phone または 'f:'+fax -> company id
+        if (lookupPhones.length > 0 || lookupFaxes.length > 0) {
+          const idConds = [];
+          const idLookupParams = [];
+          if (lookupPhones.length > 0) {
+            idConds.push(`phone_number IN (${lookupPhones.map(() => '?').join(',')})`);
+            idLookupParams.push(...lookupPhones);
+          }
+          if (lookupFaxes.length > 0) {
+            idConds.push(`fax_number IN (${lookupFaxes.map(() => '?').join(',')})`);
+            idLookupParams.push(...lookupFaxes);
+          }
+          const [idRows] = await conn.query(
+            `SELECT id, phone_number, fax_number FROM companies WHERE ${idConds.join(' OR ')}`,
+            idLookupParams
+          );
+          for (const r of idRows) {
+            if (r.phone_number) idMap.set('p:' + r.phone_number, r.id);
+            if (r.fax_number) idMap.set('f:' + r.fax_number, r.id);
+          }
+        }
+        // 1件分の tuple から実企業IDを解決。一致しなければ firstId+k にフォールバック
+        // (このチャンクが全件新規INSERTのみで、かつ電話/FAX両方空のレアケース用)。
+        const resolveCompanyId = (tuple, k) => {
+          const phone = tuple[1];
+          const fax = tuple[2];
+          if (phone && idMap.has('p:' + phone)) return idMap.get('p:' + phone);
+          if (fax && idMap.has('f:' + fax)) return idMap.get('f:' + fax);
+          return firstId + k;
+        };
         // dbPhoneMap / dbNameMap も更新（後続行の重複検知用）
         for (let k = 0; k < pendingInserts.length; k++) {
           const tuple = pendingInserts[k];
           const cname = tuple[0];
           const phone = tuple[1];
-          const rec = { id: firstId + k, is_sales_list: isSalesList, imported_by_user_id: importedByUserId };
+          const rec = { id: resolveCompanyId(tuple, k), is_sales_list: isSalesList, imported_by_user_id: importedByUserId };
           if (phone) dbPhoneMap.set(phone, rec);
           if (cname) dbNameMap.set(cname, rec);
         }
@@ -702,7 +738,7 @@ const importCompanies = async (req, res, next) => {
           const aPh = pendingInserts.map(() => '(?,?,?)').join(',');
           const aFlat = [];
           for (let k = 0; k < pendingInserts.length; k++) {
-            aFlat.push(firstId + k, req.user.id, req.user.id);
+            aFlat.push(resolveCompanyId(pendingInserts[k], k), req.user.id, req.user.id);
           }
           try {
             await conn.query(
@@ -713,7 +749,7 @@ const importCompanies = async (req, res, next) => {
         }
         // 優先オペレーター割り当て + 猶予期間
         if (priorityOperatorIds.length > 0 && graceDays > 0) {
-          const ids = pendingInserts.map((_, k) => firstId + k);
+          const ids = pendingInserts.map((tuple, k) => resolveCompanyId(tuple, k));
           // priority_expires_at をまとめて更新（IN句）
           try {
             await conn.query(
