@@ -1037,6 +1037,8 @@ export default function AdminCompanies() {
                   <button onClick={handleAssign} disabled={!selectedOp} className="btn-primary !py-2 px-5 disabled:opacity-50">割り当て</button>
                 </div>
               </div>
+            </div>
+          )}
 
 {deleteAllModalOpen && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !deleteAllBusy && setDeleteAllModalOpen(false)}>
@@ -1083,8 +1085,6 @@ export default function AdminCompanies() {
   </div>
   </div>
             )}
-            </div>
-          )}
 
           {restoreAllModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !restoreAllBusy && setRestoreAllModalOpen(false)}>
