@@ -993,81 +993,150 @@ const importExclusionList = async (req, res, next) => {
     let excludedCompaniesCount = 0;
     const errors = [];
 
+    // 1行に複数電話番号が含まれる場合、それぞれを個別レコードとして展開しつつ、
+    // ファイル内重複・必須項目欠落を先にふるいにかける（ここまではDBアクセス無し）
+    const candidates = [];
+    const seenKeys = new Set();
+    for (let i = 0; i < records.length; i++) {
+      const row = records[i];
+      const lineNum = i + 2;
+
+      const companyName = normalizeCompanyName((row.company_name || '').trim()) || null;
+      // 電話番号を複数抽出（改行・スペース区切りで2件以上入っている場合がある）
+      const phoneNumbers = extractPhoneNumbers((row.phone_number || '').trim());
+
+      if (!companyName && phoneNumbers.length === 0) {
+        errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
+        continue;
+      }
+
+      const pnList = phoneNumbers.length > 0 ? phoneNumbers : [null];
+      for (const pn of pnList) {
+        // ファイル内重複防止（電話番号+企業名の組み合わせ、またはどちらか単独で判定）
+        const key = `${pn || ''}\u0000${companyName || ''}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        candidates.push({ companyName, phoneNumber: pn });
+      }
+    }
+
+    if (candidates.length === 0) {
+      cleanupFile(filePath);
+      const listLabel = listType === 'ng' ? 'NGリスト' : '既存案件リスト';
+      return ApiResponse.success(res, {
+        totalRows: records.length,
+        insertedCount: 0,
+        duplicateCount: 0,
+        excludedCompaniesCount: 0,
+        errors: errors.slice(0, 50),
+      }, `${listLabel}に0件を登録しました（架電リストから0件を削除/除外）`);
+    }
+
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
-      // 1行に複数電話番号が含まれる場合、それぞれを個別レコードとして登録する
-      // ヘルパー: 1件分の除外リスト登録＋架電リスト照合
-      const insertOneExclusion = async (companyName, phoneNumber) => {
-        // 同一リスト種別内の重複チェック（NGはNG内、既存は既存内）
-        const dupConditions = [];
-        const dupParams = [listType];
-        if (phoneNumber) { dupConditions.push('phone_number = ?'); dupParams.push(phoneNumber); }
-        if (companyName) { dupConditions.push('company_name = ?'); dupParams.push(companyName); }
-        const dupQuery = `SELECT id FROM exclusion_lists WHERE list_type = ? AND (${dupConditions.join(' OR ')})`;
-        const [existing] = await conn.execute(dupQuery, dupParams);
+      // 既存の exclusion_lists (同一 list_type) を一括取得し、重複判定をメモリ上で行う
+      // ※ 電話番号のみ一致・企業名のみ一致の場合のみ重複扱いとし、
+      //   「同じ電話番号だが別会社名（本社番号共有など）」を誤って重複スキップしないようにする
+      const [existingRows] = await conn.query(
+        'SELECT company_name, phone_number FROM exclusion_lists WHERE list_type = ?',
+        [listType]
+      );
+      const existingPairSet = new Set();
+      const existingPhoneOnlySet = new Set();
+      const existingNameOnlySet = new Set();
+      for (const r of existingRows) {
+        if (r.phone_number && r.company_name) existingPairSet.add(`${r.phone_number}\u0000${r.company_name}`);
+        else if (r.phone_number) existingPhoneOnlySet.add(r.phone_number);
+        else if (r.company_name) existingNameOnlySet.add(r.company_name);
+      }
 
-        if (existing.length > 0) {
+      const toInsert = [];
+      for (const c of candidates) {
+        let isDup = false;
+        if (c.phoneNumber && c.companyName) {
+          isDup = existingPairSet.has(`${c.phoneNumber}\u0000${c.companyName}`);
+        } else if (c.phoneNumber) {
+          isDup = existingPhoneOnlySet.has(c.phoneNumber);
+        } else if (c.companyName) {
+          isDup = existingNameOnlySet.has(c.companyName);
+        }
+        if (isDup) {
           duplicateCount++;
-          return;
-        }
-
-        // exclusion_lists にインサート
-        await conn.execute(
-          'INSERT INTO exclusion_lists (company_name, phone_number, list_type) VALUES (?, ?, ?)',
-          [companyName, phoneNumber, listType]
-        );
-
-        // 架電リスト（companies）から一致企業を削除/除外
-        const findConditions = [];
-        const findParams = [];
-        if (phoneNumber) { findConditions.push('phone_number = ?'); findParams.push(phoneNumber); }
-        if (companyName) { findConditions.push('company_name = ?'); findParams.push(companyName); }
-        const findQuery = `SELECT id FROM companies WHERE ${findConditions.join(' OR ')}`;
-        const [matchedCompanies] = await conn.execute(findQuery, findParams);
-
-        for (const mc of matchedCompanies) {
-          try {
-            await conn.execute('DELETE FROM company_assignments WHERE company_id = ?', [mc.id]);
-            await conn.execute('DELETE FROM recall_tasks WHERE company_id = ?', [mc.id]);
-            const [callCheck] = await conn.execute('SELECT id FROM calls WHERE company_id = ? LIMIT 1', [mc.id]);
-            if (callCheck.length > 0) {
-              await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
-            } else {
-              await conn.execute('DELETE FROM companies WHERE id = ?', [mc.id]);
-            }
-            excludedCompaniesCount++;
-          } catch (delErr) {
-            await conn.execute('UPDATE companies SET exclusion_flag = 1 WHERE id = ?', [mc.id]);
-            excludedCompaniesCount++;
-          }
-        }
-
-        insertedCount++;
-      };
-
-      for (let i = 0; i < records.length; i++) {
-        const row = records[i];
-        const lineNum = i + 2;
-
-        const companyName = normalizeCompanyName((row.company_name || '').trim()) || null;
-        // 電話番号を複数抽出（改行・スペース区切りで2件以上入っている場合がある）
-        const phoneNumbers = extractPhoneNumbers((row.phone_number || '').trim());
-
-        if (!companyName && phoneNumbers.length === 0) {
-          errors.push({ line: lineNum, message: '企業名または電話番号のどちらかが必要です' });
           continue;
         }
+        toInsert.push(c);
+      }
 
-        if (phoneNumbers.length > 0) {
-          // 電話番号ごとに個別レコードとして登録
-          for (const pn of phoneNumbers) {
-            await insertOneExclusion(companyName, pn);
+      // 新規行をチャンクごとに一括INSERT（1行ずつのラウンドトリップを無くし、大量件数でもタイムアウトしないようにする）
+      // ※ exclusion_lists への INSERT トリガー(trg_exclusion_lists_ai)が各行ごとに発火し、
+      //   companies.exclusion_flag は自動的に更新される
+      const INSERT_CHUNK = 500;
+      for (let i = 0; i < toInsert.length; i += INSERT_CHUNK) {
+        const chunk = toInsert.slice(i, i + INSERT_CHUNK);
+        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+        const params = [];
+        for (const c of chunk) params.push(c.companyName, c.phoneNumber, listType);
+        await conn.query(
+          `INSERT INTO exclusion_lists (company_name, phone_number, list_type) VALUES ${placeholders}`,
+          params
+        );
+        insertedCount += chunk.length;
+      }
+
+      // 架電リスト（companies）から一致企業を一括で削除/除外
+      if (toInsert.length > 0) {
+        const phones = [...new Set(toInsert.map((c) => c.phoneNumber).filter(Boolean))];
+        const names = [...new Set(toInsert.map((c) => c.companyName).filter(Boolean))];
+        const matchConds = [];
+        const matchParams = [];
+        if (phones.length > 0) {
+          matchConds.push(`phone_number IN (${phones.map(() => '?').join(',')})`);
+          matchParams.push(...phones);
+        }
+        if (names.length > 0) {
+          matchConds.push(`company_name IN (${names.map(() => '?').join(',')})`);
+          matchParams.push(...names);
+        }
+
+        if (matchConds.length > 0) {
+          const [matchedCompanies] = await conn.query(
+            `SELECT id FROM companies WHERE ${matchConds.join(' OR ')}`,
+            matchParams
+          );
+          if (matchedCompanies.length > 0) {
+            const ids = matchedCompanies.map((c) => c.id);
+            const idPlaceholders = ids.map(() => '?').join(',');
+            try {
+              await conn.query(`DELETE FROM company_assignments WHERE company_id IN (${idPlaceholders})`, ids);
+              await conn.query(`DELETE FROM recall_tasks WHERE company_id IN (${idPlaceholders})`, ids);
+              const [callRows] = await conn.query(
+                `SELECT DISTINCT company_id FROM calls WHERE company_id IN (${idPlaceholders})`,
+                ids
+              );
+              const hasCallSet = new Set(callRows.map((r) => r.company_id));
+              const deletableIds = ids.filter((id) => !hasCallSet.has(id));
+              const flagOnlyIds = ids.filter((id) => hasCallSet.has(id));
+              if (deletableIds.length > 0) {
+                await conn.query(
+                  `DELETE FROM companies WHERE id IN (${deletableIds.map(() => '?').join(',')})`,
+                  deletableIds
+                );
+              }
+              if (flagOnlyIds.length > 0) {
+                await conn.query(
+                  `UPDATE companies SET exclusion_flag = 1 WHERE id IN (${flagOnlyIds.map(() => '?').join(',')})`,
+                  flagOnlyIds
+                );
+              }
+              excludedCompaniesCount += ids.length;
+            } catch (delErr) {
+              // 一括削除が何らかの理由で失敗した場合は、フラグ更新のみで安全側に倒す
+              await conn.query(`UPDATE companies SET exclusion_flag = 1 WHERE id IN (${idPlaceholders})`, ids);
+              excludedCompaniesCount += ids.length;
+            }
           }
-        } else {
-          // 電話番号なし、企業名のみで登録
-          await insertOneExclusion(companyName, null);
         }
       }
 
