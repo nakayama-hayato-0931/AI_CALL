@@ -1640,6 +1640,7 @@ module.exports = {
   getCompaniesIndustryStats,
   bulkDeleteCompanies,
     deleteAllCompanies,
+    restoreAllCompanies,
   getAutoPickupIndustries,
   setAutoPickupIndustries,
   getAutoPickupPrefectures,
@@ -3152,12 +3153,51 @@ async function deleteAllCompanies(req, res, next) {
                   logger.warn(`[deleteAllCompanies] 物理削除 ${r.affectedRows}件 by user=${req.user.id}`);
                   return ApiResponse.success(res, { affected: r.affectedRows }, `${r.affectedRows}件を物理削除しました`);
           } else {
-                  const [r] = await pool.query(`UPDATE companies SET exclusion_flag = 1 WHERE exclusion_flag = 0 AND ${whereClauses.join(' AND ')}`, params);
+                  const [r] = await pool.query(`UPDATE companies SET exclusion_flag = 1, exclusion_reason = '全件削除' WHERE exclusion_flag = 0 AND ${whereClauses.join(' AND ')}`, params);
                   logger.warn(`[deleteAllCompanies] ${r.affectedRows}件を除外 by user=${req.user.id}`);
                   return ApiResponse.success(res, { affected: r.affectedRows }, `${r.affectedRows}件を除外しました`);
           }
     } catch (err) {
           logger.error(`[deleteAllCompanies] ${err.message}`);
+          return ApiResponse.error(res, err.message, 500);
+    }
+}
+
+/**
+ * POST /api/admin/companies/restore-all
+  * body: { confirm: '除外解除', filter?: { industry_category, region, search } }
+   * 「全リストを削除」(deleteAllCompanies) によって exclusion_flag=1 になった企業のうち、
+    * exclusion_reason='全件削除' が付いているもの(=今回の全件削除機能で除外されたもの)だけを
+     * exclusion_flag=0 に戻す。顧客マスタ画面で個別にNG登録された企業(exclusion_reasonが別の値)は対象外。
+      * confirm文字列が完全一致しない場合は実行しない安全策あり。
+       */
+async function restoreAllCompanies(req, res, next) {
+    try {
+          const { confirm, filter } = req.body || {};
+          if (confirm !== '除外解除') {
+                  return ApiResponse.badRequest(res, '確認文字列が一致しません。confirmに「除外解除」を指定してください');
+          }
+          let whereClauses = ["exclusion_flag = 1", "exclusion_reason = '全件削除'"];
+          let params = [];
+          if (filter && typeof filter === 'object') {
+                  if (filter.industry_category) {
+                            whereClauses.push('industry_category = ?');
+                            params.push(filter.industry_category);
+                  }
+                  if (filter.region) {
+                            whereClauses.push('region = ?');
+                            params.push(filter.region);
+                  }
+                  if (filter.search) {
+                            whereClauses.push('(company_name LIKE ? OR phone_number LIKE ?)');
+                            params.push(`%${filter.search}%`, `%${filter.search}%`);
+                  }
+          }
+          const [r] = await pool.query(`UPDATE companies SET exclusion_flag = 0, exclusion_reason = NULL WHERE ${whereClauses.join(' AND ')}`, params);
+          logger.warn(`[restoreAllCompanies] ${r.affectedRows}件を除外解除 by user=${req.user.id}`);
+          return ApiResponse.success(res, { affected: r.affectedRows }, `${r.affectedRows}件を除外解除しました`);
+    } catch (err) {
+          logger.error(`[restoreAllCompanies] ${err.message}`);
           return ApiResponse.error(res, err.message, 500);
     }
 }
