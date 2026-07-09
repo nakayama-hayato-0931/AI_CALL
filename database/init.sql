@@ -197,3 +197,50 @@ CREATE TABLE IF NOT EXISTS industry_exclude_words (
 -- 初期データ: 管理者ユーザー (パスワード: admin123)
 INSERT INTO users (name, email, password_hash, role) VALUES
   ('管理者', 'admin@example.com', '$2b$10$8K1p/a0dL1LXMIgoEDFrwOfMQkT.RZfL1IdBCemO3vGKCVjnZPGlG', 'admin');
+
+
+-- ============================================================
+-- 除外リスト連携 (companies <-> exclusion_lists)
+-- 016/017 migrations: NG/既存案件リストとの整合性をDBトリガーで自動維持する
+-- ============================================================
+
+ALTER TABLE companies ADD INDEX idx_companies_name (company_name);
+
+DROP TRIGGER IF EXISTS trg_companies_bi_exclusion;
+
+CREATE TRIGGER trg_companies_bi_exclusion
+BEFORE INSERT ON companies
+FOR EACH ROW
+SET
+  NEW.exclusion_reason = IF(
+        NEW.exclusion_flag = 0 AND (
+          (SELECT COUNT(*) FROM exclusion_lists WHERE phone_number = NEW.phone_number) > 0
+          OR (SELECT COUNT(*) FROM exclusion_lists WHERE company_name = NEW.company_name) > 0
+        ),
+        (SELECT IF(SUM(list_type = 'ng') > 0, 'NG登録', '既存案件登録')
+           FROM exclusion_lists
+           WHERE phone_number = NEW.phone_number OR company_name = NEW.company_name),
+        NEW.exclusion_reason
+      ),
+  NEW.exclusion_flag = IF(
+        NEW.exclusion_flag = 0 AND (
+          (SELECT COUNT(*) FROM exclusion_lists WHERE phone_number = NEW.phone_number) > 0
+          OR (SELECT COUNT(*) FROM exclusion_lists WHERE company_name = NEW.company_name) > 0
+        ),
+        1,
+        NEW.exclusion_flag
+      );
+
+DROP TRIGGER IF EXISTS trg_exclusion_lists_ai;
+
+CREATE TRIGGER trg_exclusion_lists_ai
+AFTER INSERT ON exclusion_lists
+FOR EACH ROW
+UPDATE companies
+SET exclusion_flag = 1,
+    exclusion_reason = IF(NEW.list_type = 'ng', 'NG登録', '既存案件登録')
+WHERE exclusion_flag = 0
+  AND (
+      (NEW.phone_number IS NOT NULL AND NEW.phone_number <> '' AND phone_number = NEW.phone_number)
+      OR (NEW.company_name IS NOT NULL AND NEW.company_name <> '' AND company_name = NEW.company_name)
+    );
