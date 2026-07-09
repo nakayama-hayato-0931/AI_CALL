@@ -1235,14 +1235,7 @@ const applyRulesToExistingCompanies = async (req, res, next) => {
   // 1. NGリスト/既存案件リストに一致
   try {
     logger.info('[ApplyRules] Step1: exclusion_list開始');
-    const [rows] = await pool.query(
-      `SELECT id FROM companies
-       WHERE ${baseCond}
-         AND (
-           phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL AND phone_number != '')
-           OR company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL AND company_name != '')
-         )`
-    );
+    const [rows] = await pool.query(`SELECT id FROM companies WHERE ${baseCond} AND phone_number IN (SELECT phone_number FROM exclusion_lists WHERE phone_number IS NOT NULL AND phone_number != '') UNION SELECT id FROM companies WHERE ${baseCond} AND company_name IN (SELECT company_name FROM exclusion_lists WHERE company_name IS NOT NULL AND company_name != '')`);
     logger.info(`[ApplyRules] Step1: 対象${rows.length}件`);
     byExclusionList = await updateByIds(rows.map(r => r.id));
     logger.info(`[ApplyRules] Step1完了: ${byExclusionList}件更新 (${Date.now()-startTime}ms)`);
