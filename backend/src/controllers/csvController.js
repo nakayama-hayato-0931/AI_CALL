@@ -12,25 +12,14 @@ const pool = require('../../config/database');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { upsertCompanyByPhone, addManualAssignment, MASTER_COLS } = require('../utils/companyUpsert');
+const { classifyIndustryCategory, buildIndustryCategoryCase } = require('../utils/industryCategory');
 
-/**
- * industry テキストから industry_category を計算するヘルパー。
- * 順序は companyController.recompute-industry-category の CASE 式と同一。
- * CSV インポート直後にこの SQL で UPDATE することで、新規行に正しいカテゴリが付く。
- */
-const INDUSTRY_CATEGORY_SQL_CASE = `
-  CASE
-    WHEN industry LIKE '%建設%' OR industry LIKE '%建築%' OR industry LIKE '%工事%' OR industry LIKE '%土木%' OR industry LIKE '%リフォーム%' OR industry LIKE '%電気工事%' OR industry LIKE '%管工事%' OR industry LIKE '%建材%' OR industry LIKE '%住宅%' OR industry LIKE '%リノベ%' THEN '建設'
-    WHEN industry LIKE '%宿泊%' OR industry LIKE '%ホテル%' OR industry LIKE '%旅館%' OR industry LIKE '%民宿%' THEN '宿泊'
-    WHEN industry LIKE '%清掃%' OR industry LIKE '%クリーニング%' OR industry LIKE '%ビルメンテ%' OR industry LIKE '%ビル管理%' OR industry LIKE '%ハウスクリーニング%' THEN '清掃'
-    WHEN industry LIKE '%介護%' OR industry LIKE '%デイサービス%' OR industry LIKE '%福祉%' OR industry LIKE '%老人ホーム%' OR industry LIKE '%グループホーム%' THEN '介護'
-    WHEN industry LIKE '%飲食%' OR industry LIKE '%グルメ%' OR industry LIKE '%レストラン%' OR industry LIKE '%居酒屋%' OR industry LIKE '%ラーメン%' OR industry LIKE '%カフェ%' OR industry LIKE '%喫茶店%' OR industry LIKE '%寿司%' OR industry LIKE '%焼肉%' OR industry LIKE '%和食%' OR industry LIKE '%中華%' OR industry LIKE '%洋食%' OR industry LIKE '%食堂%' OR industry LIKE '%ダイニング%' OR industry LIKE '%そば%' OR industry LIKE '%うどん%' OR industry LIKE '%菓子%' THEN '飲食'
-    WHEN industry LIKE '%農業%' OR industry LIKE '%農場%' OR industry LIKE '%農園%' OR industry LIKE '%畜産%' OR industry LIKE '%養鶏%' OR industry LIKE '%水産%' OR industry LIKE '%漁業%' OR industry LIKE '%林業%' OR industry LIKE '%農産%' THEN '農業'
-    WHEN industry LIKE '%製造%' OR industry LIKE '%メーカー%' OR industry LIKE '%加工%' OR industry LIKE '%工場%' OR industry LIKE '%金属%' OR industry LIKE '%部品%' OR industry LIKE '%機械%' OR industry LIKE '%化学%' OR industry LIKE '%食品%' OR industry LIKE '%飲料%' OR industry LIKE '%繊維%' OR industry LIKE '%衣料%' OR industry LIKE '%印刷%' OR industry LIKE '%木材%' OR industry LIKE '%木製%' OR industry LIKE '%プラスチック%' OR industry LIKE '%ゴム%' OR industry LIKE '%紙%' OR industry LIKE '%パルプ%' OR industry LIKE '%セメント%' OR industry LIKE '%窯業%' OR industry LIKE '%電子%' OR industry LIKE '%輸送機%' OR industry LIKE '%自動車%' OR industry LIKE '%電気機械%' THEN '製造'
-    WHEN industry LIKE '%小売%' OR industry LIKE '%卸売%' OR industry LIKE '%スーパー%' OR industry LIKE '%コンビニ%' OR industry LIKE '%ショッピング%' OR industry LIKE '%商社%' OR industry LIKE '%物販%' OR industry LIKE '%販売%' THEN '小売'
-    ELSE 'その他'
-  END
-`;
+// 業種分類は backend/src/utils/industryCategory.js に一元化（単一の情報源）。
+//   - classifyIndustryCategory(): 挿入時にその行だけ即分類する JS 実装
+//   - INDUSTRY_CATEGORY_SQL_CASE: 一括 UPDATE（NG/既存案件/特別リスト経路）用の SQL CASE 式
+// companyController の再計算エンドポイントも同じモジュールを参照するため、
+// インポート経路と再計算で分類結果が食い違わない。
+const INDUSTRY_CATEGORY_SQL_CASE = buildIndustryCategoryCase('industry');
 
 /**
  * インポート直後の新規/更新行に industry_category を一括計算する。
@@ -676,12 +665,17 @@ const importCompanies = async (req, res, next) => {
         // - phone_number に UNIQUE INDEX が無い間は通常 INSERT と同じ挙動 (id 衝突しない)。
         // - UNIQUE INDEX 追加後は、 衝突行を MASTER_COLS で肉付け UPDATE。
         // - assignments は元々呼び出し側で別途 INSERT IGNORE されるので肉付け系で十分。
-        const COLS = '(company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list)';
-        const oneTuple = '(?,?,?,?,?,?,?,?,?,?,?)';
+        // industry_category を末尾に追加。挿入時に processRow でその行だけ即分類するため、
+        // 取り込み後に全件 UPDATE する必要がなく（＝以前 DB を詰まらせた重い処理が不要）、
+        // 新規取り込み企業が「業種診断」ボタンを押さなくても自動でカテゴリ付きになる。
+        const COLS = '(company_name, phone_number, fax_number, industry, job_type, comment, data_source, region, address, imported_by_user_id, is_sales_list, industry_category)';
+        const oneTuple = '(?,?,?,?,?,?,?,?,?,?,?,?)';
         const placeholders = pendingInserts.map(() => oneTuple).join(',');
         const flat = pendingInserts.flatMap(v => v);
         // 肉付け対象 (上記 COLS のうち imported_by_user_id / is_sales_list 以外)
-        const HYDRATE = ['company_name', 'fax_number', 'industry', 'job_type', 'comment', 'data_source', 'region', 'address'];
+        // industry_category も肉付け対象に含める: 既存行に industry が肉付けされたら
+        // それに追随してカテゴリも更新する（新値が空なら NULLIF→COALESCE で既存値維持）。
+        const HYDRATE = ['company_name', 'fax_number', 'industry', 'job_type', 'comment', 'data_source', 'region', 'address', 'industry_category'];
         const setClause = HYDRATE.map(c => `${c} = COALESCE(NULLIF(VALUES(${c}), ''), ${c})`).join(', ');
         const [result] = await conn.query(
           `INSERT INTO companies ${COLS} VALUES ${placeholders}
@@ -849,8 +843,8 @@ const importCompanies = async (req, res, next) => {
               }
               await flushInserts();
               await conn.execute(
-                'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
-                [importedByUserId, industry, jobType, comment, dataSource, region, address, existing.id]
+                'UPDATE companies SET imported_by_user_id = ?, industry = COALESCE(?, industry), industry_category = COALESCE(?, industry_category), job_type = COALESCE(?, job_type), comment = COALESCE(?, comment), data_source = COALESCE(?, data_source), region = COALESCE(?, region), address = COALESCE(?, address), exclusion_flag = 0 WHERE id = ?',
+                [importedByUserId, industry, classifyIndustryCategory(industry), jobType, comment, dataSource, region, address, existing.id]
               );
               await addManualAssignment(conn, existing.id, req.user.id, req.user.id, req.user.role);
               existing.imported_by_user_id = importedByUserId;
@@ -880,6 +874,7 @@ const importCompanies = async (req, res, next) => {
             `UPDATE companies SET
                company_name = COALESCE(NULLIF(?, ''), company_name),
                industry     = COALESCE(NULLIF(?, ''), industry),
+               industry_category = COALESCE(NULLIF(?, ''), industry_category),
                job_type     = COALESCE(NULLIF(?, ''), job_type),
                comment      = COALESCE(NULLIF(?, ''), comment),
                data_source  = COALESCE(NULLIF(?, ''), data_source),
@@ -888,7 +883,7 @@ const importCompanies = async (req, res, next) => {
                fax_number   = COALESCE(NULLIF(?, ''), fax_number),
                updated_at   = CURRENT_TIMESTAMP${reviveExclusion ? ', exclusion_flag = 0, exclusion_reason = NULL' : ''}
              WHERE id = ?`,
-            [companyName, industry, jobType, comment, dataSource, region, address, faxNumber, existing.id]
+            [companyName, industry, classifyIndustryCategory(industry), jobType, comment, dataSource, region, address, faxNumber, existing.id]
           );
           } catch (updateErr) {
             // FAX番号が他社と重複(uk_companies_fax)する場合など、更新失敗時もプロセス全体を落とさずスキップして継続する
@@ -922,9 +917,11 @@ const importCompanies = async (req, res, next) => {
         importedNames.add(companyName);
 
         // バッチに積む（後で multi-row INSERT、assignments もまとめて挿入）
+        // industry_category は挿入時にその行だけ即分類（末尾要素）。
         pendingInserts.push([
           companyName, phoneNumber, faxNumber, industry, jobType, comment,
           dataSource, region, address, importedByUserId, isSalesList,
+          classifyIndustryCategory(industry),
         ]);
         if (pendingInserts.length >= INSERT_BATCH_SIZE) {
           await flushInserts();

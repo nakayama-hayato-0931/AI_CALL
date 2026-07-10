@@ -31,6 +31,13 @@ const RESULT_LABEL = {
 };
 const RESULT_OPTIONS = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'SKIP'];
 
+// 業種診断で選べる業種カテゴリ（backend/src/utils/industryCategory.js の
+// INDUSTRY_CATEGORY_NAMES と一致させること。手打ちを避けドロップダウンで選ばせる）
+const INDUSTRY_CATEGORY_OPTIONS = [
+  '建設', '宿泊', '清掃', '介護', '飲食', '農業', '製造', '小売',
+  '運輸', 'IT', '金融', '不動産', '美容', 'サービス',
+];
+
 // NG理由の選択肢 (call.js の NG結果入力フォームと一致させる)
 const NG_REASON_OPTIONS = [
   '今は募集していない',
@@ -94,6 +101,10 @@ export default function CustomerMasterPage() {
   const [faxInput, setFaxInput] = useState('');
   const [savingFax, setSavingFax] = useState(false);
   const [expandedTranscripts, setExpandedTranscripts] = useState({}); // { [timeline_idx]: true }
+  // 業種診断モーダル（手打ちの window.prompt を廃止し、ドロップダウン選択に置換）
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagCategory, setDiagCategory] = useState(INDUSTRY_CATEGORY_OPTIONS[0]);
+  const [diagBusy, setDiagBusy] = useState(false);
 
   useEffect(() => {
     if (user && !['admin', 'manager', 'consultant'].includes(user.role)) {
@@ -311,6 +322,55 @@ export default function CustomerMasterPage() {
     }
   };
 
+  // 業種診断: 選択した業種カテゴリの件数・分類漏れを診断し、必要なら再計算を提案する。
+  // 業種カテゴリは手打ちではなく INDUSTRY_CATEGORY_OPTIONS のドロップダウンで選択する。
+  const runIndustryDiagnose = async (cat) => {
+    if (!cat) return;
+    setDiagBusy(true);
+    try {
+      const { data } = await api.get(`/api/companies/diagnose/industry?category=${encodeURIComponent(cat)}`);
+      if (!data.success) { toast.error('業種診断失敗'); return; }
+      const d = data.data;
+      const c = d.counts;
+      const lines = [
+        `【業種診断: ${d.category}】`,
+        `検索キーワード: ${(d.keywords || []).join(', ')}`,
+        '',
+        `industry_category='${d.category}' の件数: ${c.by_industry_category?.toLocaleString?.()}`,
+        `industry テキストにキーワード含む全件: ${c.by_industry_keyword?.toLocaleString?.()}`,
+        `→ 分類漏れ (キーワード含むが category 不一致): ${c.miscategorized?.toLocaleString?.()}`,
+        '',
+        `▼ industry_category='${d.category}' の内訳:`,
+        `・未架電: ${c.untouched?.toLocaleString?.()}`,
+        `・永久除外状態 (SKIP/PROJECT/RECALL/INTERESTED): ${c.permanent_excluded?.toLocaleString?.()}`,
+        `・前回 NO_ANSWER: ${c.last_no_answer?.toLocaleString?.()}`,
+        `・前回 NG: ${c.last_ng?.toLocaleString?.()}`,
+      ];
+      if (d.miscategorized_samples && d.miscategorized_samples.length > 0) {
+        lines.push('');
+        lines.push(`▼ 分類漏れの実例 (上位${d.miscategorized_samples.length}件):`);
+        d.miscategorized_samples.forEach(s => {
+          lines.push(`・${s.company_name} (industry='${s.industry}', category='${s.industry_category || '未設定'}')`);
+        });
+      }
+      setDiagOpen(false);
+      window.alert(lines.join('\n'));
+      // 分類漏れが多ければ再計算を提案
+      if (Number(c.miscategorized) > 100 && window.confirm(`分類漏れが${c.miscategorized.toLocaleString()}件あります。industry_category を全件再計算しますか?\n(まず dry-run で件数だけ試算します)`)) {
+        const dr = await api.post('/api/companies/diagnose/recompute-industry-category?dry_run=1');
+        const willChange = dr.data?.data?.will_change || 0;
+        if (window.confirm(`再計算により ${willChange.toLocaleString()} 件のレコードが更新されます。実行しますか?`)) {
+          const ex = await api.post('/api/companies/diagnose/recompute-industry-category');
+          toast.success(`${ex.data?.data?.updated?.toLocaleString?.() || 0} 件を再分類しました`, { duration: 6000 });
+        }
+      }
+    } catch (err) {
+      toast.error('業種診断失敗');
+    } finally {
+      setDiagBusy(false);
+    }
+  };
+
   if (!user) return null;
   if (!['admin', 'manager', 'consultant'].includes(user.role)) {
     return <Layout><div className="p-6">権限がありません</div></Layout>;
@@ -340,49 +400,7 @@ export default function CustomerMasterPage() {
                 ? <span className="ml-2 inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs">FAX CRM 連携 有効</span>
                 : <span className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">FAX CRM 連携 未設定</span>}
               <button
-                onClick={async () => {
-                  const cat = window.prompt('業種カテゴリを入力 (建設/飲食/製造/小売/宿泊/清掃/農業/介護):', '建設');
-                  if (!cat) return;
-                  try {
-                    const { data } = await api.get(`/api/companies/diagnose/industry?category=${encodeURIComponent(cat)}`);
-                    if (!data.success) { toast.error('業種診断失敗'); return; }
-                    const d = data.data;
-                    const c = d.counts;
-                    const lines = [
-                      `【業種診断: ${d.category}】`,
-                      `検索キーワード: ${(d.keywords || []).join(', ')}`,
-                      '',
-                      `industry_category='${d.category}' の件数: ${c.by_industry_category?.toLocaleString?.()}`,
-                      `industry テキストにキーワード含む全件: ${c.by_industry_keyword?.toLocaleString?.()}`,
-                      `→ 分類漏れ (キーワード含むが category 不一致): ${c.miscategorized?.toLocaleString?.()}`,
-                      '',
-                      `▼ industry_category='${d.category}' の内訳:`,
-                      `・未架電: ${c.untouched?.toLocaleString?.()}`,
-                      `・永久除外状態 (SKIP/PROJECT/RECALL/INTERESTED): ${c.permanent_excluded?.toLocaleString?.()}`,
-                      `・前回 NO_ANSWER: ${c.last_no_answer?.toLocaleString?.()}`,
-                      `・前回 NG: ${c.last_ng?.toLocaleString?.()}`,
-                    ];
-                    if (d.miscategorized_samples && d.miscategorized_samples.length > 0) {
-                      lines.push('');
-                      lines.push(`▼ 分類漏れの実例 (上位${d.miscategorized_samples.length}件):`);
-                      d.miscategorized_samples.forEach(s => {
-                        lines.push(`・${s.company_name} (industry='${s.industry}', category='${s.industry_category || '未設定'}')`);
-                      });
-                    }
-                    window.alert(lines.join('\n'));
-                    // 分類漏れが多ければ再計算を提案
-                    if (Number(c.miscategorized) > 100 && window.confirm(`分類漏れが${c.miscategorized.toLocaleString()}件あります。industry_category を全件再計算しますか?\n(まず dry-run で件数だけ試算します)`)) {
-                      const dr = await api.post('/api/companies/diagnose/recompute-industry-category?dry_run=1');
-                      const willChange = dr.data?.data?.will_change || 0;
-                      if (window.confirm(`再計算により ${willChange.toLocaleString()} 件のレコードが更新されます。実行しますか?`)) {
-                        const ex = await api.post('/api/companies/diagnose/recompute-industry-category');
-                        toast.success(`${ex.data?.data?.updated?.toLocaleString?.() || 0} 件を再分類しました`, { duration: 6000 });
-                      }
-                    }
-                  } catch (err) {
-                    toast.error('業種診断失敗');
-                  }
-                }}
+                onClick={() => { setDiagCategory(INDUSTRY_CATEGORY_OPTIONS[0]); setDiagOpen(true); }}
                 className="ml-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
                 title="特定業種の件数・分類漏れを診断"
               >
@@ -981,6 +999,44 @@ export default function CustomerMasterPage() {
           </div>
         </div>
       </div>
+      {diagOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => { if (!diagBusy) setDiagOpen(false); }}
+        >
+          <div className="bg-white rounded-lg shadow-xl w-80 p-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-800 mb-1">業種診断</h3>
+            <p className="text-[11px] text-gray-500 mb-3">業種カテゴリを選んで件数・分類漏れを診断します。</p>
+            <label className="block text-[11px] text-gray-500 mb-1">業種カテゴリ</label>
+            <select
+              value={diagCategory}
+              onChange={(e) => setDiagCategory(e.target.value)}
+              disabled={diagBusy}
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm mb-4"
+            >
+              {INDUSTRY_CATEGORY_OPTIONS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDiagOpen(false)}
+                disabled={diagBusy}
+                className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => runIndustryDiagnose(diagCategory)}
+                disabled={diagBusy}
+                className="text-xs px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {diagBusy ? '診断中…' : '診断する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
