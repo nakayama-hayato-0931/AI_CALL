@@ -58,6 +58,7 @@ export default function CallListPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [bulkTotals, setBulkTotals] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
   // 手動入力モード
@@ -293,6 +294,7 @@ export default function CallListPage() {
     const overallElapsed = Math.round((Date.now() - overallStart) / 1000);
     const min = Math.floor(overallElapsed / 60);
     const sec = overallElapsed % 60;
+    setBulkTotals({ added: totals.added, updated: totals.updated, skipped: totals.skipped, error_files: totals.error_files, fileCount: bulkFiles.length, elapsedMin: min, elapsedSec: sec });
     toast.success(
       `完了 ${bulkFiles.length}件 (${min}分${sec}秒) / 追加${totals.added.toLocaleString()} 更新${totals.updated.toLocaleString()} スキップ${totals.skipped.toLocaleString()} エラー${totals.error_files}`,
       { duration: 15000 }
@@ -341,7 +343,15 @@ export default function CallListPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportResult(data.data);
-      toast.success(data.message);
+      {
+        const rd = data.data || {};
+        const extra = [];
+        if (rd.duplicateCount) extra.push(`重複${rd.duplicateCount}件`);
+        const excludedTotal = (rd.excludedCount || 0) + (rd.excludedCompaniesCount || 0);
+        if (excludedTotal) extra.push(`除外${excludedTotal}件`);
+        if (rd.errors && rd.errors.length) extra.push(`エラー${rd.errors.length}件`);
+        toast.success(extra.length ? `${data.message}（${extra.join('・')}）` : data.message);
+      }
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (importTab === 'calllist' || importTab === 'special') { if (importTab === 'special') setListView('special'); fetchCompanies(1); }
@@ -708,6 +718,7 @@ export default function CallListPage() {
                     const fs = Array.from(e.target.files || []).filter(f => /\.(csv|xls|xlsx)$/i.test(f.name));
                     setBulkFiles(fs);
                     setBulkProgress({ current: 0, total: 0, currentName: '', results: [] });
+                    setBulkTotals(null);
                   }}
                   className="text-[10px] w-full mb-1"
                 />
@@ -729,6 +740,19 @@ export default function CallListPage() {
                 {bulkBusy && bulkProgress.startTime && (
                   <div className="text-[9px] text-purple-500 mt-1">
                     経過: {Math.floor((Date.now() - bulkProgress.startTime) / 60000)}分 (タブを閉じないでください)
+                  </div>
+                )}
+                {bulkTotals && !bulkBusy && (
+                  <div className="mt-2 p-2 rounded-lg bg-purple-100 border border-purple-300 text-center">
+                    <div className="text-[11px] font-bold text-purple-900">
+                      ✅ 一括インポート完了：{bulkTotals.fileCount}ファイル（{bulkTotals.elapsedMin}分{bulkTotals.elapsedSec}秒）
+                    </div>
+                    <div className="text-[10px] text-purple-800 mt-0.5">
+                      新規追加 <span className="font-bold">{bulkTotals.added}</span>件　・　
+                      更新 <span className="font-bold">{bulkTotals.updated}</span>件　・　
+                      スキップ <span className="font-bold">{bulkTotals.skipped}</span>件　・　
+                      エラー <span className="font-bold text-red-600">{bulkTotals.error_files}</span>件
+                    </div>
                   </div>
                 )}
                 {bulkProgress.results.length > 0 && (
@@ -770,6 +794,19 @@ export default function CallListPage() {
 
               {importResult && (
                 <div className="card p-3 animate-fade-in">
+                  <div className={`mb-2 p-2 rounded-lg text-center ${(importResult.errors && importResult.errors.length > 0) ? 'bg-amber-100 border border-amber-300' : 'bg-emerald-100 border border-emerald-300'}`}>
+                    <div className="text-[12px] font-bold text-gray-900">
+                      ✅ インポート完了
+                    </div>
+                    <div className="text-[10px] text-gray-700 mt-0.5">
+                      {importResult.insertedCount}件{importTab === 'calllist' ? '新規追加' : '登録'}　・　
+                      重複{importResult.duplicateCount || 0}件　・　
+                      除外{(importResult.excludedCount || 0) + (importResult.excludedCompaniesCount || 0)}件
+                      {importResult.errors && importResult.errors.length > 0 && (
+                        <>　・　<span className="font-bold text-red-600">エラー{importResult.errors.length}件</span></>
+                      )}
+                    </div>
+                  </div>
                   <div className="space-y-1.5 text-center">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-400">総行数</span>
