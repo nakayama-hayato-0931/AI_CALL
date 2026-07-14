@@ -34,7 +34,7 @@ const RESULT_OPTIONS = ['NO_ANSWER', 'NG', 'RECALL', 'INTERESTED', 'PROJECT', 'S
 // 業種診断で選べる業種カテゴリ（backend/src/utils/industryCategory.js の
 // INDUSTRY_CATEGORY_NAMES と一致させること。手打ちを避けドロップダウンで選ばせる）
 const INDUSTRY_CATEGORY_OPTIONS = [
-  '建設', '宿泊', '清掃', '介護', '飲食', '農業', '製造', '小売',
+  '建設', '宿泊', 'ビルクリーニング', '清掃', '介護', '飲食', '農業', '製造', '小売',
   '運輸', 'IT', '金融', '不動産', '美容', 'サービス',
 ];
 
