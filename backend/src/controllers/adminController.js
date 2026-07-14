@@ -3264,7 +3264,7 @@ async function getCompaniesIndustryStats(req, res, next) {
     }
 
     // 表示順（飲食・小売を先頭に、その他は最後）
-    const displayOrder = ['飲食', '小売', '製造', '建設', '宿泊', '農業', '介護', '運輸', 'IT', '金融', '不動産', '美容', 'サービス', 'その他'];
+    const displayOrder = ['飲食', '小売', '製造', '建設', '宿泊', '清掃', 'ビルクリーニング', '農業', '介護', '運輸', 'IT', '金融', '不動産', '美容', 'サービス', 'その他'];
     const industries = displayOrder
       .filter(name => categoryMap.has(name))
       .map(name => ({ industry: name, count: categoryMap.get(name) }));
