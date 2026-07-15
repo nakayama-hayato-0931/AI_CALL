@@ -320,7 +320,7 @@ const updateProject = async (req, res, next) => {
         if (!companyId) {
           // 手動追加/移行前案件: companies テーブルに新規 INSERT して紐づける
           const insertName = company_name || proj[0].legacy_company_name || null;
-          const insertPhone = proj[0].legacy_phone || null;
+          const insertPhone = proj[0].legacy_phone || '';
           try {
             const [insertResult] = await pool.execute(
               `INSERT INTO companies (company_name, phone_number, industry, region, address, exclusion_flag, is_special, is_sales_list)
