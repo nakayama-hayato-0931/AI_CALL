@@ -366,7 +366,7 @@ const getQualityMetrics = async (req, res, next) => {
       `SELECT
          COUNT(*) as total,
          CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-         CAST(SUM(CASE WHEN COALESCE(p.mail_replied, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
+         CAST(SUM(CASE WHEN COALESCE(p.mail_replied, 0) = 0 AND COALESCE(p.phone_confirmed, 0) = 0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND NOT (p.document_screening = 'required' AND p.status = 'BOSHUCHU') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
          CAST(SUM(CASE WHEN p.document_screening = 'required' AND p.status = 'BOSHUCHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
          CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
                 AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
@@ -1469,7 +1469,7 @@ const getQualityAll = async (req, res, next) => {
         `SELECT p.owner_user_id as user_id,
           COUNT(*) as total,
           CAST(SUM(CASE WHEN p.status = 'LOST' THEN 1 ELSE 0 END) AS SIGNED) as lost,
-          CAST(SUM(CASE WHEN COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
+          CAST(SUM(CASE WHEN COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND NOT (p.document_screening = 'required' AND p.status = 'BOSHUCHU') THEN 1 ELSE 0 END) AS SIGNED) as waiting_contact,
           CAST(SUM(CASE WHEN p.document_screening = 'required' AND p.status = 'BOSHUCHU' THEN 1 ELSE 0 END) AS SIGNED) as screening_in_progress,
           CAST(SUM(CASE WHEN p.interview_date IS NOT NULL
                 AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI'))
@@ -1495,7 +1495,7 @@ const getQualityAll = async (req, res, next) => {
         const adjustMap = {
           project_count: { rowKey: 'total', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND DATE(p.created_at) = ?${wcSql}` },
           q_lost: { rowKey: 'lost', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status = 'LOST' AND DATE(p.created_at) = ?${wcSql}` },
-          q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND DATE(p.created_at) = ?${wcSql}` },
+          q_waiting_contact: { rowKey: 'waiting_contact', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND COALESCE(p.mail_replied,0)=0 AND COALESCE(p.phone_confirmed,0)=0 AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND NOT (p.document_screening = 'required' AND p.status = 'BOSHUCHU') AND DATE(p.created_at) = ?${wcSql}` },
           q_screening_in_progress: { rowKey: 'screening_in_progress', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.document_screening = 'required' AND p.status = 'BOSHUCHU' AND DATE(p.created_at) = ?${wcSql}` },
           q_interview_set: { rowKey: 'interview_set', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.interview_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('LOST','BARASHI','HORYU','MODOSHI','SHORUI_CHU','SHORUI_OCHI')) AND (p.interview_date >= CURDATE() OR p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI')) AND DATE(p.created_at) = ?${wcSql}` },
           q_interview_done: { rowKey: 'interview_done', actualSql: `SELECT COUNT(*) as cnt FROM projects p WHERE p.owner_user_id = ? AND p.is_legacy = 0 AND p.is_prospect = 0 AND p.status IN ('KEKKA_MACHI','NAITEI','NAITEI_TORIKESHI','FUGOKAKU') AND DATE(p.created_at) = ?${wcSql}` },
@@ -2102,7 +2102,7 @@ const getWaitingContactDetail = async (req, res, next) => {
        WHERE p.is_legacy = 0 AND p.is_prospect = 0
          AND COALESCE(p.mail_replied, 0) = 0
          AND COALESCE(p.phone_confirmed, 0) = 0
-         AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU'))
+         AND (p.status IS NULL OR p.status NOT IN ('LOST','SHORUI_CHU','SHORUI_OCHI','MODOSHI','BARASHI','HORYU')) AND NOT (p.document_screening = 'required' AND p.status = 'BOSHUCHU')
          AND DATE(p.created_at) BETWEEN ? AND ?
          ${userFilter}
          ${wcFilter.sql}
