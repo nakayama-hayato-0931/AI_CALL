@@ -531,6 +531,7 @@ export default function AnalyticsPage() {
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct', clickable: 'interviewSet' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct', clickable: 'interviewDone' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
+    { key: 'otherStatus', label: 'その他', pctKey: 'otherStatusPct' },
     { key: 'onlineInterview', label: 'オンライン面接', pctKey: 'onlineInterviewPct' },
     { key: 'noScreening', label: '書類選考無し', pctKey: 'noScreeningPct' },
     { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct' },
@@ -1655,6 +1656,7 @@ export default function AnalyticsPage() {
                     <option value="q_interview_set">面接日確定</option>
                     <option value="q_interview_done">面接実施</option>
                     <option value="q_barashi">バラシ</option>
+                    <option value="q_other_status">その他</option>
                     <option value="q_online_interview">オンライン面接</option>
                     <option value="q_no_screening">書類選考無し</option>
                     <option value="q_screening_failed">書類選考落ち</option>
