@@ -531,10 +531,10 @@ export default function AnalyticsPage() {
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct', clickable: 'interviewSet' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct', clickable: 'interviewDone' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
+    { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct' },
     { key: 'otherStatus', label: 'その他', pctKey: 'otherStatusPct' },
     { key: 'onlineInterview', label: 'オンライン面接', pctKey: 'onlineInterviewPct' },
     { key: 'noScreening', label: '書類選考無し', pctKey: 'noScreeningPct' },
-    { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct' },
   ];
 
   const formatCell = (value, format) => {
