@@ -254,7 +254,10 @@ export default function AnalyticsPage() {
     const team = cpaData.team || {};
     const cost = Number(team.cost) || 0;
     const pc = Number(v2.offers) || 0;             // 内定社数 (v2)
-    const ic = Number(v2.interviews) || 0;
+    // v2 に面接データが無い(0/未定義)場合は v1(team.interviewCount) にフォールバック
+    // → 月合計が0になり週合計と不整合になる不具合を防ぐ
+    const v2Iv = Number(v2.interviews);
+    const ic = (Number.isFinite(v2Iv) && v2Iv > 0) ? v2Iv : (Number(team.interviewCount) || 0);
     const ip = Number(v2.first_payment) || 0;
     const er = Number(v2.expected_revenue) || 0;
     const ap = Number(v2.payment_actual) || 0;
