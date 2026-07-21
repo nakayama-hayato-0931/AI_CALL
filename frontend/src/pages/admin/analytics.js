@@ -531,10 +531,10 @@ export default function AnalyticsPage() {
     { key: 'interviewSet', label: '面接日確定', pctKey: 'interviewSetPct', clickable: 'interviewSet' },
     { key: 'interviewDone', label: '面接実施', pctKey: 'interviewDonePct', clickable: 'interviewDone' },
     { key: 'barashi', label: 'バラシ', pctKey: 'barashiPct', clickable: 'industry:BARASHI' },
-    { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct' },
-    { key: 'otherStatus', label: 'その他', pctKey: 'otherStatusPct' },
-    { key: 'onlineInterview', label: 'オンライン面接', pctKey: 'onlineInterviewPct' },
-    { key: 'noScreening', label: '書類選考無し', pctKey: 'noScreeningPct' },
+    { key: 'onlineInterview', label: 'オンライン面接', pctKey: 'onlineInterviewPct', clickable: 'industry:ONLINE_INTERVIEW' },
+    { key: 'noScreening', label: '書類選考無し', pctKey: 'noScreeningPct', clickable: 'industry:NO_SCREENING' },
+    { key: 'screeningFailed', label: '書類選考落ち', pctKey: 'screeningFailedPct', clickable: 'industry:SHORUI_OCHI' },
+    { key: 'otherStatus', label: 'その他', pctKey: 'otherStatusPct', clickable: 'industry:OTHER_STATUS' },
   ];
 
   const formatCell = (value, format) => {
@@ -696,7 +696,7 @@ export default function AnalyticsPage() {
     if (!data) return;
     const dateFrom = data.dateFrom || (status === 'NAITEI' ? '2026-01-01' : '2026-04-01');
     const dateTo = data.dateTo || new Date().toISOString().slice(0, 10);
-    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定', BARASHI_LOST: 'バラシ/失注', ALL: '全案件' };
+    const labelMap = { LOST: '失注', BARASHI: 'バラシ', NAITEI: '内定', BARASHI_LOST: 'バラシ/失注', ONLINE_INTERVIEW: 'オンライン面接', NO_SCREENING: '書類選考無し', SHORUI_OCHI: '書類選考落ち', OTHER_STATUS: 'その他', ALL: '全案件' };
     setIndustryModal({
       title: `${name} - ${labelMap[status] || status} 業種別内訳`,
       status, userId, dateFrom, dateTo,

@@ -2484,9 +2484,9 @@ const getQualityIndustryDetail = async (req, res, next) => {
     const { date_from, date_to, user_id, status } = req.query;
     // BARASHI_LOST = バラシ(BARASHI) と 失注(LOST) を両方含む
     // ALL = 案件数 (status を問わず期間内の全案件)
-    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI', 'BARASHI_LOST', 'ALL'];
+    const allowedStatuses = ['LOST', 'BARASHI', 'NAITEI', 'BARASHI_LOST', 'ALL', 'ONLINE_INTERVIEW', 'NO_SCREENING', 'SHORUI_OCHI', 'OTHER_STATUS'];
     if (!allowedStatuses.includes(status)) {
-      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI/BARASHI_LOST/ALL のいずれか');
+      return ApiResponse.badRequest(res, 'status は LOST/BARASHI/NAITEI/BARASHI_LOST/ALL/ONLINE_INTERVIEW/NO_SCREENING/SHORUI_OCHI/OTHER_STATUS のいずれか');
     }
     const dateFrom = date_from || '2026-04-01';
     const dateTo = date_to || new Date().toISOString().slice(0, 10);
@@ -2507,9 +2507,30 @@ const getQualityIndustryDetail = async (req, res, next) => {
       : 'DATE(p.created_at)';
 
     // status 条件: ALL は status 制限なし、 BARASHI_LOST のときは IN 句、 それ以外は等号
-    const statusSql = status === 'ALL' ? `1=1`
-      : (status === 'BARASHI_LOST' ? `p.status IN ('BARASHI','LOST')` : `p.status = ?`);
-    const statusBind = (status === 'ALL' || status === 'BARASHI_LOST') ? [] : [status];
+    // status 条件を決定 (派生バケット onlineInterview/noScreening/otherStatus は集計ロジックと一致させる)
+    const MECE_OTHER_SQL = `(CASE WHEN p.status = 'LOST' THEN 'lost' WHEN p.status = 'BARASHI' THEN 'barashi' WHEN p.status IN ('NAITEI','FUGOKAKU','KEKKA_MACHI','NAITEI_TORIKESHI','HIRED','WAITING_RESULT','INTERVIEW_DONE') THEN 'iv_done' WHEN p.status = 'MENSETSU_KAKUTEI' OR (p.interview_date IS NOT NULL AND p.interview_date >= CURDATE()) THEN 'iv_set' WHEN p.status = 'SHORUI_CHU' OR (p.document_screening = 'required' AND p.status = 'BOSHUCHU') THEN 'screening' WHEN p.status = 'SHORUI_OCHI' THEN 'screening_failed' WHEN COALESCE(p.mail_replied,0) = 0 AND COALESCE(p.phone_confirmed,0) = 0 THEN 'waiting' ELSE 'other' END) = 'other'`;
+    let statusSql;
+    let statusBind;
+    if (status === 'ALL') {
+      statusSql = `1=1`;
+      statusBind = [];
+    } else if (status === 'BARASHI_LOST') {
+      statusSql = `p.status IN ('BARASHI','LOST')`;
+      statusBind = [];
+    } else if (status === 'ONLINE_INTERVIEW') {
+      statusSql = `p.interview_type = 'online'`;
+      statusBind = [];
+    } else if (status === 'NO_SCREENING') {
+      statusSql = `p.document_screening IN ('not_required', 'なし')`;
+      statusBind = [];
+    } else if (status === 'OTHER_STATUS') {
+      statusSql = MECE_OTHER_SQL;
+      statusBind = [];
+    } else {
+      // LOST / BARASHI / NAITEI / SHORUI_OCHI は status 等号
+      statusSql = `p.status = ?`;
+      statusBind = [status];
+    }
 
     const CAT = `COALESCE(NULLIF(c.industry_category, ''), 'その他')`;
     const [rows] = await pool.query(
