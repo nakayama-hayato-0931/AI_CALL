@@ -326,6 +326,22 @@ export default function AnalyticsPage() {
             // 週行: v2 は月単位のためマージ無し(旧CPAのまま)
             block.push({ label: w.label, isMonth: false, ym, cpa: c.data.data, qual: q.data.data });
           });
+          // 面接数の月合計を「週の子行の合計」に統一する。
+          // 過去データ月(2〜5月)は月別レコードと週別レコードが独立入力のため縦計が合わず、
+          // 4月/6月も週合計を月の値とみなすことで親行と週合計を常に一致させる。
+          try {
+            const weekRows = block.slice(1);
+            const sumIc = weekRows.reduce((s, wr) => s + (Number(wr?.cpa?.team?.interviewCount) || 0), 0);
+            const mTeam = block[0]?.cpa?.team;
+            if (mTeam) {
+              const mCost = Number(mTeam.cost) || 0;
+              const mProj = Number(mTeam.projectCount) || 0;
+              mTeam.interviewCount = sumIc;
+              // 面接数に依存する派生指標を再計算 (面接CPA / 面接実施率)
+              mTeam.interviewCpa = sumIc > 0 ? Math.round(mCost / sumIc) : 0;
+              mTeam.interviewRate = mProj > 0 ? Math.round(sumIc / mProj * 10000) / 100 : 0;
+            }
+          } catch (e) { /* 集計失敗時は元の月値のまま */ }
           return block;
         }));
         monthBlocks.forEach(block => rows.push(...block));
