@@ -1302,6 +1302,31 @@ const lockCallTarget = async (req, res, next) => {
     const company = rows[0];
     const now = new Date();
 
+    // 2026-07-22 追加: ロック直前のNG(永久除外結果)再検証。
+    //   架電画面のリストはクライアント側に保持され続けるため、別オペレーターが
+    //   NG等を付けた直後でも古いリストから同じ企業をロックできてしまう競合バグが
+    //   あった (クレーム事例: 株式会社パルティド)。
+    //   ロック取得の直前に、この企業が既に永久除外対象の結果を持っていないか確認し、
+    //   持っていればロックを拒否して 409 を返す。フロントは該当企業をリストから外して次へ進む。
+    const [exclRows] = await conn.execute(
+      `SELECT cl.result_code FROM calls cl
+       WHERE cl.company_id = ? AND cl.result_code IN ('SKIP','PROJECT','RECALL','INTERESTED','NG')
+       ORDER BY cl.call_started_at DESC LIMIT 1`,
+      [id]
+    );
+    if (exclRows.length > 0) {
+      await conn.rollback();
+      const rc = exclRows[0].result_code;
+      const label = rc === 'NG' ? 'NG' : rc === 'RECALL' ? 'リコール' : rc === 'INTERESTED' ? '興味あり' : rc === 'PROJECT' ? '案件化' : 'スキップ';
+      logger.info(`[lockCallTarget] 永久除外対象のためロック拒否: company=${id}, user=${userId}, result_code=${rc}`);
+      return res.status(409).json({
+        success: false,
+        code: 'ALREADY_EXCLUDED',
+        result_code: rc,
+        message: `この企業は既に「${label}」として登録済みのため架電対象外です。リストを更新します。`,
+      });
+    }
+
     // 自分がこの企業の割当ユーザー(company_assignments) または
     // 自作リストとしてインポートしたユーザーなら、他のロックを上書き可能
     let canOverride = false;
