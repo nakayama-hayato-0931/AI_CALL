@@ -117,8 +117,22 @@ async function upsertRow(conn, f, ctx) {
   ];
 
   // 肉付け SET 句: 新値が空文字 / NULL なら既存値、 そうでなければ新値で上書き
+  // 2026-07-22 (案A): 別会社の混在防止。
+  //   電話番号が既存企業と一致しても、企業名が実質的に異なる場合は肉付け上書きを行わず
+  //   既存レコードをそのまま温存する。以前は各カラムを独立に上書きしていたため、
+  //   「企業名は新会社・コメント/業種/住所は旧会社」という混在レコードが生成されていた
+  //   (例: エコパルトン株式会社にグリーンペット株式会社の説明が入る等)。
+  //   企業名の正規化: 前後空白除去 + 半角/全角空白・記号除去 + 法人格語句除去 + 小文字化。
+  const normName = (col) =>
+    `LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(${col}),` +
+    ` '株式会社',''),'有限会社',''),'合同会社',''),'合資会社',''),' ',''),'　',''),'・',''),'（',''),'）',''))`;
+  //   肉付けを許可する条件: 既存の company_name が空/NULL、または 正規化した既存名と新名が一致。
+  //   VALUES(company_name) = 今回インポートされた企業名、company_name = 既存の企業名。
+  const nameMatches =
+    `(company_name IS NULL OR company_name = '' OR ${normName('company_name')} = ${normName("VALUES(company_name)")})`;
+  // 肉付け SET 句: 名前一致時のみ「新値が非空なら上書き」。名前不一致時は既存値を維持(混ぜない)。
   const setClause = MASTER_COLS.map(
-    (c) => `${c} = COALESCE(NULLIF(VALUES(${c}), ''), ${c})`
+    (c) => `${c} = IF(${nameMatches}, COALESCE(NULLIF(VALUES(${c}), ''), ${c}), ${c})`
   ).join(',\n  ');
 
   // LAST_INSERT_ID(id) トリックで衝突時も既存 id を取得
