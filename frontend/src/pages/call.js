@@ -77,6 +77,7 @@ export default function CallPage() {
 
   // 架電リスト
   const [targetList, setTargetList] = useState([]);
+  const [excludedIds, setExcludedIds] = useState(() => new Set());
   const [listDebug, setListDebug] = useState(null);
   const [selecting, setSelecting] = useState(false); // 選択処理中フラグ（ボタン無効化用）
   const prefetchedListRef = useRef(null); // バックグラウンドで事前取得した次の候補リスト
@@ -247,6 +248,15 @@ export default function CallPage() {
         targets = [...sticky, ...rest];
       }
       setTargetList(targets);
+      // リストが刷新されたら、もう存在しないIDは無効化セットから掃除
+      setExcludedIds(prev => {
+        if (prev.size === 0) return prev;
+        const ids = new Set(targets.map(t => t.id));
+        const next = new Set();
+        prev.forEach(id => { if (ids.has(id)) next.add(id); });
+        return next;
+      });
+      return targets;
     } catch (err) {
       const msg = err.response?.data?.message || '架電リストの取得に失敗しました';
       const status = err.response?.status;
@@ -257,6 +267,7 @@ export default function CallPage() {
       if (forceRefresh) {
         toast.error(detail ? `${msg} [${status}] ${detail}` : `${msg}${status ? ` [${status}]` : ''}`, { duration: 5000 });
       }
+      return [];
     } finally {
       setListLoading(false);
     }
@@ -456,17 +467,30 @@ export default function CallPage() {
       setCompany(data.data.company);
       setCallHistory(data.data.callHistory || []);
     } catch (err) {
-      if (err.response?.status === 409) {
+    const code = err.response?.data?.code;
+      const status = err.response?.status;
+      // 失敗したので仮選択を解除
+      setCompany(null);
+      setSelectedTargetId(null);
+
+      if (status === 409 && code === 'ALREADY_EXCLUDED') {
+        // リコール/興味あり/案件化/NG/スキップ済み（他オペが直前に登録した等）。
+        // 古いリストが残っているだけなので、無効化表示＋リスト更新＋自動で次へ進む。
+        setExcludedIds(prev => new Set(prev).add(target.id));
+        toast(err.response?.data?.message || 'この企業は架電対象外です。次の企業に進みます。', { icon: 'ℹ️' });
+        const fresh = await fetchCallList(true);
+        const excludedNow = new Set(excludedIds).add(target.id);
+        const next = (fresh || []).find(t => t.id !== target.id && !excludedNow.has(t.id));
+        if (next) {
+          setTimeout(() => handleSelectTarget(next), 0);
+        }
+      } else if (status === 409) {
+        // 他オペレーターが現在通話中などのロック競合
         toast.error(err.response?.data?.message || 'この企業は他のオペレーターが対応中です');
-        // 失敗したので選択解除
-        setCompany(null);
-        setSelectedTargetId(null);
-        fetchCallList();
+        fetchCallList(true);
       } else {
         toast.error('選択に失敗しました');
-        setCompany(null);
-        setSelectedTargetId(null);
-      }
+      }  
     } finally {
       setSelecting(false);
     }
@@ -1102,12 +1126,12 @@ export default function CallPage() {
                 targetList.map((target) => (
                   <div
                     key={target.id}
-                    onClick={() => !calling && handleSelectTarget(target)}
+                    onClick={() => !calling && !excludedIds.has(target.id) && handleSelectTarget(target)}
                     className={`relative group p-3 rounded-lg transition-all duration-150 border ${
                       selectedTargetId === target.id
                         ? 'bg-blue-50 border-blue-200 shadow-sm'
                         : 'bg-gray-50/50 border-transparent hover:bg-gray-100/80'
-                    } ${calling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                   } ${calling || excludedIds.has(target.id) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
