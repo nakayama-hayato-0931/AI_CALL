@@ -1310,7 +1310,7 @@ const lockCallTarget = async (req, res, next) => {
     //   持っていればロックを拒否して 409 を返す。フロントは該当企業をリストから外して次へ進む。
     const [exclRows] = await conn.execute(
       `SELECT cl.result_code FROM calls cl
-       WHERE cl.company_id = ? AND cl.result_code IN ('SKIP','PROJECT','RECALL','INTERESTED','NG')
+       WHERE cl.company_id = ? AND cl.result_code IN ('NG')
        ORDER BY cl.call_started_at DESC LIMIT 1`,
       [id]
     );
