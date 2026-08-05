@@ -250,7 +250,8 @@ export default function DashboardPage() {
     const wh = stats.manualWorkHours;
     const breakStr = wh?.break_minutes ? `（休憩${wh.break_minutes}分）` : '';
     const workTimeStr = wh ? `${wh.start_time}〜${wh.end_time}${breakStr}` : `${stats.workMinutes || 0}分`;
-    const workHoursVal = wh ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes) : ((stats.workMinutes || 0) / 60);
+    const whHours = wh ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes) : 0;
+    const workHoursVal = whHours > 0 ? whHours : ((stats.workMinutes || 0) / 60);
     const efficiencyStr = stats.projectCount > 0 ? `${(workHoursVal / stats.projectCount).toFixed(1)}h/件` : '-';
     const lines = [
       `コール時間：${workTimeStr}`,
