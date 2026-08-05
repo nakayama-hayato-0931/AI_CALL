@@ -250,6 +250,8 @@ export default function DashboardPage() {
     const wh = stats.manualWorkHours;
     const breakStr = wh?.break_minutes ? `（休憩${wh.break_minutes}分）` : '';
     const workTimeStr = wh ? `${wh.start_time}〜${wh.end_time}${breakStr}` : `${stats.workMinutes || 0}分`;
+    const workHoursVal = wh ? calcWorkHours(wh.start_time, wh.end_time, wh.break_minutes) : ((stats.workMinutes || 0) / 60);
+    const efficiencyStr = stats.projectCount > 0 ? `${(workHoursVal / stats.projectCount).toFixed(1)}h/件` : '-';
     const lines = [
       `コール時間：${workTimeStr}`,
       `コール数：${stats.callCount || 0}`,
@@ -258,6 +260,7 @@ export default function DashboardPage() {
       `有効接続数：${stats.effectiveCount || 0}`,
       `担当接続数：${stats.personCount || 0}`,
       `案件獲得数：${stats.projectCount || 0}`,
+      `獲得効率：${efficiencyStr}`,
     ];
     navigator.clipboard.writeText(lines.join('\n'));
     toast.success('日報データをコピーしました');
